@@ -233,10 +233,9 @@ const lancamentosRelatorio = useMemo(() => {
     return (
       item.data >= dataInicialRelatorio &&
       item.data <= dataFinalRelatorio
-    );
+       );
   });
 }, [lancamentos, dataInicialRelatorio, dataFinalRelatorio]);
-
 const totaisRelatorio = useMemo(() => {
   const receitas = lancamentosRelatorio
     .filter((item) => item.tipo === "receita")
