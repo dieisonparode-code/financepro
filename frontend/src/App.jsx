@@ -748,21 +748,25 @@ const totaisRelatorio = useMemo(() => {
             <h1>Sistema Financeiro</h1>
           </div>
 
-          <div className="topbar-actions">
-            <button
-              className="secondary-button"
-              onClick={() => abrirModal("despesa")}
-            >
-              Nova despesa
-            </button>
+         <div className="topbar-actions">
+  {pagina === "despesas" && (
+    <button
+      className="secondary-button"
+      onClick={() => abrirModal("despesa")}
+    >
+      Nova despesa
+    </button>
+  )}
 
-            <button
-              className="primary-button"
-              onClick={() => abrirModal("receita")}
-            >
-              Nova receita
-            </button>
-          </div>
+  {pagina === "receitas" && (
+    <button
+      className="primary-button"
+      onClick={() => abrirModal("receita")}
+    >
+      Nova receita
+    </button>
+  )}
+</div>
         </header>
 
         <section className="summary-grid">

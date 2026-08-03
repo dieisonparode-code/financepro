@@ -1,5 +1,17 @@
 [
   {
+    "id": 1785762644573,
+    "tipo": "receita",
+    "descricao": "entradas",
+    "valor": 80000,
+    "grupo": "Receita Operacional",
+    "categoria": "Vendas",
+    "subcategoria": "",
+    "fornecedor": "",
+    "observacao": "",
+    "data": "2026-08-03"
+  },
+  {
     "id": 1785735145843,
     "tipo": "despesa",
     "descricao": "a",
@@ -49,14 +61,6 @@
     "descricao": "compra de carne",
     "valor": 1000,
     "categoria": "Fornecedores",
-    "data": "2026-08-03"
-  },
-  {
-    "id": 1785716127341,
-    "tipo": "receita",
-    "descricao": "ifoos",
-    "valor": 15000,
-    "categoria": "Vendas",
     "data": "2026-08-03"
   },
   {
