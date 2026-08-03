@@ -867,4 +867,14 @@ tbody tr:hover {
 .status-critico small {
   color: #b91c1c;
   font-weight: 700;
+}.tipo-despesa,
+.valor-despesa {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.tipo-receita,
+.valor-receita {
+  color: #2563eb;
+  font-weight: 700;
 }

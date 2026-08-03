@@ -1265,16 +1265,31 @@ const totaisRelatorio = useMemo(() => {
                     ) : (
                       lancamentosRelatorio.map((item) => (
                         <tr key={item.id}>
-                          <td>{formatarData(item.data)}</td>
-                          <td>
-                            {item.tipo === "receita"
-                              ? "Receita"
-                              : "Despesa"}
-                          </td>
-                          <td>{item.descricao}</td>
-                          <td>{item.categoria || "-"}</td>
-                          <td>{item.fornecedor || "-"}</td>
-                          <td>{formatarMoeda(item.valor)}</td>
+                          <td
+  className={
+    item.tipo === "receita"
+      ? "tipo-receita"
+      : "tipo-despesa"
+  }
+>
+  {item.tipo === "receita" ? "Receita" : "Despesa"}
+</td>
+
+<td>{item.descricao}</td>
+<td>{item.categoria || "-"}</td>
+<td>{item.fornecedor || ""}</td>
+
+<td
+  className={
+    item.tipo === "receita"
+      ? "valor-receita"
+      : "valor-despesa"
+  }
+>
+  {item.tipo === "despesa"
+    ? `-${formatarMoeda(item.valor)}`
+    : formatarMoeda(item.valor)}
+</td>
                         </tr>
                       ))
                     )}
