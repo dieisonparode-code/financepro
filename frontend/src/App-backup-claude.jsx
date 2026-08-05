@@ -1,32 +1,20 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import DashboardPremium from "./components/dashboardPremium";
 import "./App.css";
 import "./paginasInternas.css";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
 import ProtectedRoute from "./routes/ProtectedRoute";
-import { useAuth } from "./context/AuthContext";
-import { supabase } from "./services/supabaseClient";
 import {
   buscarLancamentos,
-  buscarFotoLancamento,
   criarLancamento,
   atualizarLancamento,
   excluirLancamento,
-  buscarLojas,
-  criarLoja,
-  atualizarLoja,
-  excluirLoja,
-  buscarUsuarios,
-  criarUsuario,
-  atualizarUsuario,
-  excluirUsuario,
 } from "./services/api";
 
+import GraficoFinanceiro from "./components/GraficoFinanceiro";
+import GraficoCategorias from "./components/GraficoCategorias";
 import CadastroCategorias from "./components/CadastroCategorias";
-import CadastroLojas from "./components/CadastroLojas";
-import CadastroUsuarios from "./components/CadastroUsuarios";
-import UserMenu from "./components/UserMenu";
 
 const categoriasPadrao = [
   "Vendas",
@@ -89,55 +77,10 @@ const gruposFinanceiros = [
   "Outros",
 ];
 
-function formatarValorDigitado(textoDigitado) {
-  const somenteDigitos = textoDigitado.replace(/\D/g, "");
-  const valorEmCentavos = Number(somenteDigitos || 0);
-
-  return (valorEmCentavos / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  });
-}
-
-function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
-  return new Promise((resolve, reject) => {
-    const leitor = new FileReader();
-
-    leitor.onload = () => {
-      const imagem = new Image();
-
-      imagem.onload = () => {
-        const escala = Math.min(1, larguraMaxima / imagem.width);
-        const largura = Math.round(imagem.width * escala);
-        const altura = Math.round(imagem.height * escala);
-
-        const canvas = document.createElement("canvas");
-        canvas.width = largura;
-        canvas.height = altura;
-
-        const contexto = canvas.getContext("2d");
-        contexto.drawImage(imagem, 0, 0, largura, altura);
-
-        resolve(canvas.toDataURL("image/jpeg", qualidade));
-      };
-
-      imagem.onerror = () =>
-        reject(new Error("Não foi possível ler a imagem selecionada."));
-
-      imagem.src = leitor.result;
-    };
-
-    leitor.onerror = () =>
-      reject(new Error("Não foi possível abrir o arquivo selecionado."));
-
-    leitor.readAsDataURL(arquivo);
   });
 }
 
@@ -162,7 +105,6 @@ function criarFormularioInicial(tipo = "receita") {
     fornecedor: "",
     observacao: "",
     foto: "",
-    loja_id: "",
     data: new Date().toISOString().slice(0, 10),
   };
 }
@@ -185,17 +127,6 @@ function App() {
   );
 }
 function FinanceApp() {
-  const { usuario, logout, perfil, ehAdministrador } = useAuth();
-
-  const vePermissaoTotal =
-    ehAdministrador || (perfil?.perfil === "gerente" && !perfil?.loja_id);
-  const navigate = useNavigate();
-
-  async function sair() {
-    await logout();
-    navigate("/login", { replace: true });
-  }
-
   const [pagina, setPagina] = useState("dashboard");
   const [lancamentos, setLancamentos] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -203,18 +134,6 @@ function FinanceApp() {
   const [modalAberto, setModalAberto] = useState(false);
   const [tipoLancamento, setTipoLancamento] = useState("receita");
   const [editandoId, setEditandoId] = useState(null);
-  const [fotoVisualizada, setFotoVisualizada] = useState(null);
-  const [salvando, setSalvando] = useState(false);
-  const [processandoFoto, setProcessandoFoto] = useState(false);
-  const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
-  const [carregandoFotoId, setCarregandoFotoId] = useState(null);
-  const editandoIdRef = useRef(null);
-
-  const [lojas, setLojas] = useState([]);
-  const [carregandoLojas, setCarregandoLojas] = useState(true);
-
-  const [usuarios, setUsuarios] = useState([]);
-  const [carregandoUsuarios, setCarregandoUsuarios] = useState(true);
 
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
@@ -261,158 +180,17 @@ function FinanceApp() {
 
     carregarDados();
   }, []);
-
-  useEffect(() => {
-    const canal = supabase
-      .channel("lancamentos-tempo-real")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lancamentos" },
-        (payload) => {
-          setLancamentos((anteriores) => {
-            if (payload.eventType === "INSERT") {
-              const { foto, ...resto } = payload.new;
-
-              if (anteriores.some((item) => item.id === resto.id)) {
-                return anteriores;
-              }
-
-              return [resto, ...anteriores];
-            }
-
-            if (payload.eventType === "UPDATE") {
-              const { foto, ...resto } = payload.new;
-
-              return anteriores.map((item) =>
-                item.id === resto.id ? { ...item, ...resto } : item
-              );
-            }
-
-            if (payload.eventType === "DELETE") {
-              return anteriores.filter(
-                (item) => item.id !== payload.old.id
-              );
-            }
-
-            return anteriores;
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(canal);
-    };
-  }, []);
-
-  useEffect(() => {
-    async function carregarLojas() {
-      try {
-        setCarregandoLojas(true);
-        const dados = await buscarLojas();
-        setLojas(Array.isArray(dados) ? dados : []);
-      } catch (erro) {
-        console.error("Erro ao carregar lojas:", erro);
-      } finally {
-        setCarregandoLojas(false);
-      }
-    }
-
-    carregarLojas();
-
-    const canalLojas = supabase
-      .channel("lojas-tempo-real")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lojas" },
-        (payload) => {
-          setLojas((anteriores) => {
-            if (payload.eventType === "INSERT") {
-              if (anteriores.some((item) => item.id === payload.new.id)) {
-                return anteriores;
-              }
-              return [...anteriores, payload.new];
-            }
-
-            if (payload.eventType === "UPDATE") {
-              return anteriores.map((item) =>
-                item.id === payload.new.id ? payload.new : item
-              );
-            }
-
-            if (payload.eventType === "DELETE") {
-              return anteriores.filter(
-                (item) => item.id !== payload.old.id
-              );
-            }
-
-            return anteriores;
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(canalLojas);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!ehAdministrador) {
-      setUsuarios([]);
-      setCarregandoUsuarios(false);
-      return;
-    }
-
-    async function carregarUsuarios() {
-      try {
-        setCarregandoUsuarios(true);
-        const dados = await buscarUsuarios();
-        setUsuarios(Array.isArray(dados) ? dados : []);
-      } catch (erro) {
-        console.error("Erro ao carregar usuários:", erro);
-      } finally {
-        setCarregandoUsuarios(false);
-      }
-    }
-
-    carregarUsuarios();
-  }, [ehAdministrador]);
-
 const [mesDashboard, setMesDashboard] = useState(
   new Date().toISOString().slice(0, 7)
 );
-const [lojaDashboard, setLojaDashboard] = useState("todas");
-
-useEffect(() => {
-  if (!vePermissaoTotal && perfil?.loja_id) {
-    setLojaDashboard(perfil.loja_id);
-  }
-}, [vePermissaoTotal, perfil]);
-
-const lancamentosVisiveis = useMemo(() => {
-  if (vePermissaoTotal || !perfil) {
-    return lancamentos;
-  }
-
-  return lancamentos.filter(
-    (item) => String(item.loja_id || "") === String(perfil.loja_id || "")
-  );
-}, [lancamentos, vePermissaoTotal, perfil]);
 
 const lancamentosDashboard = useMemo(() => {
-  return lancamentosVisiveis.filter((item) => {
+  return lancamentos.filter((item) => {
     if (!item.data) return false;
 
-    const noMes = item.data.slice(0, 7) === mesDashboard;
-
-    const naLoja =
-      lojaDashboard === "todas" ||
-      String(item.loja_id || "") === String(lojaDashboard);
-
-    return noMes && naLoja;
+    return item.data.slice(0, 7) === mesDashboard;
   });
-}, [lancamentosVisiveis, mesDashboard, lojaDashboard]);
+}, [lancamentos, mesDashboard]);
   const totais = useMemo(() => {
    const receitas = lancamentosDashboard
       .filter((item) => item.tipo === "receita")
@@ -447,7 +225,7 @@ const lancamentosDashboard = useMemo(() => {
   }, [lancamentosDashboard]);
 
   const despesasPorCategoria = useMemo(() => {
-  const agrupadas = lancamentosVisiveis
+  const agrupadas = lancamentos
     .filter((item) => item.tipo === "despesa")
     .reduce((acumulador, item) => {
       const categoria = item.categoria || "Outros";
@@ -465,43 +243,22 @@ const lancamentosDashboard = useMemo(() => {
     }, {});
 
   return Object.values(agrupadas);
-}, [lancamentosVisiveis]);
-
-  const despesasPorCategoriaDashboard = useMemo(() => {
-    const agrupadas = lancamentosDashboard
-      .filter((item) => item.tipo === "despesa")
-      .reduce((acumulador, item) => {
-        const categoria = item.categoria || "Outros";
-
-        if (!acumulador[categoria]) {
-          acumulador[categoria] = {
-            categoria,
-            valor: 0,
-          };
-        }
-
-        acumulador[categoria].valor += Number(item.valor || 0);
-
-        return acumulador;
-      }, {});
-
-    return Object.values(agrupadas);
-  }, [lancamentosDashboard]);
+}, [lancamentos]);
 
 const lancamentosFiltrados = useMemo(() => {
   if (pagina === "receitas") {
-    return lancamentosVisiveis.filter((item) => item.tipo === "receita");
+    return lancamentos.filter((item) => item.tipo === "receita");
   }
 
   if (pagina === "despesas") {
-    return lancamentosVisiveis.filter((item) => item.tipo === "despesa");
+    return lancamentos.filter((item) => item.tipo === "despesa");
   }
 
-  return lancamentosVisiveis;
-}, [lancamentosVisiveis, pagina]);
+  return lancamentos;
+}, [lancamentos, pagina]);
 
 const lancamentosRelatorio = useMemo(() => {
-  return lancamentosVisiveis.filter((item) => {
+  return lancamentos.filter((item) => {
     if (!item.data) return false;
 
     return (
@@ -509,7 +266,7 @@ const lancamentosRelatorio = useMemo(() => {
       item.data <= dataFinalRelatorio
        );
   });
-}, [lancamentosVisiveis, dataInicialRelatorio, dataFinalRelatorio]);
+}, [lancamentos, dataInicialRelatorio, dataFinalRelatorio]);
 const totaisRelatorio = useMemo(() => {
   const receitas = lancamentosRelatorio
     .filter((item) => item.tipo === "receita")
@@ -569,7 +326,7 @@ const statusCmv =
   }, [lancamentosRelatorio]);
 
   const lancamentosFluxo = useMemo(() => {
-    return lancamentosVisiveis
+    return lancamentos
       .filter((item) => {
         if (!item.data) return false;
 
@@ -589,7 +346,7 @@ const statusCmv =
           String(b.id || "")
         );
       });
-  }, [lancamentosVisiveis, dataInicialFluxo, dataFinalFluxo]);
+  }, [lancamentos, dataInicialFluxo, dataFinalFluxo]);
 
   const totaisFluxo = useMemo(() => {
     const entradas = lancamentosFluxo
@@ -724,29 +481,17 @@ const statusCmv =
   function abrirModal(tipo) {
     setTipoLancamento(tipo);
     setEditandoId(null);
-    editandoIdRef.current = null;
-
-    const formularioInicial = criarFormularioInicial(tipo);
-
-    if (!vePermissaoTotal && perfil?.loja_id) {
-      formularioInicial.loja_id = perfil.loja_id;
-    }
-
-    setFormulario(formularioInicial);
+    setFormulario(criarFormularioInicial(tipo));
     setModalAberto(true);
   }
 
-  async function abrirEdicao(lancamento) {
+  function abrirEdicao(lancamento) {
     setTipoLancamento(lancamento.tipo);
     setEditandoId(lancamento.id);
-    editandoIdRef.current = lancamento.id;
 
     setFormulario({
       descricao: lancamento.descricao || "",
-      valor: Number(lancamento.valor || 0).toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
+      valor: String(lancamento.valor || "").replace(".", ","),
       grupo:
         lancamento.grupo ||
         (lancamento.tipo === "receita"
@@ -760,39 +505,18 @@ const statusCmv =
       subcategoria: lancamento.subcategoria || "",
       fornecedor: lancamento.fornecedor || "",
       observacao: lancamento.observacao || "",
-      foto: "",
-      loja_id: lancamento.loja_id || "",
+      foto: lancamento.foto || "",
       data:
         lancamento.data ||
         new Date().toISOString().slice(0, 10),
     });
 
     setModalAberto(true);
-
-    if (lancamento.tem_foto) {
-      try {
-        const resultado = await buscarFotoLancamento(lancamento.id);
-
-        setFormulario((anterior) => {
-          if (editandoIdRef.current !== lancamento.id) {
-            return anterior;
-          }
-
-          return {
-            ...anterior,
-            foto: resultado?.foto || "",
-          };
-        });
-      } catch (erro) {
-        console.error("Erro ao buscar foto do lançamento:", erro);
-      }
-    }
   }
 
   function fecharModal() {
     setModalAberto(false);
     setEditandoId(null);
-    editandoIdRef.current = null;
   }
 
   function alterarCampo(campo, valor) {
@@ -804,8 +528,6 @@ const statusCmv =
 
   async function salvarLancamento(evento) {
     evento.preventDefault();
-
-    if (salvando) return;
 
     const valorNumerico = Number(
       String(formulario.valor)
@@ -833,11 +555,8 @@ const statusCmv =
       fornecedor: formulario.fornecedor.trim(),
       observacao: formulario.observacao.trim(),
       foto: formulario.foto || "",
-      loja_id: formulario.loja_id ? Number(formulario.loja_id) : null,
       data: formulario.data,
     };
-
-    setSalvando(true);
 
     try {
       const salvo = editandoId
@@ -856,26 +575,17 @@ const statusCmv =
     } catch (erro) {
       console.error("Erro ao salvar lançamento:", erro);
       alert(
-        erro.message ||
-          "Não foi possível salvar. Confirme se o backend está funcionando."
+        "Não foi possível salvar. Confirme se o backend está funcionando."
       );
-    } finally {
-      setSalvando(false);
     }
   }
 
-  function pedirConfirmacaoExclusao(id) {
-    setConfirmandoExclusao(id);
-  }
+  async function removerLancamento(id) {
+    const confirmar = window.confirm(
+      "Deseja realmente excluir este lançamento?"
+    );
 
-  function cancelarExclusao() {
-    setConfirmandoExclusao(null);
-  }
-
-  async function confirmarExclusao() {
-    const id = confirmandoExclusao;
-
-    if (!id) return;
+    if (!confirmar) return;
 
     try {
       await excluirLancamento(id);
@@ -885,11 +595,7 @@ const statusCmv =
       );
     } catch (erro) {
       console.error("Erro ao excluir lançamento:", erro);
-      alert(
-        erro.message || "Não foi possível excluir o lançamento."
-      );
-    } finally {
-      setConfirmandoExclusao(null);
+      alert("Não foi possível excluir o lançamento.");
     }
   }
 
@@ -965,62 +671,6 @@ const statusCmv =
 
     setCategoriasCadastradas((anteriores) =>
       anteriores.filter((item) => item.id !== id)
-    );
-  }
-
-  async function adicionarLoja(dadosLoja) {
-    const salva = await criarLoja(dadosLoja);
-
-    setLojas((anteriores) => {
-      if (anteriores.some((item) => item.id === salva.id)) {
-        return anteriores;
-      }
-      return [...anteriores, salva];
-    });
-  }
-
-  async function editarLoja(id, dadosLoja) {
-    const salva = await atualizarLoja(id, dadosLoja);
-
-    setLojas((anteriores) =>
-      anteriores.map((item) => (item.id === id ? salva : item))
-    );
-  }
-
-  async function removerLoja(id) {
-    const lojaEmUso = lancamentos.some((item) => item.loja_id === id);
-
-    if (lojaEmUso) {
-      throw new Error(
-        "Essa loja está vinculada a lançamentos e não pode ser excluída."
-      );
-    }
-
-    await excluirLoja(id);
-
-    setLojas((anteriores) => anteriores.filter((item) => item.id !== id));
-  }
-
-  async function adicionarUsuario(dadosUsuario) {
-    const salvo = await criarUsuario(dadosUsuario);
-    setUsuarios((anteriores) => [...anteriores, salvo]);
-  }
-
-  async function editarUsuario(id, dadosUsuario) {
-    const salvo = await atualizarUsuario(id, dadosUsuario);
-
-    setUsuarios((anteriores) =>
-      anteriores.map((item) =>
-        item.user_id === id ? { ...item, ...salvo } : item
-      )
-    );
-  }
-
-  async function removerUsuario(id) {
-    await excluirUsuario(id);
-
-    setUsuarios((anteriores) =>
-      anteriores.filter((item) => item.user_id !== id)
     );
   }
 
@@ -1126,24 +776,6 @@ const statusCmv =
           >
             Relatórios
           </button>
-
-          {ehAdministrador && (
-            <button
-              className={pagina === "lojas" ? "active" : ""}
-              onClick={() => setPagina("lojas")}
-            >
-              Lojas
-            </button>
-          )}
-
-          {ehAdministrador && (
-            <button
-              className={pagina === "usuarios" ? "active" : ""}
-              onClick={() => setPagina("usuarios")}
-            >
-              Usuários
-            </button>
-          )}
         </nav>
       </aside>
 
@@ -1164,10 +796,6 @@ const statusCmv =
             ? "Fluxo de Caixa"
             : pagina === "relatorios"
             ? "Relatórios"
-            : pagina === "lojas"
-            ? "Lojas"
-            : pagina === "usuarios"
-            ? "Usuários"
             : "FinancePro"}
         </h1>
 
@@ -1194,8 +822,6 @@ const statusCmv =
             Nova receita
           </button>
         )}
-
-        <UserMenu usuario={usuario} sair={sair} />
       </div>
     </header>
   )}
@@ -1205,18 +831,12 @@ const statusCmv =
       totais={totais}
       cmvStatus={cmvStatus}
       margemStatus={margemStatus}
-      despesasPorCategoria={despesasPorCategoriaDashboard}
+      despesasPorCategoria={despesasPorCategoria}
       mesDashboard={mesDashboard}
       setMesDashboard={setMesDashboard}
-      lancamentos={lancamentosDashboard}
+      lancamentos={lancamentos}
       formatarMoeda={formatarMoeda}
       formatarData={formatarData}
-      usuario={usuario}
-      sair={sair}
-      lojas={lojas}
-      lojaDashboard={lojaDashboard}
-      setLojaDashboard={setLojaDashboard}
-      ehAdministrador={vePermissaoTotal}
     />
   )}
   
@@ -1239,11 +859,6 @@ const statusCmv =
                     <span>{item.grupo || "-"}</span>
                     <span>{item.categoria || "-"}</span>
                     <span>{item.fornecedor || "-"}</span>
-                    <span>
-                      🏬{" "}
-                      {lojas.find((loja) => loja.id === item.loja_id)
-                        ?.nome || "Sem loja"}
-                    </span>
                     <span>{formatarData(item.data)}</span>
                   </div>
 
@@ -1267,42 +882,29 @@ const statusCmv =
                         Editar
                       </button>
 
-                      {pagina === "despesas" && item.tem_foto && (
+                      {pagina === "despesas" && item.foto && (
                         <button
                           type="button"
                           className="view-receipt-button"
-                          disabled={carregandoFotoId === item.id}
-                          onClick={async () => {
-                            setCarregandoFotoId(item.id);
+                          onClick={() => {
+                            const novaAba = window.open();
 
-                            try {
-                              const resultado =
-                                await buscarFotoLancamento(item.id);
-                              setFotoVisualizada(resultado?.foto || "");
-                            } catch (erro) {
-                              console.error(
-                                "Erro ao buscar foto:",
-                                erro
+                            if (novaAba) {
+                              novaAba.document.write(
+                                `<img src="${item.foto}" alt="Comprovante" style="max-width:100%;height:auto;display:block;margin:0 auto;" />`
                               );
-                              alert(
-                                erro.message ||
-                                  "Não foi possível carregar a foto."
-                              );
-                            } finally {
-                              setCarregandoFotoId(null);
+                              novaAba.document.close();
                             }
                           }}
                         >
-                          {carregandoFotoId === item.id
-                            ? "Carregando..."
-                            : "📷 Ver foto"}
+                          📷 Ver foto
                         </button>
                       )}
 
                       <button
                         type="button"
                         className="delete-button"
-                        onClick={() => pedirConfirmacaoExclusao(item.id)}
+                        onClick={() => removerLancamento(item.id)}
                       >
                         Excluir
                       </button>
@@ -1366,28 +968,6 @@ const statusCmv =
               )}
             </section>
           </>
-        )}
-
-        {pagina === "lojas" && (
-          <CadastroLojas
-            lojas={lojas}
-            carregando={carregandoLojas}
-            adicionarLoja={adicionarLoja}
-            editarLoja={editarLoja}
-            excluirLoja={removerLoja}
-          />
-        )}
-
-        {pagina === "usuarios" && (
-          <CadastroUsuarios
-            usuarios={usuarios}
-            lojas={lojas}
-            carregando={carregandoUsuarios}
-            usuarioAtualId={usuario?.id}
-            adicionarUsuario={adicionarUsuario}
-            editarUsuario={editarUsuario}
-            removerUsuario={removerUsuario}
-          />
         )}
 
         {pagina === "fluxo" && (
@@ -1805,10 +1385,7 @@ const statusCmv =
 
             <form onSubmit={salvarLancamento}>
               <label>
-                <span className="rotulo-campo">
-                  Descrição
-                  <span className="campo-obrigatorio">Obrigatório</span>
-                </span>
+                Descrição
                 <input
                   type="text"
                   value={formulario.descricao}
@@ -1822,19 +1399,12 @@ const statusCmv =
 
               <div className="form-row">
                 <label>
-                  <span className="rotulo-campo">
-                    Valor
-                    <span className="campo-obrigatorio">Obrigatório</span>
-                  </span>
+                  Valor
                   <input
                     type="text"
-                    inputMode="numeric"
                     value={formulario.valor}
                     onChange={(evento) =>
-                      alterarCampo(
-                        "valor",
-                        formatarValorDigitado(evento.target.value)
-                      )
+                      alterarCampo("valor", evento.target.value)
                     }
                     placeholder="0,00"
                     required
@@ -1842,10 +1412,7 @@ const statusCmv =
                 </label>
 
                 <label>
-                  <span className="rotulo-campo">
-                    Data
-                    <span className="campo-obrigatorio">Obrigatório</span>
-                  </span>
+                  Data
                   <input
                     type="date"
                     value={formulario.data}
@@ -1858,10 +1425,7 @@ const statusCmv =
               </div>
 
               <label>
-                <span className="rotulo-campo">
-                  Grupo financeiro
-                  <span className="campo-obrigatorio">Obrigatório</span>
-                </span>
+                Grupo financeiro
                 <select
                   value={formulario.grupo}
                   onChange={(evento) =>
@@ -1878,10 +1442,7 @@ const statusCmv =
 
               <div className="form-row">
                 <label>
-                  <span className="rotulo-campo">
-                    Categoria
-                    <span className="campo-obrigatorio">Obrigatório</span>
-                  </span>
+                  Categoria
                   <select
                     value={formulario.categoria}
                     onChange={(evento) =>
@@ -1916,24 +1477,6 @@ const statusCmv =
               </div>
 
               <label>
-                Loja
-                <select
-                  value={formulario.loja_id}
-                  disabled={!vePermissaoTotal}
-                  onChange={(evento) =>
-                    alterarCampo("loja_id", evento.target.value)
-                  }
-                >
-                  <option value="">Sem loja definida</option>
-                  {lojas.map((loja) => (
-                    <option key={loja.id} value={loja.id}>
-                      {loja.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
                 Fornecedor
                 <input
                   type="text"
@@ -1966,42 +1509,26 @@ const statusCmv =
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  disabled={processandoFoto}
-                  onChange={async (evento) => {
+                  onChange={(evento) => {
                     const arquivo = evento.target.files?.[0];
 
                     if (!arquivo) return;
 
-                    setProcessandoFoto(true);
+                    const leitor = new FileReader();
 
-                    try {
-                      const fotoComprimida = await comprimirImagem(arquivo);
-                      alterarCampo("foto", fotoComprimida);
-                    } catch (erro) {
-                      console.error("Erro ao processar a foto:", erro);
-                      alert(
-                        erro.message ||
-                          "Não foi possível processar a foto selecionada."
-                      );
-                    } finally {
-                      setProcessandoFoto(false);
-                      evento.target.value = "";
-                    }
+                    leitor.onload = () => {
+                      alterarCampo("foto", leitor.result);
+                    };
+
+                    leitor.readAsDataURL(arquivo);
                   }}
                 />
 
                 <label
                   htmlFor="foto-comprovante"
                   className="foto-button"
-                  style={
-                    processandoFoto
-                      ? { opacity: 0.6, pointerEvents: "none" }
-                      : undefined
-                  }
                 >
-                  {processandoFoto
-                    ? "Processando foto..."
-                    : "📷 Anexar comprovante"}
+                  📷 Anexar comprovante
                 </label>
               </div>
 
@@ -2027,7 +1554,6 @@ const statusCmv =
                   type="button"
                   className="secondary-button"
                   onClick={fecharModal}
-                  disabled={salvando}
                 >
                   Cancelar
                 </button>
@@ -2035,90 +1561,13 @@ const statusCmv =
                 <button
                   type="submit"
                   className="primary-button"
-                  disabled={salvando}
                 >
-                  {salvando
-                    ? "Salvando..."
-                    : editandoId
+                  {editandoId
                     ? "Salvar alterações"
                     : "Salvar lançamento"}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {fotoVisualizada && (
-        <div
-          className="modal-overlay"
-          onMouseDown={(evento) => {
-            if (evento.target === evento.currentTarget) {
-              setFotoVisualizada(null);
-            }
-          }}
-        >
-          <div className="modal modal-foto">
-            <div className="modal-header">
-              <div>
-                <span className="eyebrow">Comprovante</span>
-                <h2>Foto da despesa</h2>
-              </div>
-
-              <button
-                type="button"
-                className="close-button"
-                onClick={() => setFotoVisualizada(null)}
-              >
-                ×
-              </button>
-            </div>
-
-            <img
-              src={fotoVisualizada}
-              alt="Foto do comprovante"
-              className="foto-modal-imagem"
-            />
-          </div>
-        </div>
-      )}
-
-      {confirmandoExclusao && (
-        <div
-          className="modal-overlay"
-          onMouseDown={(evento) => {
-            if (evento.target === evento.currentTarget) {
-              cancelarExclusao();
-            }
-          }}
-        >
-          <div className="modal modal-confirmacao">
-            <div className="modal-header">
-              <div>
-                <span className="eyebrow">Atenção</span>
-                <h2>Excluir lançamento?</h2>
-              </div>
-            </div>
-
-            <p>Essa ação não pode ser desfeita.</p>
-
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={cancelarExclusao}
-              >
-                Não
-              </button>
-
-              <button
-                type="button"
-                className="primary-button"
-                onClick={confirmarExclusao}
-              >
-                Sim
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -1,0 +1,232 @@
+/* Páginas internas do FinancePro. Importado depois de App.css. */
+.main-content:not(:has(> .fpdash)) {
+  min-height: 100vh;
+  color: #f4f7fb;
+  background:
+    radial-gradient(circle at 45% 0%, rgba(20, 118, 255, 0.08), transparent 35%),
+    linear-gradient(135deg, #020c18, #031223 60%, #020b16);
+}
+
+.main-content > .topbar {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 34px 34px 22px !important;
+  color: #fff !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.main-content > .topbar .eyebrow {
+  display: block !important;
+  margin: 0 0 8px !important;
+  color: #5aa2ff !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .08em !important;
+}
+
+.main-content > .topbar h1 {
+  margin: 0 0 9px !important;
+  color: #fff !important;
+  font-size: 36px !important;
+  font-weight: 800 !important;
+  line-height: 1.05 !important;
+}
+
+.main-content > .topbar p {
+  margin: 0 !important;
+  color: #9fb0c4 !important;
+  font-size: 14px !important;
+}
+
+.main-content > .topbar .topbar-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.main-content > .topbar .primary-button,
+.main-content > .topbar .secondary-button,
+.main-content .report-actions .primary-button,
+.main-content .report-actions .secondary-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 150px !important;
+  height: 44px !important;
+  margin: 0 !important;
+  padding: 0 20px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, #1476ff, #0753cc) !important;
+  box-shadow: 0 9px 24px rgba(20, 118, 255, .26) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.main-content > section.panel,
+.main-content > .panel,
+.main-content .categorias-analise,
+.main-content .fluxo-panel,
+.main-content .report-print-area {
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 34px 34px !important;
+  padding: 22px !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(95, 135, 180, .3) !important;
+  border-radius: 14px !important;
+  color: #f4f7fb !important;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(20, 118, 255, .08), transparent 38%),
+    linear-gradient(145deg, rgba(7, 25, 44, .99), rgba(4, 18, 33, .99)) !important;
+  box-shadow: 0 15px 36px rgba(0, 0, 0, .2) !important;
+}
+
+.main-content section.panel h2,
+.main-content section.panel h3,
+.main-content .panel h2,
+.main-content .panel h3 {
+  color: #f4f7fb !important;
+}
+
+.main-content section.panel > .empty-state {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-height: 105px !important;
+  margin: 0 !important;
+  padding: 28px 20px !important;
+  border: 1px dashed rgba(120, 151, 187, .33) !important;
+  border-radius: 12px !important;
+  color: #8296ad !important;
+  background: rgba(255, 255, 255, .025) !important;
+  text-align: center !important;
+}
+
+.main-content section.panel .transaction-item {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 22px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 17px 0 !important;
+  border-bottom: 1px solid rgba(95, 135, 180, .17) !important;
+  color: #fff !important;
+  background: transparent !important;
+}
+
+.main-content section.panel .transaction-item:last-child {
+  border-bottom: 0 !important;
+}
+
+.main-content section.panel .transaction-item strong {
+  color: #fff !important;
+}
+
+.main-content section.panel .transaction-item span {
+  display: block !important;
+  margin-top: 4px !important;
+  color: #8498af !important;
+  font-size: 12px !important;
+}
+
+.main-content section.panel .value-revenue,
+.main-content .valor-receita,
+.main-content .tipo-receita {
+  color: #16ca50 !important;
+}
+
+.main-content section.panel .value-expense,
+.main-content .valor-despesa,
+.main-content .tipo-despesa {
+  color: #ff4655 !important;
+}
+
+.main-content section.panel .transaction-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  margin-top: 10px !important;
+}
+
+.main-content section.panel .edit-button,
+.main-content section.panel .delete-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 82px !important;
+  height: 38px !important;
+  padding: 0 14px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.main-content section.panel .edit-button { background: #1476ff !important; }
+.main-content section.panel .delete-button { background: #dc3545 !important; }
+
+.main-content .fluxo-filters,
+.main-content .report-filters {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
+  gap: 14px !important;
+  margin: 18px 0 22px !important;
+  padding: 16px !important;
+  border: 1px solid rgba(95, 135, 180, .24) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, .025) !important;
+}
+
+.main-content input,
+.main-content select,
+.main-content textarea {
+  border-color: rgba(95, 135, 180, .38) !important;
+  color: #e7edf5 !important;
+  background: #09182a !important;
+}
+
+.main-content option {
+  color: #111827;
+  background: #fff;
+}
+
+.main-content table {
+  color: #e7edf5 !important;
+}
+
+.main-content th {
+  color: #9fb0c4 !important;
+  background: rgba(255,255,255,.035) !important;
+}
+
+.main-content td {
+  border-color: rgba(95, 135, 180, .15) !important;
+}
+
+@media (max-width: 760px) {
+  .main-content > .topbar {
+    flex-direction: column !important;
+    padding: 24px 18px 18px !important;
+  }
+  .main-content > .topbar .topbar-actions { width: 100% !important; }
+  .main-content > .topbar .primary-button,
+  .main-content > .topbar .secondary-button { width: 100% !important; }
+  .main-content > section.panel,
+  .main-content > .panel { margin: 0 18px 24px !important; }
+  .main-content section.panel .transaction-item { grid-template-columns: 1fr !important; }
+  .main-content section.panel .transaction-actions { justify-content: flex-start !important; }
+}

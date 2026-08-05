@@ -1,177 +1,582 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
 
-const databaseFolder = path.join(__dirname, "..", "database");
-const databaseFile = path.join(databaseFolder, "lancamentos.json");
+app.use(
+  express.json({
+    limit: "15mb",
+  })
+);
 
-function garantirBanco() {
-  if (!fs.existsSync(databaseFolder)) {
-    fs.mkdirSync(databaseFolder, { recursive: true });
-  }
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
 
-  if (!fs.existsSync(databaseFile)) {
-    fs.writeFileSync(databaseFile, "[]", "utf8");
-  }
-}
-
-function lerLancamentos() {
-  garantirBanco();
-
-  try {
-    const conteudo = fs.readFileSync(databaseFile, "utf8");
-    return JSON.parse(conteudo);
-  } catch {
-    return [];
-  }
-}
-
-function salvarLancamentos(lancamentos) {
-  garantirBanco();
-  fs.writeFileSync(
-    databaseFile,
-    JSON.stringify(lancamentos, null, 2),
-    "utf8"
+if (!supabaseUrl || !supabaseSecretKey) {
+  console.error(
+    "Erro: SUPABASE_URL e SUPABASE_SECRET_KEY precisam estar no arquivo backend/.env"
   );
+
+  process.exit(1);
 }
 
-app.get("/", (req, res) => {
+const supabase = createClient(
+  supabaseUrl,
+  supabaseSecretKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
+
+async function verificarAdmin(req, res, next) {
+  try {
+    const cabecalho = req.headers.authorization || "";
+    const token = cabecalho.replace("Bearer ", "");
+
+    if (!token) {
+      return res.status(401).json({
+        erro: "É necessário estar logado.",
+      });
+    }
+
+    const { data: dadosUsuario, error: erroUsuario } =
+      await supabase.auth.getUser(token);
+
+    if (erroUsuario || !dadosUsuario?.user) {
+      return res.status(401).json({
+        erro: "Sessão inválida ou expirada.",
+      });
+    }
+
+    const { data: perfil, error: erroPerfil } = await supabase
+      .from("perfis")
+      .select("*")
+      .eq("user_id", dadosUsuario.user.id)
+      .single();
+
+    if (erroPerfil || !perfil || perfil.perfil !== "administrador") {
+      return res.status(403).json({
+        erro: "Apenas administradores podem fazer isso.",
+      });
+    }
+
+    req.usuarioLogado = dadosUsuario.user;
+    req.perfilLogado = perfil;
+    next();
+  } catch (erro) {
+    console.error("Erro ao verificar administrador:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível verificar as permissões.",
+    });
+  }
+}
+
+function prepararLancamento(dados = {}) {
+  return {
+    tipo: dados.tipo || "",
+    descricao: dados.descricao || "",
+    valor: Number(dados.valor || 0),
+    data: dados.data || null,
+    grupo: dados.grupo || "",
+    categoria: dados.categoria || "",
+    subcategoria: dados.subcategoria || "",
+    fornecedor: dados.fornecedor || "",
+    observacao: dados.observacao || "",
+    foto: dados.foto || "",
+    loja_id: dados.loja_id || null,
+  };
+}
+
+function prepararLoja(dados = {}) {
+  return {
+    nome: (dados.nome || "").trim(),
+    endereco: (dados.endereco || "").trim(),
+  };
+}
+
+app.get("/", function (req, res) {
   res.send("FinancePro API funcionando!");
 });
 
-app.get("/lancamentos", (req, res) => {
-  const lancamentos = lerLancamentos();
-  res.json(lancamentos);
+const colunasListagem =
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, loja_id";
+
+app.get("/lancamentos", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("lancamentos")
+      .select(colunasListagem)
+      .order("data", { ascending: false })
+      .order("id", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error(
+      "Erro ao buscar lançamentos:",
+      erro.message
+    );
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os lançamentos.",
+      detalhes: erro.message,
+    });
+  }
 });
 
-app.post("/lancamentos", (req, res) => {
-  const {
-  tipo,
-  descricao,
-  valor,
-  grupo,
-  categoria,
-  subcategoria,
-  fornecedor,
-  observacao,
-  data,
-} = req.body;
+app.get("/lancamentos/:id/foto", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
 
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do lançamento inválido.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("lancamentos")
+      .select("foto")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ foto: data?.foto || "" });
+  } catch (erro) {
+    console.error(
+      "Erro ao buscar foto do lançamento:",
+      erro.message
+    );
+
+    res.status(500).json({
+      erro: "Não foi possível buscar a foto.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/lancamentos", async function (req, res) {
+  try {
+    const novoLancamento = {
+      id: Date.now(),
+      ...prepararLancamento(req.body),
+    };
+
+    const { data, error } = await supabase
+      .from("lancamentos")
+      .insert([novoLancamento])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error(
+      "Erro ao criar lançamento:",
+      erro.message
+    );
+
+    res.status(500).json({
+      erro: "Não foi possível criar o lançamento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/lancamentos/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do lançamento inválido.",
+      });
+    }
+
+    const lancamentoAtualizado =
+      prepararLancamento(req.body);
+
+    const { data, error } = await supabase
+      .from("lancamentos")
+      .update(lancamentoAtualizado)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error(
+      "Erro ao atualizar lançamento:",
+      erro.message
+    );
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar o lançamento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete(
+  "/lancamentos/:id",
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do lançamento inválido.",
+        });
+      }
+
+      const { error } = await supabase
+        .from("lancamentos")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        throw error;
+      }
+
+      res.status(204).send();
+    } catch (erro) {
+      console.error(
+        "Erro ao excluir lançamento:",
+        erro.message
+      );
+
+      res.status(500).json({
+        erro: "Não foi possível excluir o lançamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get("/lojas", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("lojas")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar lojas:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar as lojas.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/lojas", async function (req, res) {
+  try {
+    const dadosLoja = prepararLoja(req.body);
+
+    if (!dadosLoja.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome da loja.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("lojas")
+      .insert([dadosLoja])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar loja:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar a loja.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/lojas/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da loja inválido.",
+      });
+    }
+
+    const dadosLoja = prepararLoja(req.body);
+
+    if (!dadosLoja.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome da loja.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("lojas")
+      .update(dadosLoja)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar loja:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar a loja.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/lojas/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da loja inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("lojas")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir loja:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir a loja.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.get("/usuarios", verificarAdmin, async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("perfis")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    const { data: dadosAuth, error: erroAuth } =
+      await supabase.auth.admin.listUsers();
+
+    if (erroAuth) {
+      throw erroAuth;
+    }
+
+    const usuariosComEmail = (data || []).map((perfil) => {
+      const usuarioAuth = dadosAuth.users.find(
+        (usuario) => usuario.id === perfil.user_id
+      );
+
+      return {
+        ...perfil,
+        email: usuarioAuth?.email || "",
+      };
+    });
+
+    res.json(usuariosComEmail);
+  } catch (erro) {
+    console.error("Erro ao buscar usuários:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os usuários.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/usuarios", verificarAdmin, async function (req, res) {
+  try {
+    const { nome, email, senha, perfil, loja_id } = req.body;
+
+    if (!nome || !email || !senha) {
+      return res.status(400).json({
+        erro: "Informe nome, e-mail e senha.",
+      });
+    }
+
+    const { data: novoUsuario, error: erroCriacao } =
+      await supabase.auth.admin.createUser({
+        email: email.trim().toLowerCase(),
+        password: senha,
+        email_confirm: true,
+      });
+
+    if (erroCriacao) {
+      throw erroCriacao;
+    }
+
+    const { data: novoPerfil, error: erroPerfil } = await supabase
+      .from("perfis")
+      .insert([
+        {
+          user_id: novoUsuario.user.id,
+          nome,
+          perfil: perfil === "administrador" ? "administrador" : "gerente",
+          loja_id: loja_id || null,
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (erroPerfil) {
+      throw erroPerfil;
+    }
+
+    res.status(201).json({
+      ...novoPerfil,
+      email: novoUsuario.user.email,
+    });
+  } catch (erro) {
+    console.error("Erro ao criar usuário:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar o usuário.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/usuarios/:id", verificarAdmin, async function (req, res) {
+  try {
+    const { nome, perfil, loja_id } = req.body;
+
+    const { data, error } = await supabase
+      .from("perfis")
+      .update({
+        nome,
+        perfil: perfil === "administrador" ? "administrador" : "gerente",
+        loja_id: loja_id || null,
+      })
+      .eq("user_id", req.params.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar usuário:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar o usuário.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/usuarios/:id", verificarAdmin, async function (req, res) {
+  try {
+    if (req.params.id === req.usuarioLogado.id) {
+      return res.status(400).json({
+        erro: "Você não pode remover o próprio acesso.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("perfis")
+      .delete()
+      .eq("user_id", req.params.id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao remover acesso do usuário:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível remover o acesso do usuário.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.use(function (erro, req, res, next) {
   if (
-    !["receita", "despesa"].includes(tipo) ||
-    !descricao ||
-    !categoria ||
-    !data ||
-    !Number(valor) ||
-    Number(valor) <= 0
+    erro &&
+    erro.type === "entity.too.large"
   ) {
-    return res.status(400).json({
-      erro: "Dados do lançamento inválidos.",
+    return res.status(413).json({
+      erro: "A foto enviada é muito grande.",
     });
   }
 
-  const lancamentos = lerLancamentos();
+  console.error("Erro interno:", erro);
 
-  const novoLancamento = {
-  id: Date.now(),
-  tipo,
-  descricao: String(descricao).trim(),
-  valor: Number(valor),
-  grupo,
-  categoria,
-  subcategoria: subcategoria || "",
-  fornecedor: fornecedor || "",
-  observacao: observacao || "",
-  data,
-};
-
-  lancamentos.unshift(novoLancamento);
-  salvarLancamentos(lancamentos);
-
-  res.status(201).json(novoLancamento);
-});
-
-app.delete("/lancamentos/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const lancamentos = lerLancamentos();
-
-  const novosLancamentos = lancamentos.filter(
-    (lancamento) => lancamento.id !== id
-  );
-
-  if (novosLancamentos.length === lancamentos.length) {
-    return res.status(404).json({
-      erro: "Lançamento não encontrado.",
-    });
-  }
-
-  salvarLancamentos(novosLancamentos);
-
-  res.json({
-    mensagem: "Lançamento excluído com sucesso.",
+  res.status(500).json({
+    erro: "Erro interno do servidor.",
   });
 });
-app.put("/lancamentos/:id", (req, res) => {
-  const id = Number(req.params.id);
 
-  const {
-  tipo,
-  descricao,
-  valor,
-  grupo,
-  categoria,
-  subcategoria,
-  fornecedor,
-  observacao,
-  data,
-} = req.body;
+app.listen(
+  PORT,
+  "0.0.0.0",
+  function () {
+    console.log(
+      "Servidor rodando em http://localhost:" +
+        PORT
+    );
 
-  if (
-    !["receita", "despesa"].includes(tipo) ||
-    !descricao ||
-    !categoria ||
-    !data ||
-    !Number(valor) ||
-    Number(valor) <= 0
-  ) {
-    return res.status(400).json({
-      erro: "Dados do lançamento inválidos.",
-    });
+    console.log(
+      "Banco de dados: Supabase"
+    );
   }
-
-  const lancamentos = lerLancamentos();
-
-  const indice = lancamentos.findIndex(
-    (lancamento) => lancamento.id === id
-  );
-
-  if (indice === -1) {
-    return res.status(404).json({
-      erro: "Lançamento não encontrado.",
-    });
-  }
-
-  lancamentos[indice] = {
-    id,
-    tipo,
-    descricao: String(descricao).trim(),
-    valor: Number(valor),
-    categoria,
-    data,
-  };
-
-  salvarLancamentos(lancamentos);
-
-  res.json(lancamentos[indice]);
-});
-app.listen(PORT, () => {
-  garantirBanco();
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
+);
