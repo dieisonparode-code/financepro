@@ -143,6 +143,32 @@ export function buscarMovimentacoesEstoque(id) {
   return requisicao(`/insumos/${id}/movimentacoes`);
 }
 
+export function buscarCategorias() {
+  return requisicao("/categorias");
+}
+
+export function criarCategoria(dados) {
+  return requisicao("/categorias", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function atualizarCategoria(id, dados) {
+  return requisicao(`/categorias/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function excluirCategoria(id) {
+  return requisicao(`/categorias/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function buscarLojas() {
   return requisicao("/lojas");
 }

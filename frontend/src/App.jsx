@@ -20,6 +20,10 @@ import {
   criarLancamento,
   atualizarLancamento,
   excluirLancamento,
+  buscarCategorias,
+  criarCategoria as criarCategoriaApi,
+  atualizarCategoria as atualizarCategoriaApi,
+  excluirCategoria as excluirCategoriaApi,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -43,55 +47,6 @@ import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
 import CadastroInsumos from "./components/CadastroInsumos";
 import UserMenu from "./components/UserMenu";
-
-const categoriasPadrao = [
-  "Vendas",
-  "Delivery",
-  "Fornecedores",
-  "Funcionários",
-  "Aluguel",
-  "Energia",
-  "Gás",
-  "Marketing",
-  "Impostos",
-  "Taxas",
-  "Manutenção",
-  "Outros",
- ];
-
-function criarCategoriasIniciais() {
-  return categoriasPadrao.map((nome, indice) => ({
-    id: `categoria-${indice + 1}`,
-    nome,
-    cor: [
-      "#2563eb",
-      "#0ea5e9",
-      "#ef4444",
-      "#f59e0b",
-      "#8b5cf6",
-      "#22c55e",
-    ][indice % 6],
-    icone: "📁",
-  }));
-}
-
-function carregarCategorias() {
-  try {
-    const salvas = localStorage.getItem("financepro-categorias");
-
-    if (!salvas) {
-      return criarCategoriasIniciais();
-    }
-
-    const dados = JSON.parse(salvas);
-
-    return Array.isArray(dados) && dados.length > 0
-      ? dados
-      : criarCategoriasIniciais();
-  } catch {
-    return criarCategoriasIniciais();
-  }
-}
 
 const gruposFinanceiros = [
   "Receita Operacional",
@@ -317,8 +272,8 @@ function FinanceApp() {
     criarFormularioInicial("receita")
   );
 
-  const [categoriasCadastradas, setCategoriasCadastradas] =
-    useState(carregarCategorias);
+  const [categoriasCadastradas, setCategoriasCadastradas] = useState([]);
+  const [carregandoCategorias, setCarregandoCategorias] = useState(true);
 
   const hoje = new Date().toISOString().slice(0, 10);
   const primeiroDiaMes = `${hoje.slice(0, 7)}-01`;
@@ -334,11 +289,56 @@ function FinanceApp() {
     useState("diario");
 
   useEffect(() => {
-    localStorage.setItem(
-      "financepro-categorias",
-      JSON.stringify(categoriasCadastradas)
-    );
-  }, [categoriasCadastradas]);
+    async function carregarCategoriasSalvas() {
+      try {
+        setCarregandoCategorias(true);
+        const dados = await buscarCategorias();
+        setCategoriasCadastradas(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar categorias:", erro);
+      } finally {
+        setCarregandoCategorias(false);
+      }
+    }
+
+    carregarCategoriasSalvas();
+
+    const canalCategorias = supabase
+      .channel("categorias-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "categorias" },
+        (payload) => {
+          setCategoriasCadastradas((anteriores) => {
+            if (payload.eventType === "INSERT") {
+              if (anteriores.some((item) => item.id === payload.new.id)) {
+                return anteriores;
+              }
+              return [...anteriores, payload.new];
+            }
+
+            if (payload.eventType === "UPDATE") {
+              return anteriores.map((item) =>
+                item.id === payload.new.id ? payload.new : item
+              );
+            }
+
+            if (payload.eventType === "DELETE") {
+              return anteriores.filter(
+                (item) => item.id !== payload.old.id
+              );
+            }
+
+            return anteriores;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalCategorias);
+    };
+  }, []);
 
   useEffect(() => {
     async function carregarDados() {
@@ -1163,7 +1163,7 @@ const statusCmv =
     }
   }
 
-  function adicionarCategoria(novaCategoria) {
+  async function adicionarCategoria(novaCategoria) {
     const nomeNormalizado = novaCategoria.nome.trim();
 
     const duplicada = categoriasCadastradas.some(
@@ -1177,17 +1177,24 @@ const statusCmv =
       return;
     }
 
-    setCategoriasCadastradas((anteriores) => [
-      ...anteriores,
-      {
+    try {
+      const salva = await criarCategoriaApi({
         ...novaCategoria,
-        id: `categoria-${Date.now()}`,
         nome: nomeNormalizado,
-      },
-    ]);
+      });
+
+      setCategoriasCadastradas((anteriores) => {
+        if (anteriores.some((item) => item.id === salva.id)) {
+          return anteriores;
+        }
+        return [...anteriores, salva];
+      });
+    } catch (erro) {
+      alert(erro.message || "Não foi possível criar a categoria.");
+    }
   }
 
-  function editarCategoria(id, dadosAtualizados) {
+  async function editarCategoria(id, dadosAtualizados) {
     const nomeNormalizado = dadosAtualizados.nome.trim();
 
     const duplicada = categoriasCadastradas.some(
@@ -1202,20 +1209,23 @@ const statusCmv =
       return;
     }
 
-    setCategoriasCadastradas((anteriores) =>
-      anteriores.map((categoria) =>
-        categoria.id === id
-          ? {
-              ...categoria,
-              ...dadosAtualizados,
-              nome: nomeNormalizado,
-            }
-          : categoria
-      )
-    );
+    try {
+      const salva = await atualizarCategoriaApi(id, {
+        ...dadosAtualizados,
+        nome: nomeNormalizado,
+      });
+
+      setCategoriasCadastradas((anteriores) =>
+        anteriores.map((categoria) =>
+          categoria.id === id ? salva : categoria
+        )
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível atualizar a categoria.");
+    }
   }
 
-  function excluirCategoria(id) {
+  async function excluirCategoria(id) {
     const categoria = categoriasCadastradas.find(
       (item) => item.id === id
     );
@@ -1233,9 +1243,15 @@ const statusCmv =
       return;
     }
 
-    setCategoriasCadastradas((anteriores) =>
-      anteriores.filter((item) => item.id !== id)
-    );
+    try {
+      await excluirCategoriaApi(id);
+
+      setCategoriasCadastradas((anteriores) =>
+        anteriores.filter((item) => item.id !== id)
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível excluir a categoria.");
+    }
   }
 
   async function adicionarLoja(dadosLoja) {

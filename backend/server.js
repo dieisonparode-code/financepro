@@ -587,6 +587,141 @@ app.delete("/lojas/:id", async function (req, res) {
   }
 });
 
+app.get("/categorias", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("categorias")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar categorias:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar as categorias.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/categorias", async function (req, res) {
+  try {
+    const nome = (req.body.nome || "").trim();
+
+    if (!nome) {
+      return res.status(400).json({
+        erro: "Informe o nome da categoria.",
+      });
+    }
+
+    const dadosCategoria = {
+      nome,
+      cor: req.body.cor || "#2563eb",
+      icone: req.body.icone || "📁",
+    };
+
+    const { data, error } = await supabase
+      .from("categorias")
+      .insert([dadosCategoria])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar categoria:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar a categoria.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/categorias/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da categoria inválido.",
+      });
+    }
+
+    const nome = (req.body.nome || "").trim();
+
+    if (!nome) {
+      return res.status(400).json({
+        erro: "Informe o nome da categoria.",
+      });
+    }
+
+    const dadosCategoria = {
+      nome,
+      cor: req.body.cor || "#2563eb",
+      icone: req.body.icone || "📁",
+    };
+
+    const { data, error } = await supabase
+      .from("categorias")
+      .update(dadosCategoria)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar categoria:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar a categoria.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/categorias/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da categoria inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("categorias")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir categoria:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir a categoria.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 app.get("/usuarios", verificarAdmin, async function (req, res) {
   try {
     const { data, error } = await supabase
