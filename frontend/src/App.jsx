@@ -169,6 +169,17 @@ function capturarLocalizacao() {
   });
 }
 
+function baixarImagem(dataUrl, nomeArquivo) {
+  if (!dataUrl) return;
+
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
   const raioTerra = 6371000;
   const paraRad = (grau) => (grau * Math.PI) / 180;
@@ -2363,6 +2374,16 @@ const statusCmv =
               alt="Foto do comprovante"
               className="foto-modal-imagem"
             />
+
+            <button
+              type="button"
+              className="secondary-button foto-modal-baixar"
+              onClick={() =>
+                baixarImagem(fotoVisualizada, `nota-${Date.now()}.jpg`)
+              }
+            >
+              ⬇ Baixar foto
+            </button>
           </div>
         </div>
       )}
@@ -2397,6 +2418,19 @@ const statusCmv =
               alt="Foto da mercadoria"
               className="foto-modal-imagem"
             />
+
+            <button
+              type="button"
+              className="secondary-button foto-modal-baixar"
+              onClick={() =>
+                baixarImagem(
+                  fotoMercadoriaVisualizada,
+                  `mercadoria-${Date.now()}.jpg`
+                )
+              }
+            >
+              ⬇ Baixar foto
+            </button>
           </div>
         </div>
       )}

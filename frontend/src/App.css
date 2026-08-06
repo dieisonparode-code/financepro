@@ -714,6 +714,11 @@ td {
   background: rgba(245, 158, 11, .14);
 }
 
+.foto-modal-baixar {
+  width: 100%;
+  margin-top: 14px;
+}
+
 .foto-preview img {
   display: block;
   width: 100%;
