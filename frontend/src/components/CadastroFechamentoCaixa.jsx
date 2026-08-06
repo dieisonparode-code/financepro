@@ -1,9 +1,19 @@
 import { useState } from "react";
 
 const tiposFechamento = [
-  { valor: "boy", rotulo: "Diária Motoboy", icone: "🏍️" },
-  { valor: "funcionario", rotulo: "Diária Funcionário", icone: "👷" },
-  { valor: "venda_prazo", rotulo: "Venda a Prazo (Funcionário)", icone: "🧾" },
+  {
+    valor: "caixa",
+    rotulo: "Fechamento de Caixa",
+    icone: "📷",
+    ajuda: "Se o comprovante for grande e precisar dobrar, tire quantas fotos precisar — cada foto é registrada separadamente.",
+  },
+  { valor: "boy", rotulo: "Diária Boy", icone: "🏍️" },
+  { valor: "cozinha", rotulo: "Diária Cozinha", icone: "👨‍🍳" },
+  {
+    valor: "venda_prazo",
+    rotulo: "Venda a Prazo Funcionário",
+    icone: "🧾",
+  },
 ];
 
 function rotuloTipo(tipo) {
@@ -57,48 +67,23 @@ function CadastroFechamentoCaixa({
   removerFechamento,
   buscarFoto,
 }) {
-  const [tipo, setTipo] = useState("boy");
-  const [nomePessoa, setNomePessoa] = useState("");
-  const [valor, setValor] = useState("");
-  const [observacao, setObservacao] = useState("");
-  const [foto, setFoto] = useState("");
-  const [processandoFoto, setProcessandoFoto] = useState(false);
-  const [salvando, setSalvando] = useState(false);
+  const [enviandoTipo, setEnviandoTipo] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
 
-  function limparFormulario() {
-    setTipo("boy");
-    setNomePessoa("");
-    setValor("");
-    setObservacao("");
-    setFoto("");
-  }
+  async function capturarFoto(tipo, arquivo) {
+    if (!arquivo) return;
 
-  async function salvar(evento) {
-    evento.preventDefault();
-
-    if (!foto) {
-      alert("Anexe a foto do comprovante assinado antes de finalizar.");
-      return;
-    }
-
-    setSalvando(true);
+    setEnviandoTipo(tipo);
 
     try {
-      await adicionarFechamento({
-        tipo,
-        nome_pessoa: nomePessoa,
-        valor: valor === "" ? null : valor,
-        observacao,
-        foto,
-      });
-
-      limparFormulario();
+      const fotoComprimida = await comprimirImagem(arquivo);
+      await adicionarFechamento({ tipo, foto: fotoComprimida });
     } catch (erro) {
-      alert(erro.message || "Não foi possível salvar o registro.");
+      console.error("Erro ao registrar foto:", erro);
+      alert(erro.message || "Não foi possível registrar a foto.");
     } finally {
-      setSalvando(false);
+      setEnviandoTipo(null);
     }
   }
 
@@ -135,134 +120,48 @@ function CadastroFechamentoCaixa({
         <div className="panel-header">
           <div>
             <span className="eyebrow">Arquivo de comprovantes</span>
-            <h2>Novo registro</h2>
+            <h2>Registrar foto</h2>
           </div>
         </div>
 
-        <form onSubmit={salvar}>
-          <label>
-            Tipo
-            <select
-              value={tipo}
-              onChange={(evento) => setTipo(evento.target.value)}
-            >
-              {tiposFechamento.map((item) => (
-                <option key={item.valor} value={item.valor}>
-                  {item.icone} {item.rotulo}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="fechamento-botoes">
+          {tiposFechamento.map((item) => (
+            <div key={item.valor} className="foto-upload">
+              <span className="foto-upload-title">
+                {item.icone} {item.rotulo}
+              </span>
 
-          <label>
-            Nome da pessoa
-            <input
-              type="text"
-              value={nomePessoa}
-              onChange={(evento) => setNomePessoa(evento.target.value)}
-              placeholder="Ex.: João"
-            />
-          </label>
-
-          <label>
-            Valor (opcional)
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={valor}
-              onChange={(evento) => setValor(evento.target.value)}
-              placeholder="0,00"
-            />
-          </label>
-
-          <label>
-            Observação
-            <textarea
-              value={observacao}
-              onChange={(evento) => setObservacao(evento.target.value)}
-              placeholder="Informações adicionais"
-              rows="3"
-            />
-          </label>
-
-          <div className="foto-upload">
-            <span className="foto-upload-title">
-              ✍️ Foto do recibo assinado
-            </span>
-
-            <input
-              id="foto-fechamento-caixa"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              disabled={processandoFoto}
-              onChange={async (evento) => {
-                const arquivo = evento.target.files?.[0];
-
-                if (!arquivo) return;
-
-                setProcessandoFoto(true);
-
-                try {
-                  const fotoComprimida = await comprimirImagem(arquivo);
-                  setFoto(fotoComprimida);
-                } catch (erro) {
-                  console.error("Erro ao processar a foto:", erro);
-                  alert(
-                    erro.message ||
-                      "Não foi possível processar a foto selecionada."
-                  );
-                } finally {
-                  setProcessandoFoto(false);
+              <input
+                id={`foto-fechamento-${item.valor}`}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                disabled={enviandoTipo === item.valor}
+                onChange={async (evento) => {
+                  const arquivo = evento.target.files?.[0];
+                  await capturarFoto(item.valor, arquivo);
                   evento.target.value = "";
+                }}
+              />
+
+              <label
+                htmlFor={`foto-fechamento-${item.valor}`}
+                className="foto-button"
+                style={
+                  enviandoTipo === item.valor
+                    ? { opacity: 0.6, pointerEvents: "none" }
+                    : undefined
                 }
-              }}
-            />
-
-            <label
-              htmlFor="foto-fechamento-caixa"
-              className="foto-button"
-              style={
-                processandoFoto
-                  ? { opacity: 0.6, pointerEvents: "none" }
-                  : undefined
-              }
-            >
-              {processandoFoto
-                ? "Processando foto..."
-                : "📷 Tirar foto do recibo"}
-            </label>
-
-            <small className="foto-ajuda">
-              Obrigatório — só é possível finalizar depois de anexar a foto.
-            </small>
-          </div>
-
-          {foto && (
-            <div className="foto-preview">
-              <img src={foto} alt="Pré-visualização do recibo" />
-
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setFoto("")}
               >
-                Remover foto
-              </button>
-            </div>
-          )}
+                {enviandoTipo === item.valor
+                  ? "Salvando..."
+                  : `📸 Tirar foto — ${item.rotulo}`}
+              </label>
 
-          <div className="modal-actions">
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={salvando || !foto}
-            >
-              {salvando ? "Salvando..." : "Arquivar registro"}
-            </button>
-          </div>
-        </form>
+              {item.ajuda && <small className="foto-ajuda">{item.ajuda}</small>}
+            </div>
+          ))}
+        </div>
       </article>
 
       <article className="panel categoria-lista-panel">
@@ -294,23 +193,8 @@ function CadastroFechamentoCaixa({
                     </div>
 
                     <div>
-                      <strong>
-                        {infoTipo?.rotulo || registro.tipo}
-                        {registro.nome_pessoa
-                          ? ` — ${registro.nome_pessoa}`
-                          : ""}
-                      </strong>
-
-                      <div>
-                        {registro.valor
-                          ? `R$ ${Number(registro.valor).toFixed(2)} · `
-                          : ""}
-                        {formatarDataHora(registro.criado_em)}
-                      </div>
-
-                      {registro.observacao && (
-                        <div>{registro.observacao}</div>
-                      )}
+                      <strong>{infoTipo?.rotulo || registro.tipo}</strong>
+                      <div>{formatarDataHora(registro.criado_em)}</div>
                     </div>
                   </div>
 
@@ -354,7 +238,7 @@ function CadastroFechamentoCaixa({
             <div className="modal-header">
               <div>
                 <span className="eyebrow">Comprovante</span>
-                <h2>Foto do recibo</h2>
+                <h2>Foto arquivada</h2>
               </div>
 
               <button
@@ -368,7 +252,7 @@ function CadastroFechamentoCaixa({
 
             <img
               src={fotoVisualizada}
-              alt="Foto do recibo"
+              alt="Foto arquivada"
               className="foto-modal-imagem"
             />
           </div>

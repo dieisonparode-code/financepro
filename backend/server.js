@@ -793,9 +793,14 @@ app.post("/fechamentos-caixa", async function (req, res) {
   try {
     const dados = prepararFechamentoCaixa(req.body);
 
-    if (!["boy", "funcionario", "venda_prazo"].includes(dados.tipo)) {
+    if (
+      !["caixa", "boy", "cozinha", "venda_prazo", "funcionario"].includes(
+        dados.tipo
+      )
+    ) {
       return res.status(400).json({
-        erro: "Tipo inválido. Use boy, funcionario ou venda_prazo.",
+        erro:
+          "Tipo inválido. Use caixa, boy, cozinha, venda_prazo ou funcionario.",
       });
     }
 
