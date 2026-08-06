@@ -15,6 +15,8 @@ function CadastroInsumos({
   const [unidadeMedida, setUnidadeMedida] = useState("un");
   const [estoqueInicial, setEstoqueInicial] = useState("");
   const [estoqueMinimo, setEstoqueMinimo] = useState("0");
+  const [unidadeCompra, setUnidadeCompra] = useState("");
+  const [fatorConversao, setFatorConversao] = useState("1");
   const [lojaId, setLojaId] = useState(lojaFixaId || "");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -27,6 +29,8 @@ function CadastroInsumos({
     setUnidadeMedida("un");
     setEstoqueInicial("");
     setEstoqueMinimo("0");
+    setUnidadeCompra("");
+    setFatorConversao("1");
     setLojaId(lojaFixaId || "");
     setEditandoId(null);
   }
@@ -54,6 +58,8 @@ function CadastroInsumos({
           nome: nomeLimpo,
           unidade_medida: unidadeMedida,
           estoque_minimo: estoqueMinimo || 0,
+          unidade_compra: unidadeCompra.trim(),
+          fator_conversao: fatorConversao || 1,
           loja_id: lojaId,
         });
       } else {
@@ -62,6 +68,8 @@ function CadastroInsumos({
           unidade_medida: unidadeMedida,
           estoque_atual: estoqueInicial || 0,
           estoque_minimo: estoqueMinimo || 0,
+          unidade_compra: unidadeCompra.trim(),
+          fator_conversao: fatorConversao || 1,
           loja_id: lojaId,
         });
       }
@@ -80,6 +88,8 @@ function CadastroInsumos({
     setNome(insumo.nome);
     setUnidadeMedida(insumo.unidade_medida || "un");
     setEstoqueMinimo(String(insumo.estoque_minimo || 0));
+    setUnidadeCompra(insumo.unidade_compra || "");
+    setFatorConversao(String(insumo.fator_conversao || 1));
     setLojaId(insumo.loja_id || "");
   }
 
@@ -103,26 +113,64 @@ function CadastroInsumos({
   }
 
   async function movimentar(insumo, tipo) {
-    const rotulo =
-      tipo === "entrada"
-        ? "Quantas unidades entraram?"
-        : tipo === "saida"
-        ? "Quantas unidades saíram?"
-        : "Qual é a quantidade real em estoque agora?";
+    const temUnidadeCompra = Boolean(insumo.unidade_compra);
+    let quantidadeEmEstoque = null;
+    let motivoSugerido = "";
 
-    const quantidadeTexto = window.prompt(rotulo);
+    if (tipo === "entrada" && temUnidadeCompra) {
+      const emCompra = window.confirm(
+        `Essa entrada é em "${insumo.unidade_compra}" (ex.: 2 ${insumo.unidade_compra}s)?\n\nOK = sim, em ${insumo.unidade_compra}\nCancelar = não, em ${insumo.unidade_medida} direto`
+      );
 
-    if (quantidadeTexto === null) return;
+      const rotulo = emCompra
+        ? `Quantos(as) ${insumo.unidade_compra}(s) entraram?`
+        : `Quantas ${insumo.unidade_medida} entraram?`;
 
-    const quantidade = Number(quantidadeTexto.replace(",", "."));
+      const quantidadeTexto = window.prompt(rotulo);
 
-    if (!quantidade || quantidade <= 0) {
-      alert("Informe uma quantidade válida, maior que zero.");
-      return;
+      if (quantidadeTexto === null) return;
+
+      const quantidadeInformada = Number(
+        quantidadeTexto.replace(",", ".")
+      );
+
+      if (!quantidadeInformada || quantidadeInformada <= 0) {
+        alert("Informe uma quantidade válida, maior que zero.");
+        return;
+      }
+
+      quantidadeEmEstoque = emCompra
+        ? quantidadeInformada * Number(insumo.fator_conversao || 1)
+        : quantidadeInformada;
+
+      motivoSugerido = emCompra
+        ? `Compra: ${quantidadeInformada} ${insumo.unidade_compra}(s) = ${quantidadeEmEstoque} ${insumo.unidade_medida}`
+        : "";
+    } else {
+      const rotulo =
+        tipo === "entrada"
+          ? `Quantas ${insumo.unidade_medida} entraram?`
+          : tipo === "saida"
+          ? `Quantas ${insumo.unidade_medida} saíram?`
+          : "Qual é a quantidade real em estoque agora?";
+
+      const quantidadeTexto = window.prompt(rotulo);
+
+      if (quantidadeTexto === null) return;
+
+      quantidadeEmEstoque = Number(quantidadeTexto.replace(",", "."));
+
+      if (!quantidadeEmEstoque || quantidadeEmEstoque <= 0) {
+        alert("Informe uma quantidade válida, maior que zero.");
+        return;
+      }
     }
 
+    const quantidade = quantidadeEmEstoque;
+
     const motivo = window.prompt(
-      "Motivo (opcional, ex.: Compra, Perda, Ajuste de inventário)"
+      "Motivo (opcional, ex.: Compra, Perda, Ajuste de inventário)",
+      motivoSugerido
     );
 
     setMovimentandoId(insumo.id);
@@ -214,7 +262,32 @@ function CadastroInsumos({
                 placeholder="0"
               />
             </label>
+          </div>
 
+          <div className="form-row">
+            <label>
+              Unidade de compra (opcional)
+              <input
+                type="text"
+                value={unidadeCompra}
+                onChange={(evento) => setUnidadeCompra(evento.target.value)}
+                placeholder="Ex.: Fardo, Caixa"
+              />
+            </label>
+
+            <label>
+              Quantas {unidadeMedida} tem 1 {unidadeCompra || "unidade de compra"}?
+              <input
+                type="text"
+                value={fatorConversao}
+                onChange={(evento) => setFatorConversao(evento.target.value)}
+                placeholder="Ex.: 12"
+                disabled={!unidadeCompra.trim()}
+              />
+            </label>
+          </div>
+
+          <div className="form-row">
             {vePermissaoTotal && (
               <label>
                 Loja

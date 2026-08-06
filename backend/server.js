@@ -165,6 +165,10 @@ function prepararInsumo(dados = {}) {
     nome: (dados.nome || "").trim(),
     unidade_medida: (dados.unidade_medida || "un").trim(),
     estoque_minimo: dados.estoque_minimo ? Number(dados.estoque_minimo) : 0,
+    unidade_compra: (dados.unidade_compra || "").trim() || null,
+    fator_conversao: dados.fator_conversao
+      ? Number(dados.fator_conversao)
+      : 1,
   };
 }
 
