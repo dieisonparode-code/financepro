@@ -322,6 +322,36 @@ body {
   color: var(--fp-vermelho, #ff3545);
 }
 
+.fp-lojas-seletor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.fp-loja-tile {
+  height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(8, 28, 49, 0.98), rgba(5, 20, 36, 0.98));
+  color: #d5deea;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.fp-loja-tile:hover {
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.fp-loja-tile.ativo {
+  border-color: var(--fp-azul, #1476ff);
+  background: rgba(20, 118, 255, 0.18);
+  color: #ffffff;
+}
+
 .fp-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

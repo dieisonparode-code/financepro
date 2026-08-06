@@ -336,25 +336,6 @@ export default function DashboardPremium({
             </select>
           </label>
 
-          {ehAdministrador && (
-            <label className="fp-periodo">
-              <span>Loja</span>
-              <select
-                value={lojaDashboard}
-                onChange={(evento) =>
-                  setLojaDashboard(evento.target.value)
-                }
-              >
-                <option value="todas">Todas as lojas</option>
-                {lojas.map((loja) => (
-                  <option key={loja.id} value={loja.id}>
-                    {loja.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
           <button type="button" className="fp-botao-icone" aria-label="Pesquisar">
             ⌕
           </button>
@@ -396,6 +377,33 @@ export default function DashboardPremium({
             </span>
           </div>
         </div>
+      )}
+
+      {ehAdministrador && lojas.length > 0 && (
+        <section className="fp-lojas-seletor">
+          <button
+            type="button"
+            className={`fp-loja-tile ${
+              lojaDashboard === "todas" ? "ativo" : ""
+            }`}
+            onClick={() => setLojaDashboard("todas")}
+          >
+            Todas as lojas
+          </button>
+
+          {lojas.map((loja) => (
+            <button
+              type="button"
+              key={loja.id}
+              className={`fp-loja-tile ${
+                lojaDashboard === String(loja.id) ? "ativo" : ""
+              }`}
+              onClick={() => setLojaDashboard(String(loja.id))}
+            >
+              {loja.nome}
+            </button>
+          ))}
+        </section>
       )}
 
       <section className="fp-kpis">
