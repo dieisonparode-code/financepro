@@ -1,5 +1,12 @@
 import { useState } from "react";
 
+const permissoesDisponiveis = [
+  { valor: "financeiro", rotulo: "Financeiro (Receitas, Despesas, Fluxo, Relatórios)" },
+  { valor: "estoque", rotulo: "Estoque / Insumos" },
+  { valor: "fechamento_caixa", rotulo: "Fechamento de Caixa" },
+  { valor: "aprovar_despesas", rotulo: "Aprovar Despesas" },
+];
+
 function CadastroUsuarios({
   usuarios = [],
   lojas = [],
@@ -14,6 +21,7 @@ function CadastroUsuarios({
   const [senha, setSenha] = useState("");
   const [perfil, setPerfil] = useState("gerente");
   const [lojaId, setLojaId] = useState("todas");
+  const [permissoes, setPermissoes] = useState([]);
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -23,7 +31,16 @@ function CadastroUsuarios({
     setSenha("");
     setPerfil("gerente");
     setLojaId("todas");
+    setPermissoes([]);
     setEditandoId(null);
+  }
+
+  function alternarPermissao(valor) {
+    setPermissoes((anteriores) =>
+      anteriores.includes(valor)
+        ? anteriores.filter((item) => item !== valor)
+        : [...anteriores, valor]
+    );
   }
 
   async function salvar(evento) {
@@ -51,6 +68,7 @@ function CadastroUsuarios({
           nome: nomeLimpo,
           perfil,
           loja_id: lojaFinal,
+          permissoes,
         });
       } else {
         await adicionarUsuario({
@@ -59,6 +77,7 @@ function CadastroUsuarios({
           senha,
           perfil,
           loja_id: lojaFinal,
+          permissoes,
         });
       }
 
@@ -78,6 +97,7 @@ function CadastroUsuarios({
     setSenha("");
     setPerfil(usuarioItem.perfil);
     setLojaId(usuarioItem.loja_id || "todas");
+    setPermissoes(usuarioItem.permissoes || []);
   }
 
   async function confirmarRemocao(usuarioItem) {
@@ -179,6 +199,23 @@ function CadastroUsuarios({
             </label>
           </div>
 
+          {perfil === "gerente" && (
+            <div className="permissoes-lista">
+              <span>Permissões desse usuário</span>
+
+              {permissoesDisponiveis.map((item) => (
+                <label key={item.valor} className="permissao-item">
+                  <input
+                    type="checkbox"
+                    checked={permissoes.includes(item.valor)}
+                    onChange={() => alternarPermissao(item.valor)}
+                  />
+                  {item.rotulo}
+                </label>
+              ))}
+            </div>
+          )}
+
           <div className="modal-actions">
             {editandoId && (
               <button
@@ -243,6 +280,21 @@ function CadastroUsuarios({
                           )?.nome || "loja não encontrada"
                         : "Todas as lojas"}
                     </span>
+
+                    {usuarioItem.perfil !== "administrador" && (
+                      <span>
+                        {usuarioItem.permissoes?.length
+                          ? usuarioItem.permissoes
+                              .map(
+                                (valor) =>
+                                  permissoesDisponiveis.find(
+                                    (item) => item.valor === valor
+                                  )?.rotulo || valor
+                              )
+                              .join(", ")
+                          : "Sem permissões liberadas"}
+                      </span>
+                    )}
                   </div>
                 </div>
 

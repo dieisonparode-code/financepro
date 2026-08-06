@@ -901,9 +901,22 @@ app.get("/usuarios", verificarAdmin, async function (req, res) {
   }
 });
 
+const PERMISSOES_VALIDAS = [
+  "financeiro",
+  "estoque",
+  "fechamento_caixa",
+  "aprovar_despesas",
+];
+
+function prepararPermissoes(permissoes) {
+  if (!Array.isArray(permissoes)) return [];
+
+  return permissoes.filter((item) => PERMISSOES_VALIDAS.includes(item));
+}
+
 app.post("/usuarios", verificarAdmin, async function (req, res) {
   try {
-    const { nome, email, senha, perfil, loja_id } = req.body;
+    const { nome, email, senha, perfil, loja_id, permissoes } = req.body;
 
     if (!nome || !email || !senha) {
       return res.status(400).json({
@@ -930,6 +943,7 @@ app.post("/usuarios", verificarAdmin, async function (req, res) {
           nome,
           perfil: perfil === "administrador" ? "administrador" : "gerente",
           loja_id: loja_id || null,
+          permissoes: prepararPermissoes(permissoes),
         },
       ])
       .select("*")
@@ -955,7 +969,7 @@ app.post("/usuarios", verificarAdmin, async function (req, res) {
 
 app.put("/usuarios/:id", verificarAdmin, async function (req, res) {
   try {
-    const { nome, perfil, loja_id } = req.body;
+    const { nome, perfil, loja_id, permissoes } = req.body;
 
     const { data, error } = await supabase
       .from("perfis")
@@ -963,6 +977,7 @@ app.put("/usuarios/:id", verificarAdmin, async function (req, res) {
         nome,
         perfil: perfil === "administrador" ? "administrador" : "gerente",
         loja_id: loja_id || null,
+        permissoes: prepararPermissoes(permissoes),
       })
       .eq("user_id", req.params.id)
       .select("*")

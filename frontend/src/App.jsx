@@ -221,6 +221,10 @@ function FinanceApp() {
 
   const vePermissaoTotal =
     ehAdministrador || (perfil?.perfil === "gerente" && !perfil?.loja_id);
+
+  function temPermissao(chave) {
+    return ehAdministrador || (perfil?.permissoes || []).includes(chave);
+  }
   const navigate = useNavigate();
 
   async function sair() {
@@ -1494,54 +1498,62 @@ const statusCmv =
             Dashboard
           </button>
 
-          <button
-            className={pagina === "receitas" ? "active" : ""}
-            onClick={() => setPagina("receitas")}
-          >
-            Receitas
-          </button>
+          {temPermissao("financeiro") && (
+            <>
+              <button
+                className={pagina === "receitas" ? "active" : ""}
+                onClick={() => setPagina("receitas")}
+              >
+                Receitas
+              </button>
 
-          <button
-            className={pagina === "despesas" ? "active" : ""}
-            onClick={() => setPagina("despesas")}
-          >
-            Despesas
-          </button>
+              <button
+                className={pagina === "despesas" ? "active" : ""}
+                onClick={() => setPagina("despesas")}
+              >
+                Despesas
+              </button>
 
-          <button
-            className={pagina === "categorias" ? "active" : ""}
-            onClick={() => setPagina("categorias")}
-          >
-            Categorias
-          </button>
+              <button
+                className={pagina === "categorias" ? "active" : ""}
+                onClick={() => setPagina("categorias")}
+              >
+                Categorias
+              </button>
 
-          <button
-            className={pagina === "fluxo" ? "active" : ""}
-            onClick={() => setPagina("fluxo")}
-          >
-            Fluxo de Caixa
-          </button>
+              <button
+                className={pagina === "fluxo" ? "active" : ""}
+                onClick={() => setPagina("fluxo")}
+              >
+                Fluxo de Caixa
+              </button>
 
-          <button
-            className={pagina === "relatorios" ? "active" : ""}
-            onClick={() => setPagina("relatorios")}
-          >
-            Relatórios
-          </button>
+              <button
+                className={pagina === "relatorios" ? "active" : ""}
+                onClick={() => setPagina("relatorios")}
+              >
+                Relatórios
+              </button>
+            </>
+          )}
 
-          <button
-            className={pagina === "estoque" ? "active" : ""}
-            onClick={() => setPagina("estoque")}
-          >
-            Estoque
-          </button>
+          {temPermissao("estoque") && (
+            <button
+              className={pagina === "estoque" ? "active" : ""}
+              onClick={() => setPagina("estoque")}
+            >
+              Estoque
+            </button>
+          )}
 
-          <button
-            className={pagina === "fechamento" ? "active" : ""}
-            onClick={() => setPagina("fechamento")}
-          >
-            Fechamento de Caixa
-          </button>
+          {temPermissao("fechamento_caixa") && (
+            <button
+              className={pagina === "fechamento" ? "active" : ""}
+              onClick={() => setPagina("fechamento")}
+            >
+              Fechamento de Caixa
+            </button>
+          )}
 
           {ehAdministrador && (
             <button
@@ -1826,7 +1838,7 @@ const statusCmv =
                           </button>
                         )}
 
-                      {ehAdministrador &&
+                      {temPermissao("aprovar_despesas") &&
                         pagina === "despesas" &&
                         item.status === "pendente" && (
                           <>
