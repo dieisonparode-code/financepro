@@ -159,6 +159,15 @@ function prepararLoja(dados = {}) {
   };
 }
 
+function prepararInsumo(dados = {}) {
+  return {
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    nome: (dados.nome || "").trim(),
+    unidade_medida: (dados.unidade_medida || "un").trim(),
+    estoque_minimo: dados.estoque_minimo ? Number(dados.estoque_minimo) : 0,
+  };
+}
+
 app.get("/", function (req, res) {
   res.send("FinancePro API funcionando!");
 });
@@ -751,6 +760,266 @@ app.put(
 
       res.status(500).json({
         erro: "Não foi possível atualizar a configuração.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get("/insumos", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("insumos")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar insumos:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os insumos.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/insumos", async function (req, res) {
+  try {
+    const dadosInsumo = prepararInsumo(req.body);
+
+    if (!dadosInsumo.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome do insumo.",
+      });
+    }
+
+    if (!dadosInsumo.loja_id) {
+      return res.status(400).json({
+        erro: "Selecione a loja do insumo.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("insumos")
+      .insert([
+        {
+          ...dadosInsumo,
+          estoque_atual: req.body.estoque_atual
+            ? Number(req.body.estoque_atual)
+            : 0,
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar insumo:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar o insumo.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/insumos/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do insumo inválido.",
+      });
+    }
+
+    const dadosInsumo = prepararInsumo(req.body);
+
+    if (!dadosInsumo.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome do insumo.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("insumos")
+      .update(dadosInsumo)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar insumo:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar o insumo.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/insumos/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do insumo inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("insumos")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir insumo:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir o insumo.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/insumos/:id/movimentacao", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do insumo inválido.",
+      });
+    }
+
+    const tipo = req.body?.tipo;
+    const quantidade = Number(req.body?.quantidade);
+    const motivo = (req.body?.motivo || "").trim();
+
+    if (!["entrada", "saida", "ajuste"].includes(tipo)) {
+      return res.status(400).json({
+        erro: "Tipo de movimentação inválido.",
+      });
+    }
+
+    if (!quantidade || quantidade <= 0) {
+      return res.status(400).json({
+        erro: "Informe uma quantidade válida.",
+      });
+    }
+
+    const { data: insumo, error: erroInsumo } = await supabase
+      .from("insumos")
+      .select("estoque_atual")
+      .eq("id", id)
+      .single();
+
+    if (erroInsumo) {
+      throw erroInsumo;
+    }
+
+    const estoqueAtual = Number(insumo?.estoque_atual || 0);
+
+    const novoEstoque =
+      tipo === "saida"
+        ? estoqueAtual - quantidade
+        : tipo === "ajuste"
+        ? quantidade
+        : estoqueAtual + quantidade;
+
+    const { data: insumoAtualizado, error: erroAtualizacao } =
+      await supabase
+        .from("insumos")
+        .update({ estoque_atual: novoEstoque })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+    if (erroAtualizacao) {
+      throw erroAtualizacao;
+    }
+
+    const { error: erroMovimentacao } = await supabase
+      .from("movimentacoes_estoque")
+      .insert([
+        {
+          insumo_id: id,
+          tipo,
+          quantidade,
+          motivo,
+        },
+      ]);
+
+    if (erroMovimentacao) {
+      throw erroMovimentacao;
+    }
+
+    res.status(201).json(insumoAtualizado);
+  } catch (erro) {
+    console.error(
+      "Erro ao registrar movimentação de estoque:",
+      erro.message
+    );
+
+    res.status(500).json({
+      erro: "Não foi possível registrar a movimentação.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.get(
+  "/insumos/:id/movimentacoes",
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do insumo inválido.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("movimentacoes_estoque")
+        .select("*")
+        .eq("insumo_id", id)
+        .order("criado_em", { ascending: false })
+        .limit(30);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error(
+        "Erro ao buscar movimentações:",
+        erro.message
+      );
+
+      res.status(500).json({
+        erro: "Não foi possível buscar as movimentações.",
         detalhes: erro.message,
       });
     }

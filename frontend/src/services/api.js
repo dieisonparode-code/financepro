@@ -105,6 +105,44 @@ export async function atualizarConfiguracaoAprovacao(ativa) {
   });
 }
 
+export function buscarInsumos() {
+  return requisicao("/insumos");
+}
+
+export function criarInsumo(dados) {
+  return requisicao("/insumos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function atualizarInsumo(id, dados) {
+  return requisicao(`/insumos/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function excluirInsumo(id) {
+  return requisicao(`/insumos/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function registrarMovimentacaoEstoque(id, dados) {
+  return requisicao(`/insumos/${id}/movimentacao`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function buscarMovimentacoesEstoque(id) {
+  return requisicao(`/insumos/${id}/movimentacoes`);
+}
+
 export function buscarLojas() {
   return requisicao("/lojas");
 }

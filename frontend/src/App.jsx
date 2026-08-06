@@ -25,11 +25,17 @@ import {
   aprovarLancamento,
   rejeitarLancamento,
   atualizarConfiguracaoAprovacao,
+  buscarInsumos,
+  criarInsumo,
+  atualizarInsumo,
+  excluirInsumo,
+  registrarMovimentacaoEstoque,
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
+import CadastroInsumos from "./components/CadastroInsumos";
 import UserMenu from "./components/UserMenu";
 
 const categoriasPadrao = [
@@ -284,6 +290,8 @@ function FinanceApp() {
   const [aprovacaoAtiva, setAprovacaoAtiva] = useState(true);
   const [processandoAprovacaoId, setProcessandoAprovacaoId] =
     useState(null);
+  const [insumos, setInsumos] = useState([]);
+  const [carregandoInsumos, setCarregandoInsumos] = useState(true);
 
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
@@ -480,6 +488,58 @@ function FinanceApp() {
 
     return () => {
       supabase.removeChannel(canalConfig);
+    };
+  }, []);
+
+  useEffect(() => {
+    async function carregarInsumos() {
+      try {
+        setCarregandoInsumos(true);
+        const dados = await buscarInsumos();
+        setInsumos(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar insumos:", erro);
+      } finally {
+        setCarregandoInsumos(false);
+      }
+    }
+
+    carregarInsumos();
+
+    const canalInsumos = supabase
+      .channel("insumos-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "insumos" },
+        (payload) => {
+          setInsumos((anteriores) => {
+            if (payload.eventType === "INSERT") {
+              if (anteriores.some((item) => item.id === payload.new.id)) {
+                return anteriores;
+              }
+              return [...anteriores, payload.new];
+            }
+
+            if (payload.eventType === "UPDATE") {
+              return anteriores.map((item) =>
+                item.id === payload.new.id ? payload.new : item
+              );
+            }
+
+            if (payload.eventType === "DELETE") {
+              return anteriores.filter(
+                (item) => item.id !== payload.old.id
+              );
+            }
+
+            return anteriores;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalInsumos);
     };
   }, []);
 
@@ -1214,6 +1274,44 @@ const statusCmv =
     );
   }
 
+  async function adicionarInsumo(dadosInsumo) {
+    const salvo = await criarInsumo(dadosInsumo);
+
+    setInsumos((anteriores) => {
+      if (anteriores.some((item) => item.id === salvo.id)) {
+        return anteriores;
+      }
+      return [...anteriores, salvo];
+    });
+  }
+
+  async function editarInsumoHandler(id, dadosInsumo) {
+    const salvo = await atualizarInsumo(id, dadosInsumo);
+
+    setInsumos((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salvo : item))
+    );
+  }
+
+  async function removerInsumo(id) {
+    await excluirInsumo(id);
+
+    setInsumos((anteriores) =>
+      anteriores.filter((item) => item.id !== id)
+    );
+  }
+
+  async function registrarMovimentacaoHandler(id, dadosMovimentacao) {
+    const salvo = await registrarMovimentacaoEstoque(
+      id,
+      dadosMovimentacao
+    );
+
+    setInsumos((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salvo : item))
+    );
+  }
+
   function exportarRelatorioCSV() {
     const cabecalho = [
       "Data",
@@ -1317,6 +1415,13 @@ const statusCmv =
             Relatórios
           </button>
 
+          <button
+            className={pagina === "estoque" ? "active" : ""}
+            onClick={() => setPagina("estoque")}
+          >
+            Estoque
+          </button>
+
           {ehAdministrador && (
             <button
               className={pagina === "lojas" ? "active" : ""}
@@ -1375,6 +1480,8 @@ const statusCmv =
             ? "Lojas"
             : pagina === "usuarios"
             ? "Usuários"
+            : pagina === "estoque"
+            ? "Estoque"
             : "FinancePro"}
         </h1>
 
@@ -1718,6 +1825,22 @@ const statusCmv =
             adicionarUsuario={adicionarUsuario}
             editarUsuario={editarUsuario}
             removerUsuario={removerUsuario}
+          />
+        )}
+
+        {pagina === "estoque" && (
+          <CadastroInsumos
+            insumos={insumos}
+            lojas={lojas}
+            carregando={carregandoInsumos}
+            vePermissaoTotal={vePermissaoTotal}
+            lojaFixaId={
+              vePermissaoTotal ? null : perfil?.loja_id || null
+            }
+            adicionarInsumo={adicionarInsumo}
+            editarInsumo={editarInsumoHandler}
+            excluirInsumo={removerInsumo}
+            registrarMovimentacao={registrarMovimentacaoHandler}
           />
         )}
 
