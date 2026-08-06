@@ -303,23 +303,23 @@ body {
 }
 
 .fp-alerta-cmv-atencao {
-  color: #ffedd5;
-  background: rgba(255, 152, 0, .16);
-  border-color: rgba(255, 152, 0, .38);
+  color: #ffffff;
+  background: var(--fp-laranja, #ff9800);
+  border-color: var(--fp-laranja, #ff9800);
 }
 
 .fp-alerta-cmv-atencao strong {
-  color: var(--fp-laranja, #ff9800);
+  color: #ffffff;
 }
 
 .fp-alerta-cmv-critico {
-  color: #ffe4e6;
-  background: rgba(255, 53, 69, .18);
-  border-color: rgba(255, 53, 69, .45);
+  color: #ffffff;
+  background: var(--fp-vermelho, #ff3545);
+  border-color: var(--fp-vermelho, #ff3545);
 }
 
 .fp-alerta-cmv-critico strong {
-  color: var(--fp-vermelho, #ff3545);
+  color: #ffffff;
 }
 
 .fp-kpis {
