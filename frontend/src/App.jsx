@@ -2,7 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import DashboardPremium from "./components/dashboardPremium";
 import "./App.css";
 import "./paginasInternas.css";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import Login from "./pages/Login";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
@@ -262,7 +268,21 @@ function FinanceApp() {
     navigate("/login", { replace: true });
   }
 
-  const [pagina, setPagina] = useState("dashboard");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [pagina, setPaginaEstado] = useState(
+    () => searchParams.get("pagina") || "dashboard"
+  );
+
+  // Mantém a aba atual salva na URL (?pagina=despesas), assim atualizar
+  // a página (F5) não volta sozinho pro dashboard.
+  function setPagina(novaPagina) {
+    setPaginaEstado(novaPagina);
+    setSearchParams((parametrosAtuais) => {
+      const proximosParametros = new URLSearchParams(parametrosAtuais);
+      proximosParametros.set("pagina", novaPagina);
+      return proximosParametros;
+    });
+  }
   const [lancamentos, setLancamentos] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
