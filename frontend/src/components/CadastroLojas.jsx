@@ -9,13 +9,44 @@ function CadastroLojas({
 }) {
   const [nome, setNome] = useState("");
   const [endereco, setEndereco] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [raioMetros, setRaioMetros] = useState("200");
+  const [capturandoLocal, setCapturandoLocal] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
   function limparFormulario() {
     setNome("");
     setEndereco("");
+    setLatitude("");
+    setLongitude("");
+    setRaioMetros("200");
     setEditandoId(null);
+  }
+
+  function usarLocalizacaoAtual() {
+    if (!navigator.geolocation) {
+      alert("Seu navegador não suporta geolocalização.");
+      return;
+    }
+
+    setCapturandoLocal(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (posicao) => {
+        setLatitude(String(posicao.coords.latitude));
+        setLongitude(String(posicao.coords.longitude));
+        setCapturandoLocal(false);
+      },
+      () => {
+        alert(
+          "Não foi possível capturar sua localização. Verifique se o navegador tem permissão de acesso."
+        );
+        setCapturandoLocal(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   }
 
   async function salvar(evento) {
@@ -30,17 +61,19 @@ function CadastroLojas({
 
     setSalvando(true);
 
+    const dados = {
+      nome: nomeLimpo,
+      endereco: endereco.trim(),
+      latitude: latitude ? Number(latitude) : null,
+      longitude: longitude ? Number(longitude) : null,
+      raio_metros: raioMetros ? Number(raioMetros) : 200,
+    };
+
     try {
       if (editandoId) {
-        await editarLoja(editandoId, {
-          nome: nomeLimpo,
-          endereco: endereco.trim(),
-        });
+        await editarLoja(editandoId, dados);
       } else {
-        await adicionarLoja({
-          nome: nomeLimpo,
-          endereco: endereco.trim(),
-        });
+        await adicionarLoja(dados);
       }
 
       limparFormulario();
@@ -56,6 +89,9 @@ function CadastroLojas({
     setEditandoId(loja.id);
     setNome(loja.nome);
     setEndereco(loja.endereco || "");
+    setLatitude(loja.latitude != null ? String(loja.latitude) : "");
+    setLongitude(loja.longitude != null ? String(loja.longitude) : "");
+    setRaioMetros(String(loja.raio_metros || 200));
   }
 
   async function confirmarExclusao(loja) {
@@ -113,6 +149,52 @@ function CadastroLojas({
             />
           </label>
 
+          <div className="foto-upload">
+            <span className="foto-upload-title">
+              📍 Localização da loja
+            </span>
+
+            <button
+              type="button"
+              className="foto-button"
+              onClick={usarLocalizacaoAtual}
+              disabled={capturandoLocal}
+              style={
+                capturandoLocal
+                  ? { opacity: 0.6, pointerEvents: "none" }
+                  : undefined
+              }
+            >
+              {capturandoLocal
+                ? "Capturando..."
+                : "📍 Usar minha localização atual"}
+            </button>
+
+            <small className="foto-ajuda">
+              Fique dentro da loja e toque nesse botão pra registrar a
+              posição certa dela.
+            </small>
+          </div>
+
+          {latitude && longitude && (
+            <p className="foto-geo-status">
+              📍 Localização definida ({Number(latitude).toFixed(5)},{" "}
+              {Number(longitude).toFixed(5)})
+            </p>
+          )}
+
+          <label>
+            Raio de tolerância (metros)
+            <input
+              type="number"
+              min="20"
+              step="10"
+              value={raioMetros}
+              onChange={(evento) => setRaioMetros(evento.target.value)}
+              placeholder="200"
+            />
+          </label>
+
           <div className="modal-actions">
             {editandoId && (
               <button
@@ -164,6 +246,13 @@ function CadastroLojas({
                   <div>
                     <strong>{loja.nome}</strong>
                     <span>{loja.endereco || "-"}</span>
+                    <span>
+                      {loja.latitude && loja.longitude
+                        ? `📍 Localização definida — raio de ${
+                            loja.raio_metros || 200
+                          }m`
+                        : "⚠️ Localização não definida"}
+                    </span>
                   </div>
                 </div>
 

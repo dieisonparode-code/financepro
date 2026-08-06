@@ -10,6 +10,7 @@ import { supabase } from "./services/supabaseClient";
 import {
   buscarLancamentos,
   buscarFotoLancamento,
+  buscarFotoMercadoriaLancamento,
   criarLancamento,
   atualizarLancamento,
   excluirLancamento,
@@ -146,6 +147,46 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
+function capturarLocalizacao() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (posicao) => {
+        resolve({
+          latitude: posicao.coords.latitude,
+          longitude: posicao.coords.longitude,
+          precisao_metros: posicao.coords.accuracy,
+          capturado_em: new Date().toISOString(),
+        });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  });
+}
+
+function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+  const raioTerra = 6371000;
+  const paraRad = (grau) => (grau * Math.PI) / 180;
+
+  const deltaLat = paraRad(lat2 - lat1);
+  const deltaLon = paraRad(lon2 - lon1);
+
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(paraRad(lat1)) *
+      Math.cos(paraRad(lat2)) *
+      Math.sin(deltaLon / 2) ** 2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return raioTerra * c;
+}
+
 function criarFormularioInicial(tipo = "receita") {
   return {
     descricao: "",
@@ -162,6 +203,11 @@ function criarFormularioInicial(tipo = "receita") {
     fornecedor: "",
     observacao: "",
     foto: "",
+    foto_mercadoria: "",
+    latitude: null,
+    longitude: null,
+    precisao_metros: null,
+    capturado_em: null,
     loja_id: "",
     data: new Date().toISOString().slice(0, 10),
   };
@@ -206,8 +252,14 @@ function FinanceApp() {
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [processandoFoto, setProcessandoFoto] = useState(false);
+  const [processandoFotoMercadoria, setProcessandoFotoMercadoria] =
+    useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
+  const [carregandoFotoMercadoriaId, setCarregandoFotoMercadoriaId] =
+    useState(null);
+  const [fotoMercadoriaVisualizada, setFotoMercadoriaVisualizada] =
+    useState(null);
   const editandoIdRef = useRef(null);
 
   const [lojas, setLojas] = useState([]);
@@ -761,6 +813,11 @@ const statusCmv =
       fornecedor: lancamento.fornecedor || "",
       observacao: lancamento.observacao || "",
       foto: "",
+      foto_mercadoria: "",
+      latitude: lancamento.latitude ?? null,
+      longitude: lancamento.longitude ?? null,
+      precisao_metros: lancamento.precisao_metros ?? null,
+      capturado_em: lancamento.capturado_em || null,
       loja_id: lancamento.loja_id || "",
       data:
         lancamento.data ||
@@ -785,6 +842,27 @@ const statusCmv =
         });
       } catch (erro) {
         console.error("Erro ao buscar foto do lançamento:", erro);
+      }
+    }
+
+    if (lancamento.tem_foto_mercadoria) {
+      try {
+        const resultado = await buscarFotoMercadoriaLancamento(
+          lancamento.id
+        );
+
+        setFormulario((anterior) => {
+          if (editandoIdRef.current !== lancamento.id) {
+            return anterior;
+          }
+
+          return {
+            ...anterior,
+            foto_mercadoria: resultado?.foto_mercadoria || "",
+          };
+        });
+      } catch (erro) {
+        console.error("Erro ao buscar foto da mercadoria:", erro);
       }
     }
   }
@@ -833,6 +911,11 @@ const statusCmv =
       fornecedor: formulario.fornecedor.trim(),
       observacao: formulario.observacao.trim(),
       foto: formulario.foto || "",
+      foto_mercadoria: formulario.foto_mercadoria || "",
+      latitude: formulario.latitude,
+      longitude: formulario.longitude,
+      precisao_metros: formulario.precisao_metros,
+      capturado_em: formulario.capturado_em,
       loja_id: formulario.loja_id ? Number(formulario.loja_id) : null,
       data: formulario.data,
     };
@@ -1244,6 +1327,47 @@ const statusCmv =
                       {lojas.find((loja) => loja.id === item.loja_id)
                         ?.nome || "Sem loja"}
                     </span>
+                    {item.tem_foto_mercadoria &&
+                      (() => {
+                        const loja = lojas.find(
+                          (item2) => item2.id === item.loja_id
+                        );
+
+                        if (
+                          !loja?.latitude ||
+                          !loja?.longitude ||
+                          !item.latitude ||
+                          !item.longitude
+                        ) {
+                          return null;
+                        }
+
+                        const distancia = calcularDistanciaMetros(
+                          item.latitude,
+                          item.longitude,
+                          loja.latitude,
+                          loja.longitude
+                        );
+
+                        const dentroDoRaio =
+                          distancia <= (loja.raio_metros || 200);
+
+                        return (
+                          <span
+                            className={
+                              dentroDoRaio
+                                ? "badge-geo badge-geo-ok"
+                                : "badge-geo badge-geo-alerta"
+                            }
+                          >
+                            {dentroDoRaio
+                              ? `📍 Na loja (${Math.round(distancia)}m)`
+                              : `⚠️ Fora do raio (${Math.round(
+                                  distancia
+                                )}m)`}
+                          </span>
+                        );
+                      })()}
                     <span>{formatarData(item.data)}</span>
                   </div>
 
@@ -1295,9 +1419,48 @@ const statusCmv =
                         >
                           {carregandoFotoId === item.id
                             ? "Carregando..."
-                            : "📷 Ver foto"}
+                            : "📄 Ver nota"}
                         </button>
                       )}
+
+                      {pagina === "despesas" &&
+                        item.tem_foto_mercadoria && (
+                          <button
+                            type="button"
+                            className="view-receipt-button"
+                            disabled={
+                              carregandoFotoMercadoriaId === item.id
+                            }
+                            onClick={async () => {
+                              setCarregandoFotoMercadoriaId(item.id);
+
+                              try {
+                                const resultado =
+                                  await buscarFotoMercadoriaLancamento(
+                                    item.id
+                                  );
+                                setFotoMercadoriaVisualizada(
+                                  resultado?.foto_mercadoria || ""
+                                );
+                              } catch (erro) {
+                                console.error(
+                                  "Erro ao buscar foto da mercadoria:",
+                                  erro
+                                );
+                                alert(
+                                  erro.message ||
+                                    "Não foi possível carregar a foto da mercadoria."
+                                );
+                              } finally {
+                                setCarregandoFotoMercadoriaId(null);
+                              }
+                            }}
+                          >
+                            {carregandoFotoMercadoriaId === item.id
+                              ? "Carregando..."
+                              : "📦 Ver mercadoria"}
+                          </button>
+                        )}
 
                       <button
                         type="button"
@@ -1958,7 +2121,7 @@ const statusCmv =
               </label>
               <div className="foto-upload">
                 <span className="foto-upload-title">
-                  Foto do comprovante
+                  📄 Foto da nota
                 </span>
 
                 <input
@@ -2001,21 +2164,142 @@ const statusCmv =
                 >
                   {processandoFoto
                     ? "Processando foto..."
-                    : "📷 Anexar comprovante"}
+                    : "📄 Anexar nota fiscal"}
                 </label>
+
+                <small className="foto-ajuda">
+                  Sem localização — pode anexar de qualquer lugar.
+                </small>
               </div>
 
               {formulario.foto && (
                 <div className="foto-preview">
                   <img
                     src={formulario.foto}
-                    alt="Pré-visualização do comprovante"
+                    alt="Pré-visualização da nota"
                   />
 
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={() => alterarCampo("foto", "")}
+                  >
+                    Remover foto
+                  </button>
+                </div>
+              )}
+
+              <div className="foto-upload">
+                <span className="foto-upload-title">
+                  📦 Foto da mercadoria
+                </span>
+
+                <input
+                  id="foto-mercadoria"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  disabled={processandoFotoMercadoria}
+                  onChange={async (evento) => {
+                    const arquivo = evento.target.files?.[0];
+
+                    if (!arquivo) return;
+
+                    setProcessandoFotoMercadoria(true);
+
+                    try {
+                      const [fotoComprimida, localizacao] =
+                        await Promise.all([
+                          comprimirImagem(arquivo),
+                          capturarLocalizacao(),
+                        ]);
+
+                      setFormulario((anterior) => ({
+                        ...anterior,
+                        foto_mercadoria: fotoComprimida,
+                        latitude: localizacao?.latitude ?? null,
+                        longitude: localizacao?.longitude ?? null,
+                        precisao_metros:
+                          localizacao?.precisao_metros ?? null,
+                        capturado_em: localizacao?.capturado_em ?? null,
+                      }));
+
+                      if (!localizacao) {
+                        alert(
+                          "Não foi possível capturar a localização. A foto foi salva mesmo assim, mas sem o registro do local."
+                        );
+                      }
+                    } catch (erro) {
+                      console.error(
+                        "Erro ao processar a foto da mercadoria:",
+                        erro
+                      );
+                      alert(
+                        erro.message ||
+                          "Não foi possível processar a foto selecionada."
+                      );
+                    } finally {
+                      setProcessandoFotoMercadoria(false);
+                      evento.target.value = "";
+                    }
+                  }}
+                />
+
+                <label
+                  htmlFor="foto-mercadoria"
+                  className="foto-button"
+                  style={
+                    processandoFotoMercadoria
+                      ? { opacity: 0.6, pointerEvents: "none" }
+                      : undefined
+                  }
+                >
+                  {processandoFotoMercadoria
+                    ? "Capturando foto e local..."
+                    : "📦 Anexar foto da mercadoria"}
+                </label>
+
+                <small className="foto-ajuda">
+                  Registra a localização no momento da foto — precisa
+                  ser tirada na hora, na loja.
+                </small>
+              </div>
+
+              {formulario.foto_mercadoria && (
+                <div className="foto-preview">
+                  <img
+                    src={formulario.foto_mercadoria}
+                    alt="Pré-visualização da mercadoria"
+                  />
+
+                  {formulario.latitude && formulario.longitude ? (
+                    <span className="foto-geo-status">
+                      📍 Localização capturada
+                      {formulario.precisao_metros
+                        ? ` (±${Math.round(
+                            formulario.precisao_metros
+                          )}m)`
+                        : ""}
+                    </span>
+                  ) : (
+                    <span className="foto-geo-status foto-geo-status-alerta">
+                      ⚠️ Sem localização registrada
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      setFormulario((anterior) => ({
+                        ...anterior,
+                        foto_mercadoria: "",
+                        latitude: null,
+                        longitude: null,
+                        precisao_metros: null,
+                        capturado_em: null,
+                      }))
+                    }
                   >
                     Remover foto
                   </button>
@@ -2077,6 +2361,40 @@ const statusCmv =
             <img
               src={fotoVisualizada}
               alt="Foto do comprovante"
+              className="foto-modal-imagem"
+            />
+          </div>
+        </div>
+      )}
+
+      {fotoMercadoriaVisualizada && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setFotoMercadoriaVisualizada(null);
+            }
+          }}
+        >
+          <div className="modal modal-foto">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Mercadoria</span>
+                <h2>Foto da mercadoria</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setFotoMercadoriaVisualizada(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <img
+              src={fotoMercadoriaVisualizada}
+              alt="Foto da mercadoria"
               className="foto-modal-imagem"
             />
           </div>

@@ -93,6 +93,11 @@ function prepararLancamento(dados = {}) {
     fornecedor: dados.fornecedor || "",
     observacao: dados.observacao || "",
     foto: dados.foto || "",
+    foto_mercadoria: dados.foto_mercadoria || "",
+    latitude: dados.latitude ?? null,
+    longitude: dados.longitude ?? null,
+    precisao_metros: dados.precisao_metros ?? null,
+    capturado_em: dados.capturado_em || null,
     loja_id: dados.loja_id || null,
   };
 }
@@ -101,6 +106,9 @@ function prepararLoja(dados = {}) {
   return {
     nome: (dados.nome || "").trim(),
     endereco: (dados.endereco || "").trim(),
+    latitude: dados.latitude ?? null,
+    longitude: dados.longitude ?? null,
+    raio_metros: dados.raio_metros ? Number(dados.raio_metros) : 200,
   };
 }
 
@@ -109,7 +117,7 @@ app.get("/", function (req, res) {
 });
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, loja_id";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id";
 
 app.get("/lancamentos", async function (req, res) {
   try {
@@ -166,6 +174,40 @@ app.get("/lancamentos/:id/foto", async function (req, res) {
 
     res.status(500).json({
       erro: "Não foi possível buscar a foto.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.get("/lancamentos/:id/foto-mercadoria", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do lançamento inválido.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("lancamentos")
+      .select("foto_mercadoria")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ foto_mercadoria: data?.foto_mercadoria || "" });
+  } catch (erro) {
+    console.error(
+      "Erro ao buscar foto da mercadoria:",
+      erro.message
+    );
+
+    res.status(500).json({
+      erro: "Não foi possível buscar a foto da mercadoria.",
       detalhes: erro.message,
     });
   }

@@ -57,6 +57,10 @@ export function buscarFotoLancamento(id) {
   return requisicao(`/lancamentos/${id}/foto`);
 }
 
+export function buscarFotoMercadoriaLancamento(id) {
+  return requisicao(`/lancamentos/${id}/foto-mercadoria`);
+}
+
 export function criarLancamento(dados) {
   return requisicao("/lancamentos", {
     method: "POST",
