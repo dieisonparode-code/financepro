@@ -169,6 +169,28 @@ export function excluirCategoria(id) {
   });
 }
 
+export function buscarFechamentosCaixa() {
+  return requisicao("/fechamentos-caixa");
+}
+
+export function buscarFotoFechamentoCaixa(id) {
+  return requisicao(`/fechamentos-caixa/${id}/foto`);
+}
+
+export function criarFechamentoCaixa(dados) {
+  return requisicao("/fechamentos-caixa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function excluirFechamentoCaixa(id) {
+  return requisicao(`/fechamentos-caixa/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function buscarLojas() {
   return requisicao("/lojas");
 }

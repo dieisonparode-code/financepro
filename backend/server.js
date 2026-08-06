@@ -159,6 +159,17 @@ function prepararLoja(dados = {}) {
   };
 }
 
+function prepararFechamentoCaixa(dados = {}) {
+  return {
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    tipo: dados.tipo || "",
+    nome_pessoa: (dados.nome_pessoa || "").trim(),
+    valor: dados.valor !== "" && dados.valor != null ? Number(dados.valor) : null,
+    foto: dados.foto || "",
+    observacao: (dados.observacao || "").trim(),
+  };
+}
+
 function prepararInsumo(dados = {}) {
   return {
     loja_id: dados.loja_id ? Number(dados.loja_id) : null,
@@ -717,6 +728,129 @@ app.delete("/categorias/:id", async function (req, res) {
 
     res.status(500).json({
       erro: "Não foi possível excluir a categoria.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+const colunasFechamentoListagem =
+  "id, loja_id, tipo, nome_pessoa, valor, tem_foto, observacao, criado_em";
+
+app.get("/fechamentos-caixa", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("fechamentos_caixa")
+      .select(colunasFechamentoListagem)
+      .order("criado_em", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar fechamentos de caixa:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os fechamentos de caixa.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.get("/fechamentos-caixa/:id/foto", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do fechamento inválido.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("fechamentos_caixa")
+      .select("foto")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ foto: data?.foto || "" });
+  } catch (erro) {
+    console.error("Erro ao buscar foto do fechamento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar a foto.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/fechamentos-caixa", async function (req, res) {
+  try {
+    const dados = prepararFechamentoCaixa(req.body);
+
+    if (!["boy", "funcionario", "venda_prazo"].includes(dados.tipo)) {
+      return res.status(400).json({
+        erro: "Tipo inválido. Use boy, funcionario ou venda_prazo.",
+      });
+    }
+
+    if (!dados.foto) {
+      return res.status(400).json({
+        erro: "A foto do comprovante é obrigatória.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("fechamentos_caixa")
+      .insert([dados])
+      .select(colunasFechamentoListagem)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar fechamento de caixa:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível salvar o fechamento de caixa.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/fechamentos-caixa/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do fechamento inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("fechamentos_caixa")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir fechamento de caixa:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir o fechamento de caixa.",
       detalhes: erro.message,
     });
   }

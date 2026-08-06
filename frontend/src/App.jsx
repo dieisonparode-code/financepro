@@ -24,6 +24,10 @@ import {
   criarCategoria as criarCategoriaApi,
   atualizarCategoria as atualizarCategoriaApi,
   excluirCategoria as excluirCategoriaApi,
+  buscarFechamentosCaixa,
+  buscarFotoFechamentoCaixa,
+  criarFechamentoCaixa,
+  excluirFechamentoCaixa,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -43,6 +47,7 @@ import {
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
+import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
 import CadastroInsumos from "./components/CadastroInsumos";
@@ -268,6 +273,9 @@ function FinanceApp() {
   const [insumos, setInsumos] = useState([]);
   const [carregandoInsumos, setCarregandoInsumos] = useState(true);
 
+  const [fechamentosCaixa, setFechamentosCaixa] = useState([]);
+  const [carregandoFechamentos, setCarregandoFechamentos] = useState(true);
+
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
   );
@@ -337,6 +345,55 @@ function FinanceApp() {
 
     return () => {
       supabase.removeChannel(canalCategorias);
+    };
+  }, []);
+
+  useEffect(() => {
+    async function carregarFechamentosSalvos() {
+      try {
+        setCarregandoFechamentos(true);
+        const dados = await buscarFechamentosCaixa();
+        setFechamentosCaixa(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar fechamentos de caixa:", erro);
+      } finally {
+        setCarregandoFechamentos(false);
+      }
+    }
+
+    carregarFechamentosSalvos();
+
+    const canalFechamentos = supabase
+      .channel("fechamentos-caixa-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "fechamentos_caixa" },
+        (payload) => {
+          setFechamentosCaixa((anteriores) => {
+            if (payload.eventType === "INSERT") {
+              const { foto, ...resto } = payload.new;
+
+              if (anteriores.some((item) => item.id === resto.id)) {
+                return anteriores;
+              }
+
+              return [resto, ...anteriores];
+            }
+
+            if (payload.eventType === "DELETE") {
+              return anteriores.filter(
+                (item) => item.id !== payload.old.id
+              );
+            }
+
+            return anteriores;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalFechamentos);
     };
   }, []);
 
@@ -1348,6 +1405,20 @@ const statusCmv =
     );
   }
 
+  async function adicionarFechamentoCaixa(dados) {
+    const salvo = await criarFechamentoCaixa(dados);
+
+    setFechamentosCaixa((anteriores) => [salvo, ...anteriores]);
+  }
+
+  async function removerFechamentoCaixa(id) {
+    await excluirFechamentoCaixa(id);
+
+    setFechamentosCaixa((anteriores) =>
+      anteriores.filter((item) => item.id !== id)
+    );
+  }
+
   function exportarRelatorioCSV() {
     const cabecalho = [
       "Data",
@@ -1456,6 +1527,13 @@ const statusCmv =
             onClick={() => setPagina("estoque")}
           >
             Estoque
+          </button>
+
+          <button
+            className={pagina === "fechamento" ? "active" : ""}
+            onClick={() => setPagina("fechamento")}
+          >
+            Fechamento de Caixa
           </button>
 
           {ehAdministrador && (
@@ -1877,6 +1955,16 @@ const statusCmv =
             editarInsumo={editarInsumoHandler}
             excluirInsumo={removerInsumo}
             registrarMovimentacao={registrarMovimentacaoHandler}
+          />
+        )}
+
+        {pagina === "fechamento" && (
+          <CadastroFechamentoCaixa
+            registros={fechamentosCaixa}
+            carregando={carregandoFechamentos}
+            adicionarFechamento={adicionarFechamentoCaixa}
+            removerFechamento={removerFechamentoCaixa}
+            buscarFoto={buscarFotoFechamentoCaixa}
           />
         )}
 
