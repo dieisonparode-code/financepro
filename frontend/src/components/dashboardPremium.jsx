@@ -372,6 +372,32 @@ export default function DashboardPremium({
         </div>
       </header>
 
+      {cmvStatus !== "Dentro da meta" && cmvStatus !== "Sem dados" && (
+        <div
+          className={
+            cmvStatus === "Risco elevado"
+              ? "fp-alerta-cmv fp-alerta-cmv-critico"
+              : "fp-alerta-cmv fp-alerta-cmv-atencao"
+          }
+        >
+          <span className="fp-alerta-cmv-icone">
+            {cmvStatus === "Risco elevado" ? "🚨" : "⚠️"}
+          </span>
+
+          <div>
+            <strong>
+              CMV {cmvStatus === "Risco elevado" ? "crítico" : "em atenção"}
+              : {formatarPercentual(cmv)}
+            </strong>
+            <span>
+              {cmvStatus === "Risco elevado"
+                ? "O CMV deste mês passou de 40% — revise os custos de insumos o quanto antes."
+                : "O CMV deste mês está entre 35% e 40% — fique de olho antes de virar crítico."}
+            </span>
+          </div>
+        </div>
+      )}
+
       <section className="fp-kpis">
         <CartaoPrincipal
           classe="verde"

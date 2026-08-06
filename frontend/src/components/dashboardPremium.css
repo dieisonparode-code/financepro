@@ -276,6 +276,44 @@ body {
   background: #13d85a;
 }
 
+.fp-alerta-cmv {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+}
+
+.fp-alerta-cmv-icone {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.fp-alerta-cmv strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 15px;
+}
+
+.fp-alerta-cmv span {
+  font-size: 13px;
+  opacity: .85;
+}
+
+.fp-alerta-cmv-atencao {
+  color: #fef3c7;
+  background: rgba(245, 158, 11, .16);
+  border-color: rgba(245, 158, 11, .35);
+}
+
+.fp-alerta-cmv-critico {
+  color: #fee2e2;
+  background: rgba(239, 68, 68, .18);
+  border-color: rgba(239, 68, 68, .4);
+}
+
 .fp-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
