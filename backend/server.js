@@ -991,13 +991,21 @@ app.delete("/usuarios/:id", verificarAdmin, async function (req, res) {
       });
     }
 
-    const { error } = await supabase
+    const { error: erroPerfil } = await supabase
       .from("perfis")
       .delete()
       .eq("user_id", req.params.id);
 
-    if (error) {
-      throw error;
+    if (erroPerfil) {
+      throw erroPerfil;
+    }
+
+    const { error: erroAuth } = await supabase.auth.admin.deleteUser(
+      req.params.id
+    );
+
+    if (erroAuth) {
+      throw erroAuth;
     }
 
     res.status(204).send();
