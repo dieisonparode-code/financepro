@@ -60,6 +60,8 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
+const OITO_HORAS_MS = 8 * 60 * 60 * 1000;
+
 function CadastroFechamentoCaixa({
   registros = [],
   carregando = false,
@@ -70,6 +72,11 @@ function CadastroFechamentoCaixa({
   const [enviandoTipo, setEnviandoTipo] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
+
+  const registrosRecentes = registros.filter((registro) => {
+    const criadoEm = new Date(registro.criado_em).getTime();
+    return Date.now() - criadoEm < OITO_HORAS_MS;
+  });
 
   async function capturarFoto(tipo, arquivo) {
     if (!arquivo) return;
@@ -167,22 +174,28 @@ function CadastroFechamentoCaixa({
       <article className="panel categoria-lista-panel">
         <div className="panel-header">
           <div>
-            <span className="eyebrow">Arquivado</span>
+            <span className="eyebrow">Arquivado nas últimas 8 horas</span>
             <h2>Fechamento de Caixa</h2>
           </div>
 
-          <strong>{registros.length}</strong>
+          <strong>{registrosRecentes.length}</strong>
         </div>
+
+        <small className="foto-ajuda">
+          Registros com mais de 8 horas somem daqui pra não lotar a tela —
+          eles continuam salvos. Pra ver dias anteriores, use Relatórios →
+          Caixa e escolha a data.
+        </small>
 
         {carregando ? (
           <div className="empty-state">Carregando...</div>
-        ) : registros.length === 0 ? (
+        ) : registrosRecentes.length === 0 ? (
           <div className="empty-state">
-            Nenhum registro arquivado ainda.
+            Nenhum registro arquivado nas últimas 8 horas.
           </div>
         ) : (
           <div className="categorias-lista">
-            {registros.map((registro) => {
+            {registrosRecentes.map((registro) => {
               const infoTipo = rotuloTipo(registro.tipo);
 
               return (

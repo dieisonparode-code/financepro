@@ -290,6 +290,13 @@ function FinanceApp() {
     useState(primeiroDiaMes);
   const [dataFinalRelatorio, setDataFinalRelatorio] = useState(hoje);
 
+  const [tipoRelatorio, setTipoRelatorio] = useState("financeiro");
+  const [dataRelatorioCaixa, setDataRelatorioCaixa] = useState(hoje);
+  const [fotoRelatorioCaixaVisualizada, setFotoRelatorioCaixaVisualizada] =
+    useState(null);
+  const [carregandoFotoRelatorioCaixaId, setCarregandoFotoRelatorioCaixaId] =
+    useState(null);
+
   const [dataInicialFluxo, setDataInicialFluxo] =
     useState(primeiroDiaMes);
   const [dataFinalFluxo, setDataFinalFluxo] = useState(hoje);
@@ -2132,6 +2139,26 @@ const statusCmv =
         )}
 
         {pagina === "relatorios" && (
+          <div className="report-tipo-toggle no-print">
+            <button
+              type="button"
+              className={tipoRelatorio === "financeiro" ? "active" : ""}
+              onClick={() => setTipoRelatorio("financeiro")}
+            >
+              Financeiro
+            </button>
+
+            <button
+              type="button"
+              className={tipoRelatorio === "caixa" ? "active" : ""}
+              onClick={() => setTipoRelatorio("caixa")}
+            >
+              Caixa
+            </button>
+          </div>
+        )}
+
+        {pagina === "relatorios" && tipoRelatorio === "financeiro" && (
           <section className="panel report-print-area">
             <div className="panel-header report-header">
               <div>
@@ -2345,7 +2372,161 @@ const statusCmv =
             </div>
           </section>
         )}
+
+        {pagina === "relatorios" && tipoRelatorio === "caixa" && (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <span className="eyebrow">Fechamento de Caixa</span>
+                <h2>Consultar por data</h2>
+              </div>
+            </div>
+
+            <div className="report-filters no-print">
+              <label>
+                Data
+                <input
+                  type="date"
+                  value={dataRelatorioCaixa}
+                  onChange={(evento) =>
+                    setDataRelatorioCaixa(evento.target.value)
+                  }
+                />
+              </label>
+            </div>
+
+            {(() => {
+              const rotulosPorTipo = {
+                caixa: { icone: "📷", nome: "Fechamento de Caixa" },
+                boy: { icone: "🏍️", nome: "Diária Boy" },
+                cozinha: { icone: "👨‍🍳", nome: "Diária Cozinha" },
+                venda_prazo: {
+                  icone: "🧾",
+                  nome: "Venda a Prazo Funcionário",
+                },
+                funcionario: { icone: "👷", nome: "Diária Funcionário" },
+              };
+
+              const registrosDoDia = fechamentosCaixa.filter((item) => {
+                const data = new Date(item.criado_em);
+                const dataLocal = `${data.getFullYear()}-${String(
+                  data.getMonth() + 1
+                ).padStart(2, "0")}-${String(data.getDate()).padStart(
+                  2,
+                  "0"
+                )}`;
+                return dataLocal === dataRelatorioCaixa;
+              });
+
+              if (registrosDoDia.length === 0) {
+                return (
+                  <div className="empty-state">
+                    Nenhum registro de fechamento de caixa nesse dia.
+                  </div>
+                );
+              }
+
+              return (
+                <div className="categorias-lista">
+                  {registrosDoDia.map((registro) => {
+                    const info = rotulosPorTipo[registro.tipo] || {
+                      icone: "🗂️",
+                      nome: registro.tipo,
+                    };
+
+                    return (
+                      <div className="categoria-item" key={registro.id}>
+                        <div className="categoria-identificacao">
+                          <div className="categoria-icone">
+                            {info.icone}
+                          </div>
+
+                          <div>
+                            <strong>{info.nome}</strong>
+                            <div>
+                              {new Date(registro.criado_em).toLocaleTimeString(
+                                "pt-BR"
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="transaction-actions">
+                          <button
+                            type="button"
+                            className="edit-button"
+                            disabled={
+                              carregandoFotoRelatorioCaixaId === registro.id
+                            }
+                            onClick={async () => {
+                              setCarregandoFotoRelatorioCaixaId(registro.id);
+
+                              try {
+                                const resultado =
+                                  await buscarFotoFechamentoCaixa(
+                                    registro.id
+                                  );
+                                setFotoRelatorioCaixaVisualizada(
+                                  resultado?.foto || ""
+                                );
+                              } catch (erro) {
+                                alert(
+                                  erro.message ||
+                                    "Não foi possível carregar a foto."
+                                );
+                              } finally {
+                                setCarregandoFotoRelatorioCaixaId(null);
+                              }
+                            }}
+                          >
+                            {carregandoFotoRelatorioCaixaId === registro.id
+                              ? "Carregando..."
+                              : "Ver foto"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </section>
+        )}
       </main>
+
+      {fotoRelatorioCaixaVisualizada && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setFotoRelatorioCaixaVisualizada(null);
+            }
+          }}
+        >
+          <div className="modal modal-foto">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Comprovante</span>
+                <h2>Foto arquivada</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setFotoRelatorioCaixaVisualizada(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <img
+              src={fotoRelatorioCaixaVisualizada}
+              alt="Foto arquivada"
+              className="foto-modal-imagem"
+            />
+          </div>
+        </div>
+      )}
 
       {modalAberto && (
         <div
