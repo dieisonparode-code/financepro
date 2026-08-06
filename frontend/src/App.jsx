@@ -22,6 +22,9 @@ import {
   criarUsuario,
   atualizarUsuario,
   excluirUsuario,
+  aprovarLancamento,
+  rejeitarLancamento,
+  atualizarConfiguracaoAprovacao,
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
@@ -278,6 +281,9 @@ function FinanceApp() {
 
   const [usuarios, setUsuarios] = useState([]);
   const [carregandoUsuarios, setCarregandoUsuarios] = useState(true);
+  const [aprovacaoAtiva, setAprovacaoAtiva] = useState(true);
+  const [processandoAprovacaoId, setProcessandoAprovacaoId] =
+    useState(null);
 
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
@@ -442,6 +448,41 @@ function FinanceApp() {
     carregarUsuarios();
   }, [ehAdministrador]);
 
+  useEffect(() => {
+    async function carregarConfiguracoes() {
+      const { data } = await supabase
+        .from("configuracoes")
+        .select("aprovacao_despesas_ativa")
+        .eq("id", 1)
+        .single();
+
+      if (data) {
+        setAprovacaoAtiva(data.aprovacao_despesas_ativa !== false);
+      }
+    }
+
+    carregarConfiguracoes();
+
+    const canalConfig = supabase
+      .channel("configuracoes-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "configuracoes" },
+        (payload) => {
+          if (payload.new) {
+            setAprovacaoAtiva(
+              payload.new.aprovacao_despesas_ativa !== false
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalConfig);
+    };
+  }, []);
+
 const [mesDashboard, setMesDashboard] = useState(
   new Date().toISOString().slice(0, 7)
 );
@@ -463,8 +504,14 @@ const lancamentosVisiveis = useMemo(() => {
   );
 }, [lancamentos, vePermissaoTotal, perfil]);
 
+const lancamentosAprovados = useMemo(() => {
+  return lancamentosVisiveis.filter(
+    (item) => (item.status || "aprovado") === "aprovado"
+  );
+}, [lancamentosVisiveis]);
+
 const lancamentosDashboard = useMemo(() => {
-  return lancamentosVisiveis.filter((item) => {
+  return lancamentosAprovados.filter((item) => {
     if (!item.data) return false;
 
     const noMes = item.data.slice(0, 7) === mesDashboard;
@@ -475,7 +522,7 @@ const lancamentosDashboard = useMemo(() => {
 
     return noMes && naLoja;
   });
-}, [lancamentosVisiveis, mesDashboard, lojaDashboard]);
+}, [lancamentosAprovados, mesDashboard, lojaDashboard]);
   const totais = useMemo(() => {
    const receitas = lancamentosDashboard
       .filter((item) => item.tipo === "receita")
@@ -510,7 +557,7 @@ const lancamentosDashboard = useMemo(() => {
   }, [lancamentosDashboard]);
 
   const despesasPorCategoria = useMemo(() => {
-  const agrupadas = lancamentosVisiveis
+  const agrupadas = lancamentosAprovados
     .filter((item) => item.tipo === "despesa")
     .reduce((acumulador, item) => {
       const categoria = item.categoria || "Outros";
@@ -528,7 +575,7 @@ const lancamentosDashboard = useMemo(() => {
     }, {});
 
   return Object.values(agrupadas);
-}, [lancamentosVisiveis]);
+}, [lancamentosAprovados]);
 
   const despesasPorCategoriaDashboard = useMemo(() => {
     const agrupadas = lancamentosDashboard
@@ -564,7 +611,7 @@ const lancamentosFiltrados = useMemo(() => {
 }, [lancamentosVisiveis, pagina]);
 
 const lancamentosRelatorio = useMemo(() => {
-  return lancamentosVisiveis.filter((item) => {
+  return lancamentosAprovados.filter((item) => {
     if (!item.data) return false;
 
     return (
@@ -572,7 +619,7 @@ const lancamentosRelatorio = useMemo(() => {
       item.data <= dataFinalRelatorio
        );
   });
-}, [lancamentosVisiveis, dataInicialRelatorio, dataFinalRelatorio]);
+}, [lancamentosAprovados, dataInicialRelatorio, dataFinalRelatorio]);
 const totaisRelatorio = useMemo(() => {
   const receitas = lancamentosRelatorio
     .filter((item) => item.tipo === "receita")
@@ -632,7 +679,7 @@ const statusCmv =
   }, [lancamentosRelatorio]);
 
   const lancamentosFluxo = useMemo(() => {
-    return lancamentosVisiveis
+    return lancamentosAprovados
       .filter((item) => {
         if (!item.data) return false;
 
@@ -652,7 +699,7 @@ const statusCmv =
           String(b.id || "")
         );
       });
-  }, [lancamentosVisiveis, dataInicialFluxo, dataFinalFluxo]);
+  }, [lancamentosAprovados, dataInicialFluxo, dataFinalFluxo]);
 
   const totaisFluxo = useMemo(() => {
     const entradas = lancamentosFluxo
@@ -987,6 +1034,55 @@ const statusCmv =
     }
   }
 
+  async function aprovarLancamentoHandler(id) {
+    setProcessandoAprovacaoId(id);
+
+    try {
+      const atualizado = await aprovarLancamento(id);
+
+      setLancamentos((anteriores) =>
+        anteriores.map((item) => (item.id === id ? atualizado : item))
+      );
+    } catch (erro) {
+      console.error("Erro ao aprovar lançamento:", erro);
+      alert(erro.message || "Não foi possível aprovar o lançamento.");
+    } finally {
+      setProcessandoAprovacaoId(null);
+    }
+  }
+
+  async function rejeitarLancamentoHandler(id) {
+    setProcessandoAprovacaoId(id);
+
+    try {
+      const atualizado = await rejeitarLancamento(id);
+
+      setLancamentos((anteriores) =>
+        anteriores.map((item) => (item.id === id ? atualizado : item))
+      );
+    } catch (erro) {
+      console.error("Erro ao rejeitar lançamento:", erro);
+      alert(erro.message || "Não foi possível rejeitar o lançamento.");
+    } finally {
+      setProcessandoAprovacaoId(null);
+    }
+  }
+
+  async function alternarAprovacaoAtiva() {
+    const novoValor = !aprovacaoAtiva;
+    setAprovacaoAtiva(novoValor);
+
+    try {
+      await atualizarConfiguracaoAprovacao(novoValor);
+    } catch (erro) {
+      console.error("Erro ao atualizar configuração:", erro);
+      alert(
+        erro.message || "Não foi possível atualizar a configuração."
+      );
+      setAprovacaoAtiva(!novoValor);
+    }
+  }
+
   function adicionarCategoria(novaCategoria) {
     const nomeNormalizado = novaCategoria.nome.trim();
 
@@ -1239,6 +1335,23 @@ const statusCmv =
             </button>
           )}
         </nav>
+
+        {ehAdministrador && (
+          <button
+            type="button"
+            className="aprovacao-toggle"
+            onClick={alternarAprovacaoAtiva}
+            title={
+              aprovacaoAtiva
+                ? "Aprovação de despesas está ATIVA — clique para desligar"
+                : "Aprovação de despesas está DESLIGADA — clique para ligar"
+            }
+          >
+            <span>{aprovacaoAtiva ? "🔒" : "🔓"}</span>
+            Aprovação{" "}
+            {aprovacaoAtiva ? "ativa" : "desligada"}
+          </button>
+        )}
       </aside>
 
       <main className="main-content">
@@ -1329,7 +1442,19 @@ const statusCmv =
               lancamentosFiltrados.map((item) => (
                 <div key={item.id} className="transaction-item">
                   <div>
-                    <strong>{item.descricao}</strong>
+                    <strong>
+                      {item.descricao}
+                      {item.status === "pendente" && (
+                        <span className="badge-status badge-status-pendente">
+                          ⏳ Pendente
+                        </span>
+                      )}
+                      {item.status === "rejeitado" && (
+                        <span className="badge-status badge-status-rejeitado">
+                          ❌ Rejeitado
+                        </span>
+                      )}
+                    </strong>
                     <span>{item.grupo || "-"}</span>
                     <span>{item.categoria || "-"}</span>
                     <span>{item.fornecedor || "-"}</span>
@@ -1471,6 +1596,38 @@ const statusCmv =
                               ? "Carregando..."
                               : "📦 Ver mercadoria"}
                           </button>
+                        )}
+
+                      {ehAdministrador &&
+                        pagina === "despesas" &&
+                        item.status === "pendente" && (
+                          <>
+                            <button
+                              type="button"
+                              className="approve-button"
+                              disabled={
+                                processandoAprovacaoId === item.id
+                              }
+                              onClick={() =>
+                                aprovarLancamentoHandler(item.id)
+                              }
+                            >
+                              ✅ Aprovar
+                            </button>
+
+                            <button
+                              type="button"
+                              className="reject-button"
+                              disabled={
+                                processandoAprovacaoId === item.id
+                              }
+                              onClick={() =>
+                                rejeitarLancamentoHandler(item.id)
+                              }
+                            >
+                              ❌ Rejeitar
+                            </button>
+                          </>
                         )}
 
                       <button

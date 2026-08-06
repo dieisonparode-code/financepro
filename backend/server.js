@@ -81,6 +81,53 @@ async function verificarAdmin(req, res, next) {
   }
 }
 
+async function obterPerfilOpcional(req) {
+  try {
+    const cabecalho = req.headers.authorization || "";
+    const token = cabecalho.replace("Bearer ", "");
+
+    if (!token) {
+      return { usuario: null, perfil: null };
+    }
+
+    const { data: dadosUsuario, error: erroUsuario } =
+      await supabase.auth.getUser(token);
+
+    if (erroUsuario || !dadosUsuario?.user) {
+      return { usuario: null, perfil: null };
+    }
+
+    const { data: perfil } = await supabase
+      .from("perfis")
+      .select("*")
+      .eq("user_id", dadosUsuario.user.id)
+      .single();
+
+    return { usuario: dadosUsuario.user, perfil: perfil || null };
+  } catch (erro) {
+    console.error("Erro ao obter perfil da requisição:", erro.message);
+    return { usuario: null, perfil: null };
+  }
+}
+
+async function aprovacaoDespesasAtiva() {
+  try {
+    const { data } = await supabase
+      .from("configuracoes")
+      .select("aprovacao_despesas_ativa")
+      .eq("id", 1)
+      .single();
+
+    return data?.aprovacao_despesas_ativa !== false;
+  } catch (erro) {
+    console.error(
+      "Erro ao buscar configuração de aprovação:",
+      erro.message
+    );
+    return true;
+  }
+}
+
 function prepararLancamento(dados = {}) {
   return {
     tipo: dados.tipo || "",
@@ -117,7 +164,7 @@ app.get("/", function (req, res) {
 });
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status";
 
 app.get("/lancamentos", async function (req, res) {
   try {
@@ -215,9 +262,23 @@ app.get("/lancamentos/:id/foto-mercadoria", async function (req, res) {
 
 app.post("/lancamentos", async function (req, res) {
   try {
+    const { perfil } = await obterPerfilOpcional(req);
+    const dadosPreparados = prepararLancamento(req.body);
+
+    let status = "aprovado";
+
+    if (dadosPreparados.tipo === "despesa" && perfil?.perfil !== "administrador") {
+      const precisaAprovacao = await aprovacaoDespesasAtiva();
+
+      if (precisaAprovacao) {
+        status = "pendente";
+      }
+    }
+
     const novoLancamento = {
       id: Date.now(),
-      ...prepararLancamento(req.body),
+      ...dadosPreparados,
+      status,
     };
 
     const { data, error } = await supabase
@@ -312,6 +373,78 @@ app.delete(
 
       res.status(500).json({
         erro: "Não foi possível excluir o lançamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/lancamentos/:id/aprovar",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do lançamento inválido.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("lancamentos")
+        .update({ status: "aprovado" })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao aprovar lançamento:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível aprovar o lançamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/lancamentos/:id/rejeitar",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do lançamento inválido.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("lancamentos")
+        .update({ status: "rejeitado" })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao rejeitar lançamento:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível rejeitar o lançamento.",
         detalhes: erro.message,
       });
     }
@@ -590,6 +723,39 @@ app.delete("/usuarios/:id", verificarAdmin, async function (req, res) {
     });
   }
 });
+
+app.put(
+  "/configuracoes/aprovacao-despesas",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const ativa = Boolean(req.body?.ativa);
+
+      const { data, error } = await supabase
+        .from("configuracoes")
+        .update({ aprovacao_despesas_ativa: ativa })
+        .eq("id", 1)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data);
+    } catch (erro) {
+      console.error(
+        "Erro ao atualizar configuração de aprovação:",
+        erro.message
+      );
+
+      res.status(500).json({
+        erro: "Não foi possível atualizar a configuração.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 app.use(function (erro, req, res, next) {
   if (

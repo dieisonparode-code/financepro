@@ -61,18 +61,18 @@ export function buscarFotoMercadoriaLancamento(id) {
   return requisicao(`/lancamentos/${id}/foto-mercadoria`);
 }
 
-export function criarLancamento(dados) {
+export async function criarLancamento(dados) {
   return requisicao("/lancamentos", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarLancamento(id, dados) {
+export async function atualizarLancamento(id, dados) {
   return requisicao(`/lancamentos/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
@@ -80,6 +80,28 @@ export function atualizarLancamento(id, dados) {
 export function excluirLancamento(id) {
   return requisicao(`/lancamentos/${id}`, {
     method: "DELETE",
+  });
+}
+
+export async function aprovarLancamento(id) {
+  return requisicao(`/lancamentos/${id}/aprovar`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function rejeitarLancamento(id) {
+  return requisicao(`/lancamentos/${id}/rejeitar`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function atualizarConfiguracaoAprovacao(ativa) {
+  return requisicao("/configuracoes/aprovacao-despesas", {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ ativa }),
   });
 }
 
