@@ -146,6 +146,13 @@ function prepararLancamento(dados = {}) {
     precisao_metros: dados.precisao_metros ?? null,
     capturado_em: dados.capturado_em || null,
     loja_id: dados.loja_id || null,
+    forma_pagamento_id: dados.forma_pagamento_id || null,
+    valor_bruto: dados.valor_bruto != null ? Number(dados.valor_bruto) : null,
+    valor_liquido_esperado:
+      dados.valor_liquido_esperado != null
+        ? Number(dados.valor_liquido_esperado)
+        : null,
+    data_prevista_recebimento: dados.data_prevista_recebimento || null,
   };
 }
 
@@ -188,7 +195,7 @@ app.get("/", function (req, res) {
 });
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
 app.get("/lancamentos", async function (req, res) {
   try {
@@ -965,6 +972,126 @@ app.delete("/atendimentos/:id", async function (req, res) {
 
     res.status(500).json({
       erro: "Não foi possível excluir o atendimento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+function prepararFormaPagamento(dados = {}) {
+  return {
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    nome: (dados.nome || "").trim(),
+    operadora: (dados.operadora || "").trim(),
+    prazo_dias: dados.prazo_dias ? Number(dados.prazo_dias) : 0,
+    taxa_percentual: dados.taxa_percentual
+      ? Number(dados.taxa_percentual)
+      : 0,
+    ativo: dados.ativo !== false,
+  };
+}
+
+app.get("/formas-pagamento", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("formas_pagamento")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar formas de pagamento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar as formas de pagamento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/formas-pagamento", async function (req, res) {
+  try {
+    const dados = prepararFormaPagamento(req.body);
+
+    if (!dados.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome da forma de pagamento.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("formas_pagamento")
+      .insert([dados])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar forma de pagamento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar a forma de pagamento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/formas-pagamento/:id", async function (req, res) {
+  try {
+    const dados = prepararFormaPagamento(req.body);
+
+    if (!dados.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome da forma de pagamento.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("formas_pagamento")
+      .update(dados)
+      .eq("id", req.params.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar forma de pagamento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar a forma de pagamento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/formas-pagamento/:id", async function (req, res) {
+  try {
+    const { error } = await supabase
+      .from("formas_pagamento")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir forma de pagamento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir a forma de pagamento.",
       detalhes: erro.message,
     });
   }

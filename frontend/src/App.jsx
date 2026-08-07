@@ -24,6 +24,10 @@ import {
   criarCategoria as criarCategoriaApi,
   atualizarCategoria as atualizarCategoriaApi,
   excluirCategoria as excluirCategoriaApi,
+  buscarFormasPagamento,
+  criarFormaPagamento,
+  atualizarFormaPagamento,
+  excluirFormaPagamento,
   buscarContasPagar,
   criarContaPagar,
   atualizarContaPagar,
@@ -61,6 +65,7 @@ import {
 import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
+import ContasReceber from "./components/ContasReceber";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -209,6 +214,7 @@ function criarFormularioInicial(tipo = "receita") {
     precisao_metros: null,
     capturado_em: null,
     loja_id: "",
+    forma_pagamento_id: "",
     data: new Date().toISOString().slice(0, 10),
   };
 }
@@ -300,6 +306,10 @@ function FinanceApp() {
   const [contasPagar, setContasPagar] = useState([]);
   const [carregandoContasPagar, setCarregandoContasPagar] = useState(true);
 
+  const [formasPagamento, setFormasPagamento] = useState([]);
+  const [carregandoFormasPagamento, setCarregandoFormasPagamento] =
+    useState(true);
+
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
   );
@@ -376,6 +386,58 @@ function FinanceApp() {
 
     return () => {
       supabase.removeChannel(canalCategorias);
+    };
+  }, []);
+
+  useEffect(() => {
+    async function carregarFormasPagamentoSalvas() {
+      try {
+        setCarregandoFormasPagamento(true);
+        const dados = await buscarFormasPagamento();
+        setFormasPagamento(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar formas de pagamento:", erro);
+      } finally {
+        setCarregandoFormasPagamento(false);
+      }
+    }
+
+    carregarFormasPagamentoSalvas();
+
+    const canalFormasPagamento = supabase
+      .channel("formas-pagamento-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "formas_pagamento" },
+        (payload) => {
+          setFormasPagamento((anteriores) => {
+            if (payload.eventType === "INSERT") {
+              if (anteriores.some((item) => item.id === payload.new.id)) {
+                return anteriores;
+              }
+              return [...anteriores, payload.new];
+            }
+
+            if (payload.eventType === "UPDATE") {
+              return anteriores.map((item) =>
+                item.id === payload.new.id ? payload.new : item
+              );
+            }
+
+            if (payload.eventType === "DELETE") {
+              return anteriores.filter(
+                (item) => item.id !== payload.old.id
+              );
+            }
+
+            return anteriores;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalFormasPagamento);
     };
   }, []);
 
@@ -1231,6 +1293,24 @@ const statusCmv =
       return;
     }
 
+    const formaPagamentoSelecionada = formasPagamento.find(
+      (item) => String(item.id) === String(formulario.forma_pagamento_id)
+    );
+
+    let valorLiquidoEsperado = null;
+    let dataPrevistaRecebimento = null;
+
+    if (tipoLancamento === "receita" && formaPagamentoSelecionada) {
+      const taxa = Number(formaPagamentoSelecionada.taxa_percentual || 0);
+      const prazo = Number(formaPagamentoSelecionada.prazo_dias || 0);
+
+      valorLiquidoEsperado = valorNumerico - (valorNumerico * taxa) / 100;
+
+      const dataBase = new Date(`${formulario.data}T12:00:00`);
+      dataBase.setDate(dataBase.getDate() + prazo);
+      dataPrevistaRecebimento = dataBase.toISOString().slice(0, 10);
+    }
+
     const dados = {
       tipo: tipoLancamento,
       descricao: formulario.descricao.trim(),
@@ -1247,6 +1327,13 @@ const statusCmv =
       precisao_metros: formulario.precisao_metros,
       capturado_em: formulario.capturado_em,
       loja_id: formulario.loja_id ? Number(formulario.loja_id) : null,
+      forma_pagamento_id: formulario.forma_pagamento_id || null,
+      valor_bruto:
+        tipoLancamento === "receita" && formaPagamentoSelecionada
+          ? valorNumerico
+          : null,
+      valor_liquido_esperado: valorLiquidoEsperado,
+      data_prevista_recebimento: dataPrevistaRecebimento,
       data: formulario.data,
     };
 
@@ -1540,6 +1627,25 @@ const statusCmv =
     );
   }
 
+  async function adicionarFormaPagamento(dados) {
+    const salva = await criarFormaPagamento(dados);
+    setFormasPagamento((anteriores) => [...anteriores, salva]);
+  }
+
+  async function editarFormaPagamento(id, dados) {
+    const salva = await atualizarFormaPagamento(id, dados);
+    setFormasPagamento((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salva : item))
+    );
+  }
+
+  async function removerFormaPagamento(id) {
+    await excluirFormaPagamento(id);
+    setFormasPagamento((anteriores) =>
+      anteriores.filter((item) => item.id !== id)
+    );
+  }
+
   async function adicionarContaPagar(dados) {
     const salva = await criarContaPagar(dados);
     setContasPagar((anteriores) => [...anteriores, salva]);
@@ -1715,6 +1821,13 @@ const statusCmv =
                 onClick={() => setPagina("contas-pagar")}
               >
                 Contas a Pagar
+              </button>
+
+              <button
+                className={pagina === "contas-receber" ? "active" : ""}
+                onClick={() => setPagina("contas-receber")}
+              >
+                Contas a Receber
               </button>
             </>
           )}
@@ -2199,6 +2312,17 @@ const statusCmv =
             editarInsumo={editarInsumoHandler}
             excluirInsumo={removerInsumo}
             registrarMovimentacao={registrarMovimentacaoHandler}
+          />
+        )}
+
+        {pagina === "contas-receber" && (
+          <ContasReceber
+            lancamentos={lancamentos}
+            formasPagamento={formasPagamento}
+            carregandoFormas={carregandoFormasPagamento}
+            adicionarFormaPagamento={adicionarFormaPagamento}
+            editarFormaPagamento={editarFormaPagamento}
+            removerFormaPagamento={removerFormaPagamento}
           />
         )}
 
@@ -2952,6 +3076,29 @@ const statusCmv =
                   ))}
                 </select>
               </label>
+
+              {tipoLancamento === "receita" && (
+                <label>
+                  Forma de pagamento (pra Contas a Receber)
+                  <select
+                    value={formulario.forma_pagamento_id}
+                    onChange={(evento) =>
+                      alterarCampo(
+                        "forma_pagamento_id",
+                        evento.target.value
+                      )
+                    }
+                  >
+                    <option value="">Não informado</option>
+                    {formasPagamento.map((forma) => (
+                      <option key={forma.id} value={forma.id}>
+                        {forma.nome} (D+{forma.prazo_dias},{" "}
+                        {forma.taxa_percentual}%)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <label>
                 Fornecedor

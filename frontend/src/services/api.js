@@ -143,6 +143,32 @@ export function buscarMovimentacoesEstoque(id) {
   return requisicao(`/insumos/${id}/movimentacoes`);
 }
 
+export function buscarFormasPagamento() {
+  return requisicao("/formas-pagamento");
+}
+
+export function criarFormaPagamento(dados) {
+  return requisicao("/formas-pagamento", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function atualizarFormaPagamento(id, dados) {
+  return requisicao(`/formas-pagamento/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function excluirFormaPagamento(id) {
+  return requisicao(`/formas-pagamento/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function buscarContasPagar() {
   return requisicao("/contas-pagar");
 }
