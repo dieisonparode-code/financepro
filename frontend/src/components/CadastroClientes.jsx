@@ -179,14 +179,12 @@ function CadastroClientes({
 
   return (
     <section className="categorias-layout">
+      {editandoId && (
       <article className="panel categoria-form-panel">
         <div className="panel-header">
           <div>
-            <span className="eyebrow">
-              {editandoId ? "Editar cadastro" : "Novo cadastro"}
-            </span>
-
-            <h2>{editandoId ? "Editar cliente" : "Novo cliente"}</h2>
+            <span className="eyebrow">Editar cadastro</span>
+            <h2>Editar cliente</h2>
           </div>
         </div>
 
@@ -258,15 +256,12 @@ function CadastroClientes({
               className="primary-button"
               disabled={salvando}
             >
-              {salvando
-                ? "Salvando..."
-                : editandoId
-                ? "Salvar alterações"
-                : "Cadastrar cliente"}
+              {salvando ? "Salvando..." : "Salvar alterações"}
             </button>
           </div>
         </form>
       </article>
+      )}
 
       <article className="panel categoria-lista-panel">
         <div className="panel-header">
@@ -291,7 +286,7 @@ function CadastroClientes({
         ) : clientesFiltrados.length === 0 ? (
           <div className="empty-state">
             {clientes.length === 0
-              ? "Nenhum cliente cadastrado ainda."
+              ? "Nenhum cliente ainda. Os clientes aparecem aqui automaticamente a partir das compras (integração Saipos)."
               : "Nenhum cliente encontrado com essa busca."}
           </div>
         ) : (
