@@ -970,6 +970,175 @@ app.delete("/atendimentos/:id", async function (req, res) {
   }
 });
 
+function prepararContaPagar(dados = {}) {
+  return {
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    descricao: (dados.descricao || "").trim(),
+    fornecedor: (dados.fornecedor || "").trim(),
+    valor: Number(dados.valor || 0),
+    data_vencimento: dados.data_vencimento || null,
+    observacao: (dados.observacao || "").trim(),
+  };
+}
+
+app.get("/contas-pagar", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("contas_pagar")
+      .select("*")
+      .order("data_vencimento", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar contas a pagar:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar as contas a pagar.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/contas-pagar", async function (req, res) {
+  try {
+    const dadosConta = prepararContaPagar(req.body);
+
+    if (!dadosConta.descricao || !dadosConta.data_vencimento) {
+      return res.status(400).json({
+        erro: "Informe a descrição e a data de vencimento.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("contas_pagar")
+      .insert([dadosConta])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar conta a pagar:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar a conta a pagar.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/contas-pagar/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da conta inválido.",
+      });
+    }
+
+    const dadosConta = prepararContaPagar(req.body);
+
+    if (!dadosConta.descricao || !dadosConta.data_vencimento) {
+      return res.status(400).json({
+        erro: "Informe a descrição e a data de vencimento.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("contas_pagar")
+      .update(dadosConta)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar conta a pagar:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar a conta a pagar.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/contas-pagar/:id/pagar", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da conta inválido.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("contas_pagar")
+      .update({
+        status: "pago",
+        data_pagamento: new Date().toISOString().slice(0, 10),
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao marcar conta como paga:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível marcar a conta como paga.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/contas-pagar/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID da conta inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("contas_pagar")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir conta a pagar:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir a conta a pagar.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 const colunasFechamentoListagem =
   "id, loja_id, tipo, nome_pessoa, valor, tem_foto, observacao, criado_em";
 

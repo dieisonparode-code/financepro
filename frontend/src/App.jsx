@@ -24,6 +24,11 @@ import {
   criarCategoria as criarCategoriaApi,
   atualizarCategoria as atualizarCategoriaApi,
   excluirCategoria as excluirCategoriaApi,
+  buscarContasPagar,
+  criarContaPagar,
+  atualizarContaPagar,
+  marcarContaPagarComoPaga,
+  excluirContaPagar,
   buscarClientes,
   criarCliente,
   atualizarCliente,
@@ -55,6 +60,7 @@ import {
 
 import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
+import ContasPagar, { diasAte } from "./components/ContasPagar";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -291,6 +297,9 @@ function FinanceApp() {
   const [clientes, setClientes] = useState([]);
   const [carregandoClientes, setCarregandoClientes] = useState(true);
 
+  const [contasPagar, setContasPagar] = useState([]);
+  const [carregandoContasPagar, setCarregandoContasPagar] = useState(true);
+
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
   );
@@ -367,6 +376,58 @@ function FinanceApp() {
 
     return () => {
       supabase.removeChannel(canalCategorias);
+    };
+  }, []);
+
+  useEffect(() => {
+    async function carregarContasPagarSalvas() {
+      try {
+        setCarregandoContasPagar(true);
+        const dados = await buscarContasPagar();
+        setContasPagar(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar contas a pagar:", erro);
+      } finally {
+        setCarregandoContasPagar(false);
+      }
+    }
+
+    carregarContasPagarSalvas();
+
+    const canalContasPagar = supabase
+      .channel("contas-pagar-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "contas_pagar" },
+        (payload) => {
+          setContasPagar((anteriores) => {
+            if (payload.eventType === "INSERT") {
+              if (anteriores.some((item) => item.id === payload.new.id)) {
+                return anteriores;
+              }
+              return [...anteriores, payload.new];
+            }
+
+            if (payload.eventType === "UPDATE") {
+              return anteriores.map((item) =>
+                item.id === payload.new.id ? payload.new : item
+              );
+            }
+
+            if (payload.eventType === "DELETE") {
+              return anteriores.filter(
+                (item) => item.id !== payload.old.id
+              );
+            }
+
+            return anteriores;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalContasPagar);
     };
   }, []);
 
@@ -1479,6 +1540,32 @@ const statusCmv =
     );
   }
 
+  async function adicionarContaPagar(dados) {
+    const salva = await criarContaPagar(dados);
+    setContasPagar((anteriores) => [...anteriores, salva]);
+  }
+
+  async function editarContaPagar(id, dados) {
+    const salva = await atualizarContaPagar(id, dados);
+    setContasPagar((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salva : item))
+    );
+  }
+
+  async function pagarContaPagar(id) {
+    const salva = await marcarContaPagarComoPaga(id);
+    setContasPagar((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salva : item))
+    );
+  }
+
+  async function removerContaPagar(id) {
+    await excluirContaPagar(id);
+    setContasPagar((anteriores) =>
+      anteriores.filter((item) => item.id !== id)
+    );
+  }
+
   async function adicionarCliente(dados) {
     const salvo = await criarCliente(dados);
     setClientes((anteriores) => [...anteriores, salvo]);
@@ -1622,6 +1709,13 @@ const statusCmv =
               >
                 Relatórios
               </button>
+
+              <button
+                className={pagina === "contas-pagar" ? "active" : ""}
+                onClick={() => setPagina("contas-pagar")}
+              >
+                Contas a Pagar
+              </button>
             </>
           )}
 
@@ -1690,6 +1784,40 @@ const statusCmv =
       </aside>
 
       <main className="main-content">
+  {temPermissao("financeiro") &&
+    (() => {
+      const contasAlerta = contasPagar
+        .filter((conta) => conta.status !== "pago")
+        .map((conta) => ({
+          ...conta,
+          _dias: diasAte(conta.data_vencimento),
+        }))
+        .filter((conta) => conta._dias <= 2)
+        .sort((a, b) => a._dias - b._dias);
+
+      if (contasAlerta.length === 0) return null;
+
+      return (
+        <div className="alerta-contas-pagar">
+          <strong>⚠️ Contas a pagar precisando de atenção:</strong>
+
+          <ul>
+            {contasAlerta.map((conta) => (
+              <li key={conta.id}>
+                {conta.descricao} —{" "}
+                {conta._dias < 0
+                  ? `atrasada há ${Math.abs(conta._dias)} dia(s)`
+                  : conta._dias === 0
+                  ? "vence hoje"
+                  : `vence em ${conta._dias} dia(s)`}{" "}
+                ({formatarMoeda(conta.valor)})
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    })()}
+
   {pagina !== "dashboard" && (
     <header className="topbar">
       <div>
@@ -2071,6 +2199,17 @@ const statusCmv =
             editarInsumo={editarInsumoHandler}
             excluirInsumo={removerInsumo}
             registrarMovimentacao={registrarMovimentacaoHandler}
+          />
+        )}
+
+        {pagina === "contas-pagar" && (
+          <ContasPagar
+            contas={contasPagar}
+            carregando={carregandoContasPagar}
+            adicionarConta={adicionarContaPagar}
+            editarConta={editarContaPagar}
+            marcarComoPaga={pagarContaPagar}
+            removerConta={removerContaPagar}
           />
         )}
 
