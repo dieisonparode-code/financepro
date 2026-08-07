@@ -143,6 +143,50 @@ export function buscarMovimentacoesEstoque(id) {
   return requisicao(`/insumos/${id}/movimentacoes`);
 }
 
+export function buscarClientes() {
+  return requisicao("/clientes");
+}
+
+export function criarCliente(dados) {
+  return requisicao("/clientes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function atualizarCliente(id, dados) {
+  return requisicao(`/clientes/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function excluirCliente(id) {
+  return requisicao(`/clientes/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function buscarAtendimentosCliente(id) {
+  return requisicao(`/clientes/${id}/atendimentos`);
+}
+
+export function criarAtendimentoCliente(id, dados) {
+  return requisicao(`/clientes/${id}/atendimentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+}
+
+export function excluirAtendimento(id) {
+  return requisicao(`/atendimentos/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function buscarCategorias() {
   return requisicao("/categorias");
 }

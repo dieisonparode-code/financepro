@@ -733,6 +733,243 @@ app.delete("/categorias/:id", async function (req, res) {
   }
 });
 
+function prepararCliente(dados = {}) {
+  return {
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    nome: (dados.nome || "").trim(),
+    telefone: (dados.telefone || "").trim(),
+    email: (dados.email || "").trim(),
+    endereco: (dados.endereco || "").trim(),
+    observacoes: (dados.observacoes || "").trim(),
+  };
+}
+
+app.get("/clientes", async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar clientes:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os clientes.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/clientes", async function (req, res) {
+  try {
+    const dadosCliente = prepararCliente(req.body);
+
+    if (!dadosCliente.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome do cliente.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("clientes")
+      .insert([dadosCliente])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar cliente:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível criar o cliente.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.put("/clientes/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do cliente inválido.",
+      });
+    }
+
+    const dadosCliente = prepararCliente(req.body);
+
+    if (!dadosCliente.nome) {
+      return res.status(400).json({
+        erro: "Informe o nome do cliente.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("clientes")
+      .update(dadosCliente)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao atualizar cliente:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível atualizar o cliente.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/clientes/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do cliente inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("clientes")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir cliente:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir o cliente.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.get("/clientes/:id/atendimentos", async function (req, res) {
+  try {
+    const clienteId = Number(req.params.id);
+
+    if (!Number.isFinite(clienteId)) {
+      return res.status(400).json({
+        erro: "ID do cliente inválido.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("atendimentos_clientes")
+      .select("*")
+      .eq("cliente_id", clienteId)
+      .order("data", { ascending: false })
+      .order("id", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar atendimentos:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os atendimentos.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/clientes/:id/atendimentos", async function (req, res) {
+  try {
+    const clienteId = Number(req.params.id);
+
+    if (!Number.isFinite(clienteId)) {
+      return res.status(400).json({
+        erro: "ID do cliente inválido.",
+      });
+    }
+
+    const dadosAtendimento = {
+      cliente_id: clienteId,
+      data: req.body.data || new Date().toISOString().slice(0, 10),
+      valor:
+        req.body.valor !== "" && req.body.valor != null
+          ? Number(req.body.valor)
+          : null,
+      observacao: (req.body.observacao || "").trim(),
+    };
+
+    const { data, error } = await supabase
+      .from("atendimentos_clientes")
+      .insert([dadosAtendimento])
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar atendimento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível registrar o atendimento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/atendimentos/:id", async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do atendimento inválido.",
+      });
+    }
+
+    const { error } = await supabase
+      .from("atendimentos_clientes")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir atendimento:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir o atendimento.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 const colunasFechamentoListagem =
   "id, loja_id, tipo, nome_pessoa, valor, tem_foto, observacao, criado_em";
 
@@ -906,6 +1143,7 @@ const PERMISSOES_VALIDAS = [
   "estoque",
   "fechamento_caixa",
   "aprovar_despesas",
+  "clientes",
 ];
 
 function prepararPermissoes(permissoes) {

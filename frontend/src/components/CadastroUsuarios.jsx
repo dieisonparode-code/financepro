@@ -5,6 +5,7 @@ const permissoesDisponiveis = [
   { valor: "estoque", rotulo: "Estoque / Insumos" },
   { valor: "fechamento_caixa", rotulo: "Fechamento de Caixa" },
   { valor: "aprovar_despesas", rotulo: "Aprovar Despesas" },
+  { valor: "clientes", rotulo: "Clientes (CRM)" },
 ];
 
 function CadastroUsuarios({

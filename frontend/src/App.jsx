@@ -24,6 +24,13 @@ import {
   criarCategoria as criarCategoriaApi,
   atualizarCategoria as atualizarCategoriaApi,
   excluirCategoria as excluirCategoriaApi,
+  buscarClientes,
+  criarCliente,
+  atualizarCliente,
+  excluirCliente,
+  buscarAtendimentosCliente,
+  criarAtendimentoCliente,
+  excluirAtendimento,
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
   criarFechamentoCaixa,
@@ -47,6 +54,7 @@ import {
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
+import CadastroClientes from "./components/CadastroClientes";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -280,6 +288,9 @@ function FinanceApp() {
   const [fechamentosCaixa, setFechamentosCaixa] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(true);
 
+  const [clientes, setClientes] = useState([]);
+  const [carregandoClientes, setCarregandoClientes] = useState(true);
+
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
   );
@@ -356,6 +367,58 @@ function FinanceApp() {
 
     return () => {
       supabase.removeChannel(canalCategorias);
+    };
+  }, []);
+
+  useEffect(() => {
+    async function carregarClientesSalvos() {
+      try {
+        setCarregandoClientes(true);
+        const dados = await buscarClientes();
+        setClientes(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar clientes:", erro);
+      } finally {
+        setCarregandoClientes(false);
+      }
+    }
+
+    carregarClientesSalvos();
+
+    const canalClientes = supabase
+      .channel("clientes-tempo-real")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "clientes" },
+        (payload) => {
+          setClientes((anteriores) => {
+            if (payload.eventType === "INSERT") {
+              if (anteriores.some((item) => item.id === payload.new.id)) {
+                return anteriores;
+              }
+              return [...anteriores, payload.new];
+            }
+
+            if (payload.eventType === "UPDATE") {
+              return anteriores.map((item) =>
+                item.id === payload.new.id ? payload.new : item
+              );
+            }
+
+            if (payload.eventType === "DELETE") {
+              return anteriores.filter(
+                (item) => item.id !== payload.old.id
+              );
+            }
+
+            return anteriores;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalClientes);
     };
   }, []);
 
@@ -1416,6 +1479,31 @@ const statusCmv =
     );
   }
 
+  async function adicionarCliente(dados) {
+    const salvo = await criarCliente(dados);
+    setClientes((anteriores) => [...anteriores, salvo]);
+  }
+
+  async function editarCliente(id, dados) {
+    const salvo = await atualizarCliente(id, dados);
+    setClientes((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salvo : item))
+    );
+  }
+
+  async function removerCliente(id) {
+    await excluirCliente(id);
+    setClientes((anteriores) => anteriores.filter((item) => item.id !== id));
+  }
+
+  async function adicionarAtendimentoCliente(clienteId, dados) {
+    return criarAtendimentoCliente(clienteId, dados);
+  }
+
+  async function removerAtendimentoCliente(id) {
+    await excluirAtendimento(id);
+  }
+
   async function adicionarFechamentoCaixa(dados) {
     const salvo = await criarFechamentoCaixa(dados);
 
@@ -1535,6 +1623,15 @@ const statusCmv =
                 Relatórios
               </button>
             </>
+          )}
+
+          {temPermissao("clientes") && (
+            <button
+              className={pagina === "clientes" ? "active" : ""}
+              onClick={() => setPagina("clientes")}
+            >
+              Clientes
+            </button>
           )}
 
           {temPermissao("estoque") && (
@@ -1974,6 +2071,19 @@ const statusCmv =
             editarInsumo={editarInsumoHandler}
             excluirInsumo={removerInsumo}
             registrarMovimentacao={registrarMovimentacaoHandler}
+          />
+        )}
+
+        {pagina === "clientes" && (
+          <CadastroClientes
+            clientes={clientes}
+            carregando={carregandoClientes}
+            adicionarCliente={adicionarCliente}
+            editarCliente={editarCliente}
+            removerCliente={removerCliente}
+            buscarAtendimentos={buscarAtendimentosCliente}
+            adicionarAtendimento={adicionarAtendimentoCliente}
+            removerAtendimento={removerAtendimentoCliente}
           />
         )}
 
