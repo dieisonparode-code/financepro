@@ -66,6 +66,7 @@ import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
 import ContasReceber from "./components/ContasReceber";
+import LogAuditoria from "./components/LogAuditoria";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -1876,6 +1877,15 @@ const statusCmv =
               Usuários
             </button>
           )}
+
+          {ehAdministrador && (
+            <button
+              className={pagina === "auditoria" ? "active" : ""}
+              onClick={() => setPagina("auditoria")}
+            >
+              Log de Auditoria
+            </button>
+          )}
         </nav>
 
         {ehAdministrador && (
@@ -2314,6 +2324,8 @@ const statusCmv =
             registrarMovimentacao={registrarMovimentacaoHandler}
           />
         )}
+
+        {pagina === "auditoria" && ehAdministrador && <LogAuditoria />}
 
         {pagina === "contas-receber" && (
           <ContasReceber

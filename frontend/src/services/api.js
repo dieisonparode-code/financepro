@@ -143,6 +143,12 @@ export function buscarMovimentacoesEstoque(id) {
   return requisicao(`/insumos/${id}/movimentacoes`);
 }
 
+export async function buscarLogAuditoria() {
+  return requisicao("/log-auditoria", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export function buscarFormasPagamento() {
   return requisicao("/formas-pagamento");
 }
@@ -173,31 +179,33 @@ export function buscarContasPagar() {
   return requisicao("/contas-pagar");
 }
 
-export function criarContaPagar(dados) {
+export async function criarContaPagar(dados) {
   return requisicao("/contas-pagar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarContaPagar(id, dados) {
+export async function atualizarContaPagar(id, dados) {
   return requisicao(`/contas-pagar/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function marcarContaPagarComoPaga(id) {
+export async function marcarContaPagarComoPaga(id) {
   return requisicao(`/contas-pagar/${id}/pagar`, {
     method: "PUT",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function excluirContaPagar(id) {
+export async function excluirContaPagar(id) {
   return requisicao(`/contas-pagar/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
@@ -297,25 +305,26 @@ export function buscarLojas() {
   return requisicao("/lojas");
 }
 
-export function criarLoja(dados) {
+export async function criarLoja(dados) {
   return requisicao("/lojas", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarLoja(id, dados) {
+export async function atualizarLoja(id, dados) {
   return requisicao(`/lojas/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirLoja(id) {
+export async function excluirLoja(id) {
   return requisicao(`/lojas/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 

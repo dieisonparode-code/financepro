@@ -81,6 +81,58 @@ async function verificarAdmin(req, res, next) {
   }
 }
 
+function verificarPermissao(chave) {
+  return async function (req, res, next) {
+    try {
+      const cabecalho = req.headers.authorization || "";
+      const token = cabecalho.replace("Bearer ", "");
+
+      if (!token) {
+        return res.status(401).json({
+          erro: "É necessário estar logado.",
+        });
+      }
+
+      const { data: dadosUsuario, error: erroUsuario } =
+        await supabase.auth.getUser(token);
+
+      if (erroUsuario || !dadosUsuario?.user) {
+        return res.status(401).json({
+          erro: "Sessão inválida ou expirada.",
+        });
+      }
+
+      const { data: perfil, error: erroPerfil } = await supabase
+        .from("perfis")
+        .select("*")
+        .eq("user_id", dadosUsuario.user.id)
+        .single();
+
+      const temAcesso =
+        !erroPerfil &&
+        perfil &&
+        (perfil.perfil === "administrador" ||
+          (perfil.permissoes || []).includes(chave));
+
+      if (!temAcesso) {
+        return res.status(403).json({
+          erro: "Você não tem permissão para fazer isso.",
+        });
+      }
+
+      req.usuarioLogado = dadosUsuario.user;
+      req.perfilLogado = perfil;
+      next();
+    } catch (erro) {
+      console.error("Erro ao verificar permissão:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível verificar as permissões.",
+      });
+    }
+  };
+}
+
 async function obterPerfilOpcional(req) {
   try {
     const cabecalho = req.headers.authorization || "";
@@ -107,6 +159,25 @@ async function obterPerfilOpcional(req) {
   } catch (erro) {
     console.error("Erro ao obter perfil da requisição:", erro.message);
     return { usuario: null, perfil: null };
+  }
+}
+
+async function registrarAuditoria(req, acao, tabelaAfetada, registroId, detalhes) {
+  try {
+    const { usuario, perfil } = await obterPerfilOpcional(req);
+
+    await supabase.from("log_auditoria").insert([
+      {
+        usuario_id: usuario?.id || null,
+        usuario_nome: perfil?.nome || usuario?.email || "Desconhecido",
+        acao,
+        tabela_afetada: tabelaAfetada,
+        registro_id: registroId != null ? String(registroId) : null,
+        detalhes: detalhes || null,
+      },
+    ]);
+  } catch (erro) {
+    console.error("Erro ao registrar log de auditoria:", erro.message);
   }
 }
 
@@ -322,6 +393,14 @@ app.post("/lancamentos", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(
+      req,
+      "criou",
+      "lancamentos",
+      data.id,
+      `${data.tipo}: ${data.descricao} (${data.valor})`
+    );
+
     res.status(201).json(data);
   } catch (erro) {
     console.error(
@@ -360,6 +439,14 @@ app.put("/lancamentos/:id", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(
+      req,
+      "editou",
+      "lancamentos",
+      data.id,
+      `${data.tipo}: ${data.descricao} (${data.valor})`
+    );
+
     res.json(data);
   } catch (erro) {
     console.error(
@@ -395,6 +482,8 @@ app.delete(
         throw error;
       }
 
+      registrarAuditoria(req, "excluiu", "lancamentos", id, null);
+
       res.status(204).send();
     } catch (erro) {
       console.error(
@@ -412,7 +501,7 @@ app.delete(
 
 app.put(
   "/lancamentos/:id/aprovar",
-  verificarAdmin,
+  verificarPermissao("aprovar_despesas"),
   async function (req, res) {
     try {
       const id = Number(req.params.id);
@@ -434,6 +523,8 @@ app.put(
         throw error;
       }
 
+      registrarAuditoria(req, "aprovou", "lancamentos", id, null);
+
       res.json(data);
     } catch (erro) {
       console.error("Erro ao aprovar lançamento:", erro.message);
@@ -448,7 +539,7 @@ app.put(
 
 app.put(
   "/lancamentos/:id/rejeitar",
-  verificarAdmin,
+  verificarPermissao("aprovar_despesas"),
   async function (req, res) {
     try {
       const id = Number(req.params.id);
@@ -469,6 +560,8 @@ app.put(
       if (error) {
         throw error;
       }
+
+      registrarAuditoria(req, "rejeitou", "lancamentos", id, null);
 
       res.json(data);
     } catch (erro) {
@@ -524,6 +617,8 @@ app.post("/lojas", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(req, "criou", "lojas", data.id, data.nome);
+
     res.status(201).json(data);
   } catch (erro) {
     console.error("Erro ao criar loja:", erro.message);
@@ -564,6 +659,8 @@ app.put("/lojas/:id", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(req, "editou", "lojas", data.id, data.nome);
+
     res.json(data);
   } catch (erro) {
     console.error("Erro ao atualizar loja:", erro.message);
@@ -593,6 +690,8 @@ app.delete("/lojas/:id", async function (req, res) {
     if (error) {
       throw error;
     }
+
+    registrarAuditoria(req, "excluiu", "lojas", id, null);
 
     res.status(204).send();
   } catch (erro) {
@@ -990,6 +1089,29 @@ function prepararFormaPagamento(dados = {}) {
   };
 }
 
+app.get("/log-auditoria", verificarAdmin, async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("log_auditoria")
+      .select("*")
+      .order("criado_em", { ascending: false })
+      .limit(500);
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar log de auditoria:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar o log de auditoria.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 app.get("/formas-pagamento", async function (req, res) {
   try {
     const { data, error } = await supabase
@@ -1150,6 +1272,14 @@ app.post("/contas-pagar", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(
+      req,
+      "criou",
+      "contas_pagar",
+      data.id,
+      `${data.descricao} (${data.valor})`
+    );
+
     res.status(201).json(data);
   } catch (erro) {
     console.error("Erro ao criar conta a pagar:", erro.message);
@@ -1190,6 +1320,14 @@ app.put("/contas-pagar/:id", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(
+      req,
+      "editou",
+      "contas_pagar",
+      data.id,
+      `${data.descricao} (${data.valor})`
+    );
+
     res.json(data);
   } catch (erro) {
     console.error("Erro ao atualizar conta a pagar:", erro.message);
@@ -1225,6 +1363,14 @@ app.put("/contas-pagar/:id/pagar", async function (req, res) {
       throw error;
     }
 
+    registrarAuditoria(
+      req,
+      "pagou",
+      "contas_pagar",
+      data.id,
+      `${data.descricao} (${data.valor})`
+    );
+
     res.json(data);
   } catch (erro) {
     console.error("Erro ao marcar conta como paga:", erro.message);
@@ -1254,6 +1400,8 @@ app.delete("/contas-pagar/:id", async function (req, res) {
     if (error) {
       throw error;
     }
+
+    registrarAuditoria(req, "excluiu", "contas_pagar", id, null);
 
     res.status(204).send();
   } catch (erro) {
@@ -1487,6 +1635,14 @@ app.post("/usuarios", verificarAdmin, async function (req, res) {
       throw erroPerfil;
     }
 
+    registrarAuditoria(
+      req,
+      "criou",
+      "usuarios",
+      novoPerfil.user_id,
+      `${nome} (${email})`
+    );
+
     res.status(201).json({
       ...novoPerfil,
       email: novoUsuario.user.email,
@@ -1520,6 +1676,8 @@ app.put("/usuarios/:id", verificarAdmin, async function (req, res) {
     if (error) {
       throw error;
     }
+
+    registrarAuditoria(req, "editou", "usuarios", req.params.id, nome);
 
     res.json(data);
   } catch (erro) {
@@ -1556,6 +1714,8 @@ app.delete("/usuarios/:id", verificarAdmin, async function (req, res) {
     if (erroAuth) {
       throw erroAuth;
     }
+
+    registrarAuditoria(req, "excluiu", "usuarios", req.params.id, null);
 
     res.status(204).send();
   } catch (erro) {
