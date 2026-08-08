@@ -27,6 +27,12 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
+// data vem no formato AAAA-MM-DD (do input type="date") — mostra só DD/MM.
+function formatarDataCurta(data) {
+  const [ano, mes, dia] = data.split("-");
+  return `${dia}/${mes}`;
+}
+
 // Status 3 (Paga) e 4 (Disponível) são as únicas que a PagSeguro já confirmou
 // como recebidas de verdade — o resto (aguardando, em análise, disputa,
 // devolvida, cancelada) é dinheiro que apareceu como venda mas ainda não
@@ -145,26 +151,42 @@ function Conciliacao() {
               style={{
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
+                alignItems: "flex-start",
                 gap: "1px",
                 lineHeight: 1.4,
                 fontSize: "14px",
               }}
             >
               <div>
-                💰 Total recebido:{" "}
+                <span style={{ display: "inline-block", width: "20px" }}>
+                  📅
+                </span>{" "}
+                Data: <strong>{formatarDataCurta(data)}</strong>
+              </div>
+
+              <div>
+                <span style={{ display: "inline-block", width: "20px" }}>
+                  💰
+                </span>{" "}
+                Total recebido:{" "}
                 <strong>{formatarMoeda(resumo.total_recebido)}</strong>
               </div>
 
               <div>
-                🧾 Vendas: <strong>{resumo.quantidade_recebida} recebidas</strong>
+                <span style={{ display: "inline-block", width: "20px" }}>
+                  🧾
+                </span>{" "}
+                Vendas: <strong>{resumo.quantidade_recebida} recebidas</strong>
                 {resumo.quantidade_pendente_ou_cancelada > 0 &&
                   ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
               </div>
 
               {formasPagamento.map(([forma, valor]) => (
                 <div key={forma}>
-                  💳 <strong style={{ color: "#16ca50" }}>{forma}</strong>:{" "}
+                  <span style={{ display: "inline-block", width: "20px" }}>
+                    💳
+                  </span>{" "}
+                  <strong style={{ color: "#16ca50" }}>{forma}</strong>:{" "}
                   <strong>{formatarMoeda(valor)}</strong>
                 </div>
               ))}
