@@ -2065,11 +2065,30 @@ async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 50) {
     ],
   });
 
-  return resposta.content
+  const texto = resposta.content
     .filter((bloco) => bloco.type === "text")
     .map((bloco) => bloco.text)
     .join("")
     .trim();
+
+  console.log(
+    "Anthropic — stop_reason:",
+    resposta.stop_reason,
+    "| blocos:",
+    resposta.content.map((bloco) => bloco.type).join(","),
+    "| usage:",
+    JSON.stringify(resposta.usage),
+    "| tamanho do texto:",
+    texto.length
+  );
+
+  if (!texto) {
+    throw new Error(
+      `A IA respondeu sem texto (stop_reason: ${resposta.stop_reason}, blocos: ${resposta.content.map((bloco) => bloco.type).join(",") || "nenhum"}).`
+    );
+  }
+
+  return texto;
 }
 
 app.post(
