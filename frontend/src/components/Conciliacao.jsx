@@ -532,8 +532,8 @@ function Conciliacao() {
                       <thead>
                         <tr>
                           <th>Forma de pagamento</th>
-                          <th>Valor real pago</th>
-                          <th>Valor da foto</th>
+                          <th>Sistema</th>
+                          <th>Informado</th>
                           <th>Diferença</th>
                         </tr>
                       </thead>
@@ -665,7 +665,12 @@ function Conciliacao() {
                                 }
                               >
                                 {formatarMoeda(venda.valor_liquido)}
-                              </strong>
+                              </strong>{" "}
+                              <small
+                                style={{ color: "#9fb0c4", fontSize: "11px" }}
+                              >
+                                #{venda.codigo?.slice(-8)}
+                              </small>
                               <div
                                 style={
                                   pendenteOuCancelada
