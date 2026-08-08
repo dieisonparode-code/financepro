@@ -1661,15 +1661,13 @@ function montarResumoSaipos(vendas, lancamentos) {
     });
   });
 
-  // Segundo a documentação da Saipos, o valor total da venda vem em
-  // venda.totals.total_amount. Mas já vimos casos reais em que isso some
-  // (fica tudo 0) mesmo com vendas de verdade e formas de pagamento com
-  // valor — provavelmente uma diferença de formato/versão da API pra essa
-  // conta. Por segurança, se o total "oficial" vier zerado mas tiver
-  // dinheiro nas formas de pagamento, usa a soma das formas de pagamento
-  // como valor de verdade (é a mesma fonte que já sabemos que funciona).
+  // A documentação da Saipos descreve o valor total dentro de
+  // venda.totals.total_amount, mas testando com dados reais dessa conta o
+  // campo vem direto na raiz (venda.total_amount), sem o objeto "totals".
+  // Tenta os dois formatos, dando prioridade pro que realmente existe.
   const totalVendasOficial = vendasValidas.reduce(
-    (soma, venda) => soma + Number(venda.totals?.total_amount || 0),
+    (soma, venda) =>
+      soma + Number(venda.total_amount ?? venda.totals?.total_amount ?? 0),
     0
   );
 
