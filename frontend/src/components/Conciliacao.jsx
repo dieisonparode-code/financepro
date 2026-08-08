@@ -12,9 +12,9 @@ function formatarMoeda(valor) {
   });
 }
 
-function formatarHora(dataIso) {
+function formatarDataHora(dataIso) {
   if (!dataIso) return "";
-  return new Date(dataIso).toLocaleTimeString("pt-BR");
+  return new Date(dataIso).toLocaleString("pt-BR");
 }
 
 const INTERVALO_ATUALIZACAO_MS = 30 * 1000;
@@ -155,18 +155,11 @@ function Conciliacao() {
             {resumo.ultimas_vendas.map((venda) => (
               <div className="categoria-item" key={venda.codigo}>
                 <div className="categoria-identificacao">
-                  <div className="categoria-icone">
-                    {venda.status === 4 || venda.status === 3 ? "✅" : "⏳"}
-                  </div>
+                  <div className="categoria-icone">💰</div>
 
                   <div>
-                    <strong>
-                      {formatarMoeda(venda.valor_liquido)} —{" "}
-                      {venda.forma_pagamento}
-                    </strong>
-                    <div>
-                      {formatarHora(venda.data)} · {venda.status_descricao}
-                    </div>
+                    <strong>{formatarMoeda(venda.valor_liquido)}</strong>
+                    <div>{formatarDataHora(venda.data)}</div>
                   </div>
                 </div>
               </div>
