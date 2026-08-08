@@ -384,26 +384,35 @@ function Conciliacao() {
             </div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <label style={{ margin: 0 }}>
-              Data inicial
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={(evento) => setDataInicio(evento.target.value)}
-              />
-            </label>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                gap: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <label style={{ margin: 0 }}>
+                Data inicial
+                <input
+                  type="date"
+                  value={dataInicio}
+                  onChange={(evento) => setDataInicio(evento.target.value)}
+                />
+              </label>
 
-            <label style={{ margin: 0 }}>
-              Data final
-              <input
-                type="date"
-                value={dataFim}
-                onChange={(evento) => setDataFim(evento.target.value)}
-              />
-            </label>
+              <label style={{ margin: 0 }}>
+                Data final
+                <input
+                  type="date"
+                  value={dataFim}
+                  onChange={(evento) => setDataFim(evento.target.value)}
+                />
+              </label>
 
-            <div>
               <button
                 type="button"
                 className="primary-button"
@@ -413,21 +422,6 @@ function Conciliacao() {
                 {carregando ? "Buscando..." : "🔄 Atualizar agora"}
               </button>
 
-              <small
-                className="foto-ajuda"
-                style={{ display: "block", marginTop: "6px" }}
-              >
-                Atualiza sozinho a cada 30s.{" "}
-                {atualizadoEm && (
-                  <>
-                    Última atualização:{" "}
-                    {atualizadoEm.toLocaleTimeString("pt-BR")}.
-                  </>
-                )}
-              </small>
-            </div>
-
-            <div>
               <input
                 id="foto-fechamento-conciliacao"
                 type="file"
@@ -447,6 +441,7 @@ function Conciliacao() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
+                  height: "44px",
                   cursor:
                     enviandoFoto || !resumo ? "not-allowed" : "pointer",
                   opacity: enviandoFoto || !resumo ? 0.6 : 1,
@@ -456,36 +451,46 @@ function Conciliacao() {
                   ? "Lendo foto..."
                   : "📸 Conferir nova foto"}
               </label>
+
+              {fechamentosSalvos.length > 0 && (
+                <label style={{ margin: 0 }}>
+                  Ou usar foto já enviada
+                  <select
+                    value={fechamentoSelecionado}
+                    disabled={enviandoFoto || !resumo}
+                    onChange={(evento) => {
+                      const id = evento.target.value;
+                      setFechamentoSelecionado(id);
+
+                      if (id) {
+                        conferirFechamentoSalvo(id);
+                      }
+                    }}
+                  >
+                    <option value="">
+                      {carregandoFechamentos
+                        ? "Carregando..."
+                        : "Selecione..."}
+                    </option>
+                    {fechamentosSalvos.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {new Date(item.criado_em).toLocaleString("pt-BR")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
-            {fechamentosSalvos.length > 0 && (
-              <label style={{ margin: 0 }}>
-                Ou usar foto já enviada
-                <select
-                  value={fechamentoSelecionado}
-                  disabled={enviandoFoto || !resumo}
-                  onChange={(evento) => {
-                    const id = evento.target.value;
-                    setFechamentoSelecionado(id);
-
-                    if (id) {
-                      conferirFechamentoSalvo(id);
-                    }
-                  }}
-                >
-                  <option value="">
-                    {carregandoFechamentos
-                      ? "Carregando..."
-                      : "Selecione..."}
-                  </option>
-                  {fechamentosSalvos.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {new Date(item.criado_em).toLocaleString("pt-BR")}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <small className="foto-ajuda">
+              Atualiza sozinho a cada 30s.{" "}
+              {atualizadoEm && (
+                <>
+                  Última atualização:{" "}
+                  {atualizadoEm.toLocaleTimeString("pt-BR")}.
+                </>
+              )}
+            </small>
           </div>
         </div>
 
