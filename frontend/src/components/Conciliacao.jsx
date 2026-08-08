@@ -30,6 +30,14 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
+// Status 3 (Paga) e 4 (Disponível) são as únicas que a PagSeguro já confirmou
+// como recebidas de verdade — o resto (aguardando, em análise, disputa,
+// devolvida, cancelada) é dinheiro que apareceu como venda mas ainda não
+// entrou (ou nunca vai entrar) no bolso.
+function estaPendenteOuCancelada(venda) {
+  return venda.status !== 3 && venda.status !== 4;
+}
+
 const ORDEM_FORMAS_PAGAMENTO = ["Cartão de crédito", "Cartão de débito", "PIX"];
 
 function agruparVendasPorFormaPagamento(vendas) {
@@ -213,20 +221,43 @@ function Conciliacao() {
                   </div>
 
                   <div className="categorias-lista">
-                    {grupo.vendas.map((venda) => (
-                      <div className="categoria-item" key={venda.codigo}>
-                        <div className="categoria-identificacao">
-                          <div className="categoria-icone">💰</div>
+                    {grupo.vendas.map((venda) => {
+                      const pendenteOuCancelada =
+                        estaPendenteOuCancelada(venda);
 
-                          <div>
-                            <strong>
-                              {formatarMoeda(venda.valor_liquido)}
-                            </strong>
-                            <div>{formatarDataHora(venda.data)}</div>
+                      return (
+                        <div className="categoria-item" key={venda.codigo}>
+                          <div className="categoria-identificacao">
+                            <div className="categoria-icone">
+                              {pendenteOuCancelada ? "⚠️" : "💰"}
+                            </div>
+
+                            <div>
+                              <strong
+                                style={
+                                  pendenteOuCancelada
+                                    ? { color: "#ff4655" }
+                                    : undefined
+                                }
+                              >
+                                {formatarMoeda(venda.valor_liquido)}
+                              </strong>
+                              <div
+                                style={
+                                  pendenteOuCancelada
+                                    ? { color: "#ff4655" }
+                                    : undefined
+                                }
+                              >
+                                {formatarDataHora(venda.data)}
+                                {pendenteOuCancelada &&
+                                  ` · ${venda.status_descricao}`}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )
