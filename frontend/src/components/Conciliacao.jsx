@@ -133,6 +133,13 @@ function Conciliacao() {
   const [fechamentosSalvos, setFechamentosSalvos] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(false);
   const [fechamentoSelecionado, setFechamentoSelecionado] = useState("");
+  // Enquanto a tela busca a PagSeguro "em tempo real" (a cada 30s, sempre
+  // até "agora"), o valor do Sistema fica subindo à medida que novas vendas
+  // entram — bom pra acompanhar ao vivo, mas ruim pra comparar com um
+  // fechamento físico (que é um valor parado no tempo). Congelar guarda uma
+  // foto dos totais nesse instante, pra poder testar/reconferir várias vezes
+  // sem o número mudar debaixo do usuário.
+  const [confrontoCongelado, setConfrontoCongelado] = useState(null);
 
   useEffect(() => {
     async function carregarFechamentosSalvos() {
@@ -242,6 +249,13 @@ function Conciliacao() {
   // nesse caso não deve mexer nas datas escolhidas por ela).
   const diaSeguidoRef = useRef(hoje());
 
+  // Se a pessoa muda o período, um confronto congelado de antes não faz mais
+  // sentido (era de outro período) — descongela sozinho.
+  useEffect(() => {
+    setConfrontoCongelado(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataInicio, dataFim]);
+
   async function buscar() {
     // Enquanto a pessoa está digitando/trocando a data (o campo pode passar
     // por um instante vazio), simplesmente não busca nada — sem mostrar erro.
@@ -263,6 +277,19 @@ function Conciliacao() {
     } finally {
       setCarregando(false);
     }
+  }
+
+  function congelarConfronto() {
+    if (!resumo) return;
+
+    setConfrontoCongelado({
+      totaisBrutos: resumo.totais_brutos_por_forma_pagamento || {},
+      capturadoEm: new Date(),
+    });
+  }
+
+  function descongelarConfronto() {
+    setConfrontoCongelado(null);
   }
 
   useEffect(() => {
@@ -501,15 +528,78 @@ function Conciliacao() {
 
         {resumo && (
           <>
-            <div className="panel-header" style={{ margin: "10px 0 10px" }}>
+            <div
+              className="panel-header"
+              style={{
+                margin: "10px 0 10px",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <div>
                 <span className="eyebrow">Confronto</span>
                 <h2>Sistema × Informado, por forma de pagamento</h2>
               </div>
+
+              {confrontoCongelado ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "#f7b23b",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                    }}
+                  >
+                    🔒 Congelado às{" "}
+                    {confrontoCongelado.capturadoEm.toLocaleTimeString(
+                      "pt-BR"
+                    )}{" "}
+                    — os valores do Sistema não mudam mais, mesmo entrando
+                    venda nova.
+                  </span>
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={descongelarConfronto}
+                  >
+                    🔓 Descongelar (usar ao vivo)
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={congelarConfronto}
+                >
+                  🔒 Congelar este confronto
+                </button>
+              )}
             </div>
 
+            {!confrontoCongelado && (
+              <p
+                className="foto-ajuda"
+                style={{ marginTop: 0, marginBottom: "10px" }}
+              >
+                O Sistema busca as vendas em tempo real e continua entrando
+                venda nova até agora — se for fazer o fechamento e testar
+                mais de uma vez, congele o confronto primeiro pra comparar
+                sempre com o mesmo número.
+              </p>
+            )}
+
             {(() => {
-              const totaisBrutos = resumo.totais_brutos_por_forma_pagamento || {};
+              const totaisBrutos = confrontoCongelado
+                ? confrontoCongelado.totaisBrutos
+                : resumo.totais_brutos_por_forma_pagamento || {};
 
               const linhas = Object.keys(valoresInformados).map((forma) => {
                 // Bruto (antes da taxa da PagSeguro) — é isso que bate com
