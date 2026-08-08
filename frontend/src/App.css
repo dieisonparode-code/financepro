@@ -334,8 +334,12 @@
 .conciliacao-layout {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   margin: 0 34px 18px;
+}
+
+.conciliacao-layout .panel-header {
+  margin-bottom: 6px;
 }
 
 .categorias-layout > .panel {

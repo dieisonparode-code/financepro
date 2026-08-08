@@ -110,7 +110,7 @@ function Conciliacao() {
             flexWrap: "wrap",
             alignItems: "flex-end",
             gap: "1rem",
-            marginBottom: resumo ? "1rem" : 0,
+            marginBottom: resumo ? "0.3rem" : 0,
           }}
         >
           <div style={{ marginRight: "auto" }}>
@@ -160,14 +160,14 @@ function Conciliacao() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "0.6rem",
-              marginTop: "1rem",
+              gap: "2px",
+              marginTop: "0.3rem",
               maxWidth: "320px",
               marginLeft: "auto",
               marginRight: "auto",
             }}
           >
-            <div className="categoria-item">
+            <div className="categoria-item" style={{ padding: "6px 0" }}>
               <div className="categoria-identificacao">
                 <div className="categoria-icone">💰</div>
                 <div>
@@ -177,7 +177,7 @@ function Conciliacao() {
               </div>
             </div>
 
-            <div className="categoria-item">
+            <div className="categoria-item" style={{ padding: "6px 0" }}>
               <div className="categoria-identificacao">
                 <div className="categoria-icone">🧾</div>
                 <div>
@@ -192,7 +192,11 @@ function Conciliacao() {
             </div>
 
             {formasPagamento.map(([forma, valor]) => (
-              <div className="categoria-item" key={forma}>
+              <div
+                className="categoria-item"
+                style={{ padding: "6px 0" }}
+                key={forma}
+              >
                 <div className="categoria-identificacao">
                   <div className="categoria-icone">💳</div>
                   <div>
