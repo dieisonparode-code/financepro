@@ -1360,7 +1360,9 @@ const statusCmv =
     }
 
     if (!formulario.loja_id) {
-      alert("Selecione a loja. Esse campo é obrigatório.");
+      alert(
+        "Selecione uma loja no seletor do topo da tela antes de salvar."
+      );
       return;
     }
 
@@ -3308,32 +3310,6 @@ const statusCmv =
                 </label>
               </div>
 
-              {vePermissaoTotal && (
-                <label>
-                  <span className="rotulo-campo">
-                    Loja
-                    <span className="campo-obrigatorio">Obrigatório</span>
-                  </span>
-                  <select
-                    value={formulario.loja_id}
-                    onChange={(evento) =>
-                      alterarCampo("loja_id", evento.target.value)
-                    }
-                    style={
-                      !formulario.loja_id
-                        ? { borderColor: "#ef4444", borderWidth: "2px" }
-                        : undefined
-                    }
-                  >
-                    <option value="">Selecione a loja...</option>
-                    {lojas.map((loja) => (
-                      <option key={loja.id} value={loja.id}>
-                        {loja.nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
 
               {tipoLancamento === "receita" && (
                 <label>

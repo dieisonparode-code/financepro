@@ -83,7 +83,9 @@ function ContasPagar({
     }
 
     if (!lojaId) {
-      alert("Selecione a loja. Esse campo é obrigatório.");
+      alert(
+        "Selecione uma loja no seletor do topo da tela antes de cadastrar."
+      );
       return;
     }
 
@@ -192,31 +194,6 @@ function ContasPagar({
               placeholder="Ex.: Frigorífico X"
             />
           </label>
-
-          {vePermissaoTotal && (
-            <label>
-              <span className="rotulo-campo">
-                Loja
-                <span className="campo-obrigatorio">Obrigatório</span>
-              </span>
-              <select
-                value={lojaId}
-                onChange={(evento) => setLojaId(evento.target.value)}
-                style={
-                  !lojaId
-                    ? { borderColor: "#ef4444", borderWidth: "2px" }
-                    : undefined
-                }
-              >
-                <option value="">Selecione a loja...</option>
-                {lojas.map((loja) => (
-                  <option key={loja.id} value={loja.id}>
-                    {loja.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
 
           <div className="form-row">
             <label>
