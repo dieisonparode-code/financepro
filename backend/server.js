@@ -1901,7 +1901,6 @@ app.get(
       const ultimasVendas = transacoes
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, 50)
         .map((transacao) => ({
           codigo: transacao.code,
           data: transacao.date,
