@@ -129,81 +129,85 @@ function Conciliacao() {
           style={{
             display: "flex",
             flexWrap: "wrap",
-            alignItems: "flex-end",
+            alignItems: "center",
+            justifyContent: "space-between",
             gap: "1rem",
-            marginBottom: resumo ? "0.3rem" : 0,
+            marginBottom: "0.3rem",
           }}
         >
-          <div style={{ marginRight: "auto" }}>
+          <div>
             <span className="eyebrow">Conciliação de pagamentos</span>
             <h2 style={{ margin: 0 }}>PagSeguro em tempo real</h2>
           </div>
 
-          <label style={{ margin: 0 }}>
-            Data
-            <input
-              type="date"
-              value={data}
-              onChange={(evento) => setData(evento.target.value)}
-            />
-          </label>
-
-          <div>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={buscar}
-              disabled={carregando}
+          {resumo && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "1px",
+                lineHeight: 1.4,
+                fontSize: "14px",
+              }}
             >
-              {carregando ? "Buscando..." : "🔄 Atualizar agora"}
-            </button>
+              <div>
+                💰 Total recebido:{" "}
+                <strong>{formatarMoeda(resumo.total_recebido)}</strong>
+              </div>
 
-            <small
-              className="foto-ajuda"
-              style={{ display: "block", marginTop: "6px" }}
-            >
-              Atualiza sozinho a cada 30s.{" "}
-              {atualizadoEm && (
-                <>
-                  Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR")}
-                  .
-                </>
-              )}
-            </small>
+              <div>
+                🧾 Vendas: <strong>{resumo.quantidade_recebida} recebidas</strong>
+                {resumo.quantidade_pendente_ou_cancelada > 0 &&
+                  ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
+              </div>
+
+              {formasPagamento.map(([forma, valor]) => (
+                <div key={forma}>
+                  💳 <strong style={{ color: "#16ca50" }}>{forma}</strong>:{" "}
+                  <strong>{formatarMoeda(valor)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <label style={{ margin: 0 }}>
+              Data
+              <input
+                type="date"
+                value={data}
+                onChange={(evento) => setData(evento.target.value)}
+              />
+            </label>
+
+            <div>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={buscar}
+                disabled={carregando}
+              >
+                {carregando ? "Buscando..." : "🔄 Atualizar agora"}
+              </button>
+
+              <small
+                className="foto-ajuda"
+                style={{ display: "block", marginTop: "6px" }}
+              >
+                Atualiza sozinho a cada 30s.{" "}
+                {atualizadoEm && (
+                  <>
+                    Última atualização:{" "}
+                    {atualizadoEm.toLocaleTimeString("pt-BR")}.
+                  </>
+                )}
+              </small>
+            </div>
           </div>
         </div>
 
         {erro && <div className="empty-state">{erro}</div>}
-
-        {resumo && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "1px",
-              marginTop: "0.3rem",
-              lineHeight: 1.5,
-            }}
-          >
-            <div>
-              💰 Total recebido: <strong>{formatarMoeda(resumo.total_recebido)}</strong>
-            </div>
-
-            <div>
-              🧾 Vendas: <strong>{resumo.quantidade_recebida} recebidas</strong>
-              {resumo.quantidade_pendente_ou_cancelada > 0 &&
-                ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
-            </div>
-
-            {formasPagamento.map(([forma, valor]) => (
-              <div key={forma}>
-                💳 <strong style={{ color: "#16ca50" }}>{forma}</strong>:{" "}
-                <strong>{formatarMoeda(valor)}</strong>
-              </div>
-            ))}
-          </div>
-        )}
 
         <div className="panel-header" style={{ margin: "10px 0 10px" }}>
           <div>
