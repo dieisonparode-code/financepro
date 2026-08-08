@@ -437,7 +437,7 @@ function Conciliacao() {
 
               <label
                 htmlFor="foto-fechamento-conciliacao"
-                className="secondary-button"
+                className="primary-button"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
