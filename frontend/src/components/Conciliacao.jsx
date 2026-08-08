@@ -496,80 +496,118 @@ function Conciliacao() {
               </div>
             </div>
 
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Forma de pagamento</th>
-                    <th>Sistema</th>
-                    <th>Informado</th>
-                    <th>Diferença</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {["Cartão de crédito", "Cartão de débito", "PIX"].map(
-                    (forma) => {
-                      const valorSistema =
-                        resumo.totais_por_forma_pagamento?.[forma] || 0;
-                      const valorInformadoTexto =
-                        valoresInformados[forma] ?? "";
-                      const temInformado = valorInformadoTexto !== "";
-                      const valorInformado = temInformado
-                        ? Number(
-                            valorInformadoTexto.replace(",", ".")
-                          )
-                        : null;
-                      const diferenca = temInformado
-                        ? Number(
-                            (valorSistema - valorInformado).toFixed(2)
-                          )
-                        : null;
-                      const bateu = temInformado && Math.abs(diferenca) < 0.01;
+            {(() => {
+              const linhas = ["Cartão de crédito", "Cartão de débito", "PIX"].map(
+                (forma) => {
+                  const valorSistema =
+                    resumo.totais_por_forma_pagamento?.[forma] || 0;
+                  const valorInformadoTexto = valoresInformados[forma] ?? "";
+                  const temInformado = valorInformadoTexto !== "";
+                  const valorInformado = temInformado
+                    ? Number(valorInformadoTexto.replace(",", "."))
+                    : null;
+                  // Positivo = faltou dinheiro (sistema esperava mais do que
+                  // foi informado). Negativo = sobrou (veio mais do que
+                  // o sistema esperava).
+                  const diferenca = temInformado
+                    ? Number((valorSistema - valorInformado).toFixed(2))
+                    : null;
+                  const bateu = temInformado && Math.abs(diferenca) < 0.01;
 
-                      return (
-                        <tr key={forma}>
-                          <td style={{ color: "#16ca50", fontWeight: 700 }}>
-                            {forma}
-                          </td>
-                          <td>{formatarMoeda(valorSistema)}</td>
-                          <td>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="0,00"
-                              value={valorInformadoTexto}
-                              onChange={(evento) =>
-                                setValoresInformados((anterior) => ({
-                                  ...anterior,
-                                  [forma]: evento.target.value,
-                                }))
-                              }
-                              style={{ maxWidth: "120px" }}
-                            />
-                          </td>
-                          <td
-                            style={{
-                              color: !temInformado
-                                ? undefined
-                                : bateu
-                                ? "#16ca50"
-                                : "#ff4655",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {temInformado
-                              ? bateu
-                                ? "✅ Bateu"
-                                : formatarMoeda(diferenca)
-                              : "—"}
-                          </td>
+                  return { forma, valorSistema, temInformado, diferenca, bateu };
+                }
+              );
+
+              const diferencaTotal = linhas
+                .filter((linha) => linha.temInformado)
+                .reduce((soma, linha) => soma + linha.diferenca, 0);
+              const algumInformado = linhas.some((linha) => linha.temInformado);
+
+              return (
+                <>
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Forma de pagamento</th>
+                          <th>Sistema</th>
+                          <th>Informado</th>
+                          <th>Diferença</th>
                         </tr>
-                      );
-                    }
+                      </thead>
+                      <tbody>
+                        {linhas.map(
+                          ({ forma, valorSistema, temInformado, diferenca, bateu }) => (
+                            <tr key={forma}>
+                              <td style={{ color: "#16ca50", fontWeight: 700 }}>
+                                {forma}
+                              </td>
+                              <td>{formatarMoeda(valorSistema)}</td>
+                              <td>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0,00"
+                                  value={valoresInformados[forma] ?? ""}
+                                  onChange={(evento) =>
+                                    setValoresInformados((anterior) => ({
+                                      ...anterior,
+                                      [forma]: evento.target.value,
+                                    }))
+                                  }
+                                  style={{ maxWidth: "120px" }}
+                                />
+                              </td>
+                              <td
+                                style={{
+                                  color: !temInformado
+                                    ? undefined
+                                    : bateu
+                                    ? "#16ca50"
+                                    : diferenca > 0
+                                    ? "#ff4655"
+                                    : "#16ca50",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {!temInformado
+                                  ? "—"
+                                  : bateu
+                                  ? "✅ Bateu"
+                                  : diferenca > 0
+                                  ? `Falta ${formatarMoeda(diferenca)}`
+                                  : `Sobra ${formatarMoeda(Math.abs(diferenca))}`}
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {algumInformado && (
+                    <div
+                      style={{
+                        marginTop: "10px",
+                        fontWeight: 700,
+                        color:
+                          Math.abs(diferencaTotal) < 0.01
+                            ? "#16ca50"
+                            : diferencaTotal > 0
+                            ? "#ff4655"
+                            : "#16ca50",
+                      }}
+                    >
+                      {Math.abs(diferencaTotal) < 0.01
+                        ? "✅ Total bateu certinho"
+                        : diferencaTotal > 0
+                        ? `Diferença total: falta ${formatarMoeda(diferencaTotal)}`
+                        : `Diferença total: sobra ${formatarMoeda(Math.abs(diferencaTotal))}`}
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </>
+              );
+            })()}
           </>
         )}
 
