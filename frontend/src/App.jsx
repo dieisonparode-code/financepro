@@ -18,6 +18,7 @@ import {
   buscarFotoLancamento,
   buscarFotoMercadoriaLancamento,
   criarLancamento,
+  lerNotaFiscal,
   atualizarLancamento,
   excluirLancamento,
   buscarCategorias,
@@ -281,6 +282,7 @@ function FinanceApp() {
   const [processandoFoto, setProcessandoFoto] = useState(false);
   const [processandoFotoMercadoria, setProcessandoFotoMercadoria] =
     useState(false);
+  const [lendoNota, setLendoNota] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
   const [carregandoFotoMercadoriaId, setCarregandoFotoMercadoriaId] =
@@ -1273,6 +1275,38 @@ const statusCmv =
       ...anterior,
       [campo]: valor,
     }));
+  }
+
+  async function lerNotaAutomaticamente() {
+    if (!formulario.foto || lendoNota) return;
+
+    setLendoNota(true);
+
+    try {
+      const resultado = await lerNotaFiscal(formulario.foto);
+
+      if (resultado.valor == null) {
+        alert(
+          resultado.erro_leitura ||
+            "Não consegui identificar o valor dessa nota. Preencha manualmente."
+        );
+        return;
+      }
+
+      setFormulario((anterior) => ({
+        ...anterior,
+        valor: Number(resultado.valor).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+        fornecedor: resultado.fornecedor || anterior.fornecedor,
+        data: resultado.data || anterior.data,
+      }));
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a nota fiscal.");
+    } finally {
+      setLendoNota(false);
+    }
   }
 
   async function salvarLancamento(evento) {
@@ -3234,6 +3268,17 @@ const statusCmv =
                     src={formulario.foto}
                     alt="Pré-visualização da nota"
                   />
+
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={lerNotaAutomaticamente}
+                    disabled={lendoNota}
+                  >
+                    {lendoNota
+                      ? "Lendo nota..."
+                      : "🤖 Ler nota automaticamente"}
+                  </button>
 
                   <button
                     type="button"

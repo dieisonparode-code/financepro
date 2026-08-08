@@ -65,6 +65,14 @@ export async function buscarFotoMercadoriaLancamento(id) {
   });
 }
 
+export async function lerNotaFiscal(foto) {
+  return requisicao("/lancamentos/ler-nota", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto }),
+  });
+}
+
 export async function criarLancamento(dados) {
   return requisicao("/lancamentos", {
     method: "POST",

@@ -2025,6 +2025,103 @@ app.get(
   }
 );
 
+async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 50) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("ANTHROPIC_API_KEY não configurada no .env.");
+  }
+
+  // foto vem como data URL: "data:image/jpeg;base64,/9j/4AAQ..."
+  const correspondencia = fotoDataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+
+  if (!correspondencia) {
+    throw new Error("Formato de imagem inválido.");
+  }
+
+  const tipoImagem = correspondencia[1];
+  const dadosBase64 = correspondencia[2];
+
+  const anthropic = new Anthropic({ apiKey });
+
+  const resposta = await anthropic.messages.create({
+    model: "claude-sonnet-5",
+    max_tokens: maxTokens,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: tipoImagem,
+              data: dadosBase64,
+            },
+          },
+          { type: "text", text: promptTexto },
+        ],
+      },
+    ],
+  });
+
+  return resposta.content
+    .filter((bloco) => bloco.type === "text")
+    .map((bloco) => bloco.text)
+    .join("")
+    .trim();
+}
+
+app.post(
+  "/lancamentos/ler-nota",
+  verificarPermissao("financeiro"),
+  async function (req, res) {
+    try {
+      const { foto } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({
+          erro: "Envie a foto da nota fiscal.",
+        });
+      }
+
+      const textoResposta = await lerImagemComIA(
+        foto,
+        'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento (se estiver visível), e a DATA da compra no formato AAAA-MM-DD (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "data": "AAAA-MM-DD ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null, "data": null}.',
+        200
+      );
+
+      let dadosLidos;
+
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(jsonEncontrado ? jsonEncontrado[0] : textoResposta);
+      } catch {
+        return res.json({
+          valor: null,
+          fornecedor: null,
+          data: null,
+          erro_leitura:
+            "Não foi possível ler os dados dessa nota. Preencha manualmente.",
+        });
+      }
+
+      res.json({
+        valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
+        fornecedor: dadosLidos.fornecedor || null,
+        data: dadosLidos.data || null,
+      });
+    } catch (erro) {
+      console.error("Erro ao ler nota fiscal:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível ler a nota fiscal.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.post(
   "/pagseguro/conferir-fechamento",
   verificarPermissao("fechamento_caixa"),
@@ -2038,55 +2135,10 @@ app.post(
         });
       }
 
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-
-      if (!apiKey) {
-        throw new Error("ANTHROPIC_API_KEY não configurada no .env.");
-      }
-
-      // foto vem como data URL: "data:image/jpeg;base64,/9j/4AAQ..."
-      const correspondencia = foto.match(/^data:(image\/\w+);base64,(.+)$/);
-
-      if (!correspondencia) {
-        return res.status(400).json({
-          erro: "Formato de imagem inválido.",
-        });
-      }
-
-      const tipoImagem = correspondencia[1];
-      const dadosBase64 = correspondencia[2];
-
-      const anthropic = new Anthropic({ apiKey });
-
-      const resposta = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 50,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: tipoImagem,
-                  data: dadosBase64,
-                },
-              },
-              {
-                type: "text",
-                text: 'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Pode ter vários valores (por forma de pagamento, parciais, etc). Encontre o VALOR TOTAL GERAL do fechamento — normalmente é o maior valor, costuma estar perto de palavras como "TOTAL", "TOTAL GERAL", "TOTAL DO DIA" ou "VALOR TOTAL", geralmente no final do comprovante. Dê sua MELHOR ESTIMATIVA mesmo que não tenha 100% de certeza — é melhor arriscar um palpite razoável do que recusar. Responda APENAS com o número, no formato 1234.56 (ponto como separador decimal, sem "R$", sem texto, sem explicação). Só responda exatamente INDEFINIDO se a imagem estiver realmente ilegível ou não for um comprovante financeiro.',
-              },
-            ],
-          },
-        ],
-      });
-
-      const textoResposta = resposta.content
-        .filter((bloco) => bloco.type === "text")
-        .map((bloco) => bloco.text)
-        .join("")
-        .trim();
+      const textoResposta = await lerImagemComIA(
+        foto,
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Pode ter vários valores (por forma de pagamento, parciais, etc). Encontre o VALOR TOTAL GERAL do fechamento — normalmente é o maior valor, costuma estar perto de palavras como "TOTAL", "TOTAL GERAL", "TOTAL DO DIA" ou "VALOR TOTAL", geralmente no final do comprovante. Dê sua MELHOR ESTIMATIVA mesmo que não tenha 100% de certeza — é melhor arriscar um palpite razoável do que recusar. Responda APENAS com o número, no formato 1234.56 (ponto como separador decimal, sem "R$", sem texto, sem explicação). Só responda exatamente INDEFINIDO se a imagem estiver realmente ilegível ou não for um comprovante financeiro.'
+      );
 
       // Extrai o número da resposta em vez de exigir que a resposta inteira
       // seja só o número — a IA às vezes acrescenta algo mesmo pedindo pra
