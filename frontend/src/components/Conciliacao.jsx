@@ -80,6 +80,12 @@ function Conciliacao() {
   const diaSeguidoRef = useRef(hoje());
 
   async function buscar() {
+    // Enquanto a pessoa está digitando/trocando a data (o campo pode passar
+    // por um instante vazio), simplesmente não busca nada — sem mostrar erro.
+    if (!dataInicio || !dataFim) {
+      return;
+    }
+
     setCarregando(true);
     setErro("");
 
