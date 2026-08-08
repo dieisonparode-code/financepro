@@ -108,9 +108,9 @@ function Conciliacao() {
           style={{
             display: "flex",
             flexWrap: "wrap",
-            alignItems: "center",
-            gap: "0.75rem",
-            marginBottom: resumo ? "0.5rem" : 0,
+            alignItems: "flex-end",
+            gap: "1rem",
+            marginBottom: resumo ? "1rem" : 0,
           }}
         >
           <div style={{ marginRight: "auto" }}>
@@ -127,22 +127,30 @@ function Conciliacao() {
             />
           </label>
 
-          <button
-            type="button"
-            className="primary-button"
-            onClick={buscar}
-            disabled={carregando}
-          >
-            {carregando ? "Buscando..." : "🔄 Atualizar agora"}
-          </button>
-        </div>
+          <div>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={buscar}
+              disabled={carregando}
+            >
+              {carregando ? "Buscando..." : "🔄 Atualizar agora"}
+            </button>
 
-        <small className="foto-ajuda" style={{ display: "block", textAlign: "right" }}>
-          Atualiza sozinho a cada 30s.{" "}
-          {atualizadoEm && (
-            <>Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR")}.</>
-          )}
-        </small>
+            <small
+              className="foto-ajuda"
+              style={{ display: "block", marginTop: "6px" }}
+            >
+              Atualiza sozinho a cada 30s.{" "}
+              {atualizadoEm && (
+                <>
+                  Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR")}
+                  .
+                </>
+              )}
+            </small>
+          </div>
+        </div>
 
         {erro && <div className="empty-state">{erro}</div>}
 
@@ -150,13 +158,16 @@ function Conciliacao() {
           <div
             style={{
               display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: "0.75rem",
-              marginTop: "0.5rem",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.6rem",
+              marginTop: "1rem",
+              maxWidth: "320px",
+              marginLeft: "auto",
+              marginRight: "auto",
             }}
           >
-            <div className="categoria-item" style={{ border: "none", padding: "6px 10px" }}>
+            <div className="categoria-item">
               <div className="categoria-identificacao">
                 <div className="categoria-icone">💰</div>
                 <div>
@@ -166,7 +177,7 @@ function Conciliacao() {
               </div>
             </div>
 
-            <div className="categoria-item" style={{ border: "none", padding: "6px 10px" }}>
+            <div className="categoria-item">
               <div className="categoria-identificacao">
                 <div className="categoria-icone">🧾</div>
                 <div>
@@ -181,11 +192,7 @@ function Conciliacao() {
             </div>
 
             {formasPagamento.map(([forma, valor]) => (
-              <div
-                className="categoria-item"
-                style={{ border: "none", padding: "6px 10px" }}
-                key={forma}
-              >
+              <div className="categoria-item" key={forma}>
                 <div className="categoria-identificacao">
                   <div className="categoria-icone">💳</div>
                   <div>
