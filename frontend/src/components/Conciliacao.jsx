@@ -627,7 +627,13 @@ function Conciliacao() {
                   {algumInformado && (
                     <div
                       style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
                         marginTop: "16px",
+                      }}
+                    >
+                    <div
+                      style={{
                         padding: "14px 18px",
                         border: "2px solid",
                         borderColor:
@@ -649,10 +655,11 @@ function Conciliacao() {
                       }}
                     >
                       {Math.abs(diferencaTotal) < 0.01
-                        ? "✅ Total bateu certinho"
+                        ? "✅ Diferença final total: bateu certinho"
                         : diferencaTotal > 0
-                        ? `Diferença total: falta ${formatarMoeda(diferencaTotal)}`
-                        : `Diferença total: sobra ${formatarMoeda(Math.abs(diferencaTotal))}`}
+                        ? `Diferença final total: falta ${formatarMoeda(diferencaTotal)}`
+                        : `Diferença final total: sobra ${formatarMoeda(Math.abs(diferencaTotal))}`}
+                    </div>
                     </div>
                   )}
                 </>
