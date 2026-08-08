@@ -1,8 +1,21 @@
 import { useEffect, useState } from "react";
 import { buscarVendasPagSeguro } from "../services/api";
 
+// Não usar toISOString() aqui: ele converte pra UTC, e depois das 21h no
+// horário de Brasília (UTC-3) isso já vira o dia seguinte. Calculamos a data
+// direto no horário de Brasília, independente do fuso do dispositivo.
 function hoje() {
-  return new Date().toISOString().slice(0, 10);
+  const formatador = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const partes = formatador.formatToParts(new Date());
+  const obter = (tipo) => partes.find((parte) => parte.type === tipo)?.value;
+
+  return `${obter("year")}-${obter("month")}-${obter("day")}`;
 }
 
 function formatarMoeda(valor) {
