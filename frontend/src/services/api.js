@@ -164,6 +164,14 @@ export async function buscarFechamentoSaipos(lojaId, data) {
   );
 }
 
+export async function conferirFechamentoFoto(foto, valorEsperado) {
+  return requisicao("/pagseguro/conferir-fechamento", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto, valor_esperado: valorEsperado }),
+  });
+}
+
 export async function buscarVendasPagSeguro(dataInicio, dataFim) {
   return requisicao(
     `/pagseguro/vendas?dataInicio=${encodeURIComponent(

@@ -1,5 +1,43 @@
 import { useEffect, useRef, useState } from "react";
-import { buscarVendasPagSeguro } from "../services/api";
+import {
+  buscarVendasPagSeguro,
+  conferirFechamentoFoto,
+} from "../services/api";
+
+function comprimirImagem(arquivo, larguraMaxima = 1400, qualidade = 0.85) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+
+    leitor.onload = () => {
+      const imagem = new Image();
+
+      imagem.onload = () => {
+        const escala = Math.min(1, larguraMaxima / imagem.width);
+        const largura = Math.round(imagem.width * escala);
+        const altura = Math.round(imagem.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(imagem, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      };
+
+      imagem.onerror = () =>
+        reject(new Error("Não foi possível ler a imagem selecionada."));
+
+      imagem.src = leitor.result;
+    };
+
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+
+    leitor.readAsDataURL(arquivo);
+  });
+}
 
 // Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
 // bate com a expectativa de quem está usando a tela, seja qual for a loja.
@@ -72,6 +110,31 @@ function Conciliacao() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [atualizadoEm, setAtualizadoEm] = useState(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [resultadoFoto, setResultadoFoto] = useState(null);
+
+  async function conferirFoto(arquivo) {
+    if (!arquivo || !resumo) return;
+
+    setEnviandoFoto(true);
+    setResultadoFoto(null);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const resultado = await conferirFechamentoFoto(
+        fotoComprimida,
+        resumo.total_recebido
+      );
+      setResultadoFoto(resultado);
+    } catch (erroFoto) {
+      setResultadoFoto({
+        erro_leitura:
+          erroFoto.message || "Não foi possível conferir a foto.",
+      });
+    } finally {
+      setEnviandoFoto(false);
+    }
+  }
 
   // Acompanha qual era "hoje" da última vez que checamos — serve pra saber
   // se a pessoa está vendo o dia atual (e por isso a data final deve virar
@@ -236,8 +299,71 @@ function Conciliacao() {
                 )}
               </small>
             </div>
+
+            <div>
+              <input
+                id="foto-fechamento-conciliacao"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                disabled={enviandoFoto || !resumo}
+                onChange={async (evento) => {
+                  const arquivo = evento.target.files?.[0];
+                  await conferirFoto(arquivo);
+                  evento.target.value = "";
+                }}
+                style={{ display: "none" }}
+              />
+
+              <label
+                htmlFor="foto-fechamento-conciliacao"
+                className="secondary-button"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  cursor:
+                    enviandoFoto || !resumo ? "not-allowed" : "pointer",
+                  opacity: enviandoFoto || !resumo ? 0.6 : 1,
+                }}
+              >
+                {enviandoFoto
+                  ? "Lendo foto..."
+                  : "📸 Conferir foto do fechamento"}
+              </label>
+            </div>
           </div>
         </div>
+
+        {resultadoFoto && (
+          <div
+            className="empty-state"
+            style={{
+              color: resultadoFoto.erro_leitura
+                ? undefined
+                : resultadoFoto.bateu
+                ? "#16ca50"
+                : "#ff4655",
+              marginBottom: "10px",
+            }}
+          >
+            {resultadoFoto.erro_leitura ? (
+              resultadoFoto.erro_leitura
+            ) : resultadoFoto.bateu ? (
+              <>
+                ✅ Bateu! Comprovante:{" "}
+                {formatarMoeda(resultadoFoto.valor_lido)} · Sistema:{" "}
+                {formatarMoeda(resultadoFoto.valor_esperado)}
+              </>
+            ) : (
+              <>
+                ⚠️ Não bateu — diferença de{" "}
+                {formatarMoeda(Math.abs(resultadoFoto.diferenca))}.
+                Comprovante: {formatarMoeda(resultadoFoto.valor_lido)} ·
+                Sistema: {formatarMoeda(resultadoFoto.valor_esperado)}
+              </>
+            )}
+          </div>
+        )}
 
         {erro && <div className="empty-state">{erro}</div>}
 

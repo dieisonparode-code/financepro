@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
 const { XMLParser } = require("fast-xml-parser");
+const Anthropic = require("@anthropic-ai/sdk");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -2018,6 +2019,99 @@ app.get(
 
       res.status(500).json({
         erro: "Não foi possível conciliar os pagamentos.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/pagseguro/conferir-fechamento",
+  verificarPermissao("fechamento_caixa"),
+  async function (req, res) {
+    try {
+      const { foto, valor_esperado } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({
+          erro: "Envie a foto do comprovante de fechamento.",
+        });
+      }
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+
+      if (!apiKey) {
+        throw new Error("ANTHROPIC_API_KEY não configurada no .env.");
+      }
+
+      // foto vem como data URL: "data:image/jpeg;base64,/9j/4AAQ..."
+      const correspondencia = foto.match(/^data:(image\/\w+);base64,(.+)$/);
+
+      if (!correspondencia) {
+        return res.status(400).json({
+          erro: "Formato de imagem inválido.",
+        });
+      }
+
+      const tipoImagem = correspondencia[1];
+      const dadosBase64 = correspondencia[2];
+
+      const anthropic = new Anthropic({ apiKey });
+
+      const resposta = await anthropic.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 50,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: tipoImagem,
+                  data: dadosBase64,
+                },
+              },
+              {
+                type: "text",
+                text: 'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Encontre o VALOR TOTAL GERAL do fechamento (não um valor parcial). Responda APENAS com o número, no formato 1234.56 (ponto como separador decimal, sem "R$", sem texto, sem explicação). Se não conseguir identificar um valor total com confiança, responda exatamente: INDEFINIDO',
+              },
+            ],
+          },
+        ],
+      });
+
+      const textoResposta = resposta.content
+        .filter((bloco) => bloco.type === "text")
+        .map((bloco) => bloco.text)
+        .join("")
+        .trim();
+
+      if (textoResposta === "INDEFINIDO" || !/^\d+(\.\d+)?$/.test(textoResposta)) {
+        return res.json({
+          valor_lido: null,
+          erro_leitura:
+            "Não foi possível identificar o valor total na foto com confiança. Tente uma foto mais nítida.",
+        });
+      }
+
+      const valorLido = Number(textoResposta);
+      const valorEsperado = Number(valor_esperado || 0);
+      const diferenca = Number((valorLido - valorEsperado).toFixed(2));
+      const bateu = Math.abs(diferenca) < 0.01;
+
+      res.json({
+        valor_lido: valorLido,
+        valor_esperado: valorEsperado,
+        diferenca,
+        bateu,
+      });
+    } catch (erro) {
+      console.error("Erro ao conferir fechamento por foto:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível ler a foto do fechamento.",
         detalhes: erro.message,
       });
     }
