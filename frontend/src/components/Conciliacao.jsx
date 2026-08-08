@@ -461,7 +461,7 @@ function Conciliacao() {
             {resultadoFoto.erro_leitura ? (
               <>
                 {resultadoFoto.erro_leitura}
-                {resultadoFoto.debugRespostaIa && (
+                {resultadoFoto.debugRespostaIa != null && (
                   <div
                     style={{
                       marginTop: "8px",

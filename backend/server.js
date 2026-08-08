@@ -2138,10 +2138,15 @@ app.post(
       const textoResposta = await lerImagemComIA(
         foto,
         'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Ele mostra os valores separados por forma de pagamento. Encontre os valores de: CRÉDITO (cartão de crédito), DÉBITO (cartão de débito) e PIX. Dê sua MELHOR ESTIMATIVA de cada um mesmo sem 100% de certeza — é melhor arriscar um palpite razoável do que deixar em branco. Se algum desses três realmente não aparecer no comprovante, use null pra ele. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"credito": 123.45, "debito": 123.45, "pix": 123.45} (use null em vez de número se não encontrar aquele valor).',
-        150
+        500
       );
 
-      console.log("Resposta bruta da IA (conferir-fechamento):", textoResposta);
+      console.log(
+        "Resposta bruta da IA (conferir-fechamento), tamanho:",
+        textoResposta.length,
+        "conteúdo:",
+        JSON.stringify(textoResposta)
+      );
 
       let dadosLidos;
 
@@ -2155,7 +2160,8 @@ app.post(
           valores: null,
           erro_leitura:
             "Não foi possível ler os valores dessa foto. Tente uma foto mais nítida ou de outro ângulo.",
-          debug_resposta_ia: textoResposta,
+          debug_resposta_ia:
+            textoResposta === "" ? "(resposta vazia)" : textoResposta,
         });
       }
 
