@@ -124,6 +124,11 @@ function Conciliacao() {
     "Cartão de crédito": "",
     "Cartão de débito": "",
     PIX: "",
+    Dinheiro: "",
+    "A prazo": "",
+    "Pago Online": "",
+    Vale: "",
+    "Voucher Parceiro": "",
   });
   const [fechamentosSalvos, setFechamentosSalvos] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(false);
@@ -174,7 +179,8 @@ function Conciliacao() {
       }
 
       // Preenche a tabela de confronto sozinha com o que a foto trouxe —
-      // só troca as formas que a IA conseguiu ler (deixa o resto como está).
+      // inclui TODAS as categorias que a foto tiver (Dinheiro, Vale, Voucher,
+      // etc), não só as 3 fixas (Crédito/Débito/PIX).
       setValoresInformados((anterior) => {
         const novo = { ...anterior };
 
@@ -621,8 +627,19 @@ function Conciliacao() {
                   {algumInformado && (
                     <div
                       style={{
-                        marginTop: "10px",
+                        marginTop: "16px",
+                        padding: "14px 18px",
+                        border: "2px solid",
+                        borderColor:
+                          Math.abs(diferencaTotal) < 0.01
+                            ? "#16ca50"
+                            : diferencaTotal > 0
+                            ? "#ff4655"
+                            : "#16ca50",
+                        borderRadius: "10px",
                         fontWeight: 700,
+                        fontSize: "16px",
+                        textAlign: "center",
                         color:
                           Math.abs(diferencaTotal) < 0.01
                             ? "#16ca50"
