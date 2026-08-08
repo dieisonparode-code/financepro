@@ -1964,12 +1964,14 @@ const statusCmv =
   {pagina !== "dashboard" && (
     <header className="topbar">
       <div>
-        <span className="eyebrow">FinancePro</span>
+        {pagina !== "conciliacao" && (
+          <span className="eyebrow">FinancePro</span>
+        )}
 
         <h1
           style={
             pagina === "conciliacao"
-              ? { fontSize: "1.6rem", color: "#fff" }
+              ? { fontSize: "1.6rem", color: "#fff", marginTop: 0 }
               : undefined
           }
         >
