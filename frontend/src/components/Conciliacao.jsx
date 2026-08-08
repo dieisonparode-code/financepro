@@ -112,6 +112,7 @@ function agruparVendasPorFormaPagamento(vendas) {
 const INTERVALO_ATUALIZACAO_MS = 30 * 1000;
 
 function Conciliacao() {
+  const inputFotoRef = useRef(null);
   const [dataInicio, setDataInicio] = useState(hoje());
   const [dataFim, setDataFim] = useState(hoje());
   const [resumo, setResumo] = useState(null);
@@ -423,7 +424,7 @@ function Conciliacao() {
               </button>
 
               <input
-                id="foto-fechamento-conciliacao"
+                ref={inputFotoRef}
                 type="file"
                 accept="image/*"
                 disabled={enviandoFoto || !resumo}
@@ -435,22 +436,16 @@ function Conciliacao() {
                 style={{ display: "none" }}
               />
 
-              <label
-                htmlFor="foto-fechamento-conciliacao"
+              <button
+                type="button"
                 className="primary-button"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  height: "44px",
-                  cursor:
-                    enviandoFoto || !resumo ? "not-allowed" : "pointer",
-                  opacity: enviandoFoto || !resumo ? 0.6 : 1,
-                }}
+                onClick={() => inputFotoRef.current?.click()}
+                disabled={enviandoFoto || !resumo}
               >
                 {enviandoFoto
                   ? "Lendo foto..."
                   : "📸 Conferir nova foto"}
-              </label>
+              </button>
 
               {fechamentosSalvos.length > 0 && (
                 <label style={{ margin: 0 }}>
