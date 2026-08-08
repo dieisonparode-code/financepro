@@ -2048,7 +2048,7 @@ const statusCmv =
           </button>
         )}
 
-        {pagina === "receitas" && (
+        {pagina === "receitas" && ehAdministrador && (
           <button
             type="button"
             className="primary-button"
@@ -2175,13 +2175,15 @@ const statusCmv =
                     </strong>
 
                     <div className="transaction-actions">
-                      <button
-                        type="button"
-                        className="edit-button"
-                        onClick={() => abrirEdicao(item)}
-                      >
-                        Editar
-                      </button>
+                      {(item.tipo !== "receita" || ehAdministrador) && (
+                        <button
+                          type="button"
+                          className="edit-button"
+                          onClick={() => abrirEdicao(item)}
+                        >
+                          Editar
+                        </button>
+                      )}
 
                       {pagina === "despesas" && item.tem_foto && (
                         <button
@@ -2286,6 +2288,7 @@ const statusCmv =
                           </>
                         )}
 
+                      {(item.tipo !== "receita" || ehAdministrador) && (
                       <button
                         type="button"
                         className="delete-button"
@@ -2293,6 +2296,7 @@ const statusCmv =
                       >
                         Excluir
                       </button>
+                      )}
                     </div>
                   </div>
                 </div>

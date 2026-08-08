@@ -372,6 +372,15 @@ app.post("/lancamentos", verificarPermissao("financeiro"), async function (req, 
     const { perfil } = await obterPerfilOpcional(req);
     const dadosPreparados = prepararLancamento(req.body);
 
+    if (
+      dadosPreparados.tipo === "receita" &&
+      perfil?.perfil !== "administrador"
+    ) {
+      return res.status(403).json({
+        erro: "Só o administrador pode lançar receitas manualmente.",
+      });
+    }
+
     let status = "aprovado";
 
     if (dadosPreparados.tipo === "despesa" && perfil?.perfil !== "administrador") {
@@ -432,6 +441,15 @@ app.put("/lancamentos/:id", verificarPermissao("financeiro"), async function (re
 
     const lancamentoAtualizado =
       prepararLancamento(req.body);
+
+    if (
+      lancamentoAtualizado.tipo === "receita" &&
+      (await obterPerfilOpcional(req)).perfil?.perfil !== "administrador"
+    ) {
+      return res.status(403).json({
+        erro: "Só o administrador pode editar lançamentos de receita.",
+      });
+    }
 
     const { data, error } = await supabase
       .from("lancamentos")
