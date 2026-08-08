@@ -155,11 +155,39 @@ function Conciliacao() {
     setResultadoFoto(null);
 
     try {
-      const resultado = await conferirFechamentoFoto(
-        fotoDataUrl,
-        resumo.total_recebido
-      );
-      setResultadoFoto(resultado);
+      const resultado = await conferirFechamentoFoto(fotoDataUrl);
+
+      if (resultado.erro_leitura || !resultado.valores) {
+        setResultadoFoto({
+          erro_leitura:
+            resultado.erro_leitura ||
+            "Não foi possível ler os valores dessa foto.",
+        });
+        return;
+      }
+
+      // Preenche a tabela de confronto sozinha com o que a foto trouxe —
+      // só troca as formas que a IA conseguiu ler (deixa o resto como está).
+      setValoresInformados((anterior) => {
+        const novo = { ...anterior };
+
+        Object.entries(resultado.valores).forEach(([forma, valor]) => {
+          if (valor != null) {
+            novo[forma] = valor.toFixed(2);
+          }
+        });
+
+        return novo;
+      });
+
+      const formasNaoLidas = Object.entries(resultado.valores)
+        .filter(([, valor]) => valor == null)
+        .map(([forma]) => forma);
+
+      setResultadoFoto({
+        sucesso: true,
+        formasNaoLidas,
+      });
     } catch (erroFoto) {
       setResultadoFoto({
         erro_leitura:
@@ -425,28 +453,17 @@ function Conciliacao() {
           <div
             className="empty-state"
             style={{
-              color: resultadoFoto.erro_leitura
-                ? undefined
-                : resultadoFoto.bateu
-                ? "#16ca50"
-                : "#ff4655",
+              color: resultadoFoto.erro_leitura ? undefined : "#16ca50",
               marginBottom: "10px",
             }}
           >
             {resultadoFoto.erro_leitura ? (
               resultadoFoto.erro_leitura
-            ) : resultadoFoto.bateu ? (
-              <>
-                ✅ Bateu! Comprovante:{" "}
-                {formatarMoeda(resultadoFoto.valor_lido)} · Sistema:{" "}
-                {formatarMoeda(resultadoFoto.valor_esperado)}
-              </>
             ) : (
               <>
-                ⚠️ Não bateu — diferença de{" "}
-                {formatarMoeda(Math.abs(resultadoFoto.diferenca))}.
-                Comprovante: {formatarMoeda(resultadoFoto.valor_lido)} ·
-                Sistema: {formatarMoeda(resultadoFoto.valor_esperado)}
+                ✅ Valores lidos e preenchidos na tabela abaixo.
+                {resultadoFoto.formasNaoLidas?.length > 0 &&
+                  ` Não consegui ler: ${resultadoFoto.formasNaoLidas.join(", ")} — preencha essa(s) manualmente.`}
               </>
             )}
           </div>

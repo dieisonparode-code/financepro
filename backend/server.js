@@ -2127,7 +2127,7 @@ app.post(
   verificarPermissao("fechamento_caixa"),
   async function (req, res) {
     try {
-      const { foto, valor_esperado } = req.body;
+      const { foto } = req.body;
 
       if (!foto) {
         return res.status(400).json({
@@ -2137,33 +2137,46 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Pode ter vários valores (por forma de pagamento, parciais, etc). Encontre o VALOR TOTAL GERAL do fechamento — normalmente é o maior valor, costuma estar perto de palavras como "TOTAL", "TOTAL GERAL", "TOTAL DO DIA" ou "VALOR TOTAL", geralmente no final do comprovante. Dê sua MELHOR ESTIMATIVA mesmo que não tenha 100% de certeza — é melhor arriscar um palpite razoável do que recusar. Responda APENAS com o número, no formato 1234.56 (ponto como separador decimal, sem "R$", sem texto, sem explicação). Só responda exatamente INDEFINIDO se a imagem estiver realmente ilegível ou não for um comprovante financeiro.'
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Ele mostra os valores separados por forma de pagamento. Encontre os valores de: CRÉDITO (cartão de crédito), DÉBITO (cartão de débito) e PIX. Dê sua MELHOR ESTIMATIVA de cada um mesmo sem 100% de certeza — é melhor arriscar um palpite razoável do que deixar em branco. Se algum desses três realmente não aparecer no comprovante, use null pra ele. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"credito": 123.45, "debito": 123.45, "pix": 123.45} (use null em vez de número se não encontrar aquele valor).',
+        150
       );
 
-      // Extrai o número da resposta em vez de exigir que a resposta inteira
-      // seja só o número — a IA às vezes acrescenta algo mesmo pedindo pra
-      // não fazer isso (ex: "1234.56" vs "R$ 1234.56" vs "1234.56.").
-      const numeroEncontrado = textoResposta.match(/\d+(?:\.\d+)?/);
+      let dadosLidos;
 
-      if (textoResposta.includes("INDEFINIDO") || !numeroEncontrado) {
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(
+          jsonEncontrado ? jsonEncontrado[0] : textoResposta
+        );
+      } catch {
         return res.json({
-          valor_lido: null,
+          valores: null,
           erro_leitura:
-            "Não foi possível identificar o valor total na foto com confiança. Tente uma foto mais nítida ou de outro ângulo.",
+            "Não foi possível ler os valores dessa foto. Tente uma foto mais nítida ou de outro ângulo.",
         });
       }
 
-      const valorLido = Number(numeroEncontrado[0]);
-      const valorEsperado = Number(valor_esperado || 0);
-      const diferenca = Number((valorLido - valorEsperado).toFixed(2));
-      const bateu = Math.abs(diferenca) < 0.01;
+      const valores = {
+        "Cartão de crédito":
+          dadosLidos.credito != null ? Number(dadosLidos.credito) : null,
+        "Cartão de débito":
+          dadosLidos.debito != null ? Number(dadosLidos.debito) : null,
+        PIX: dadosLidos.pix != null ? Number(dadosLidos.pix) : null,
+      };
 
-      res.json({
-        valor_lido: valorLido,
-        valor_esperado: valorEsperado,
-        diferenca,
-        bateu,
-      });
+      const nenhumValorLido = Object.values(valores).every(
+        (valor) => valor == null
+      );
+
+      if (nenhumValorLido) {
+        return res.json({
+          valores: null,
+          erro_leitura:
+            "Não foi possível identificar nenhum valor nessa foto. Tente uma foto mais nítida ou de outro ângulo.",
+        });
+      }
+
+      res.json({ valores });
     } catch (erro) {
       console.error("Erro ao conferir fechamento por foto:", erro.message);
 
