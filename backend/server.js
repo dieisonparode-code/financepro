@@ -1568,6 +1568,54 @@ app.delete("/fechamentos-caixa/:id", verificarPermissao("fechamento_caixa"), asy
 
 const SAIPOS_DATA_API_BASE = "https://data.saipos.io/v1";
 
+// A API de Dados da Saipos às vezes responde 502/503/504 (fila cheia,
+// costuma acontecer em horário de pico como jantar) ou demora demais pra
+// responder. Em vez de desistir na primeira falha (o que deixava a tela
+// "Vendas (Saipos)" travada em "Selecione a loja e a data" sem avisar o
+// motivo), tenta de novo algumas vezes antes de reportar erro pro usuário.
+async function buscarPaginaSaiposComRetry(url, token, tentativas = 3) {
+  let ultimoErro;
+
+  for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
+    try {
+      const resposta = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(20000),
+      });
+
+      if (!resposta.ok) {
+        const corpoErro = await resposta.text();
+        const erro = new Error(
+          `Saipos respondeu ${resposta.status}: ${corpoErro || resposta.statusText}`
+        );
+        erro.status = resposta.status;
+        throw erro;
+      }
+
+      return await resposta.json();
+    } catch (erro) {
+      ultimoErro = erro;
+
+      const transitorio =
+        erro.status >= 500 ||
+        erro.name === "TimeoutError" ||
+        erro.name === "AbortError";
+
+      if (!transitorio || tentativa >= tentativas) {
+        throw erro;
+      }
+
+      console.error(
+        `Saipos falhou (tentativa ${tentativa}/${tentativas}), tentando de novo: ${erro.message}`
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 1000 * tentativa));
+    }
+  }
+
+  throw ultimoErro;
+}
+
 async function consultarSaipos(caminho, parametros) {
   const token = process.env.SAIPOS_TOKEN;
 
@@ -1591,19 +1639,7 @@ async function consultarSaipos(caminho, parametros) {
     url.searchParams.set("p_limit", limite);
     url.searchParams.set("p_offset", posicao);
 
-    const resposta = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!resposta.ok) {
-      const corpoErro = await resposta.text();
-
-      throw new Error(
-        `Saipos respondeu ${resposta.status}: ${corpoErro || resposta.statusText}`
-      );
-    }
-
-    const pagina = await resposta.json();
+    const pagina = await buscarPaginaSaiposComRetry(url, token);
 
     registros.push(...pagina);
 
