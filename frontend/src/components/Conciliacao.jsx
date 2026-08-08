@@ -114,6 +114,11 @@ function Conciliacao() {
   const [atualizadoEm, setAtualizadoEm] = useState(null);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [resultadoFoto, setResultadoFoto] = useState(null);
+  const [valoresInformados, setValoresInformados] = useState({
+    "Cartão de crédito": "",
+    "Cartão de débito": "",
+    PIX: "",
+  });
   const [fechamentosSalvos, setFechamentosSalvos] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(false);
   const [fechamentoSelecionado, setFechamentoSelecionado] = useState("");
@@ -448,6 +453,92 @@ function Conciliacao() {
         )}
 
         {erro && <div className="empty-state">{erro}</div>}
+
+        {resumo && (
+          <>
+            <div className="panel-header" style={{ margin: "10px 0 10px" }}>
+              <div>
+                <span className="eyebrow">Confronto</span>
+                <h2>Sistema × Informado, por forma de pagamento</h2>
+              </div>
+            </div>
+
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Forma de pagamento</th>
+                    <th>Sistema</th>
+                    <th>Informado</th>
+                    <th>Diferença</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {["Cartão de crédito", "Cartão de débito", "PIX"].map(
+                    (forma) => {
+                      const valorSistema =
+                        resumo.totais_por_forma_pagamento?.[forma] || 0;
+                      const valorInformadoTexto =
+                        valoresInformados[forma] ?? "";
+                      const temInformado = valorInformadoTexto !== "";
+                      const valorInformado = temInformado
+                        ? Number(
+                            valorInformadoTexto.replace(",", ".")
+                          )
+                        : null;
+                      const diferenca = temInformado
+                        ? Number(
+                            (valorSistema - valorInformado).toFixed(2)
+                          )
+                        : null;
+                      const bateu = temInformado && Math.abs(diferenca) < 0.01;
+
+                      return (
+                        <tr key={forma}>
+                          <td style={{ color: "#16ca50", fontWeight: 700 }}>
+                            {forma}
+                          </td>
+                          <td>{formatarMoeda(valorSistema)}</td>
+                          <td>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0,00"
+                              value={valorInformadoTexto}
+                              onChange={(evento) =>
+                                setValoresInformados((anterior) => ({
+                                  ...anterior,
+                                  [forma]: evento.target.value,
+                                }))
+                              }
+                              style={{ maxWidth: "120px" }}
+                            />
+                          </td>
+                          <td
+                            style={{
+                              color: !temInformado
+                                ? undefined
+                                : bateu
+                                ? "#16ca50"
+                                : "#ff4655",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {temInformado
+                              ? bateu
+                                ? "✅ Bateu"
+                                : formatarMoeda(diferenca)
+                              : "—"}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         <div className="panel-header" style={{ margin: "10px 0 10px" }}>
           <div>
