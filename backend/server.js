@@ -2037,7 +2037,7 @@ app.get(
   }
 );
 
-async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 50) {
+async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 8192) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
@@ -2119,7 +2119,7 @@ app.post(
       const textoResposta = await lerImagemComIA(
         foto,
         'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento (se estiver visível), e a DATA da compra no formato AAAA-MM-DD (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "data": "AAAA-MM-DD ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null, "data": null}.',
-        200
+        8192
       );
 
       let dadosLidos;
@@ -2169,7 +2169,7 @@ app.post(
       const textoResposta = await lerImagemComIA(
         foto,
         'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria (geralmente tem uma seção "CONFERÊNCIA" com colunas Forma de Pagamento / Esperado / Em caixa / Diferença). Liste TODAS as formas de pagamento/categorias que aparecerem nessa seção (pode ter várias: Dinheiro, A prazo, Crédito, Débito, Pago Online, Vale, Voucher, Cortesia, Funcionário, PIX, TEF-Débito, TEF-PIX, etc — exatamente como estão escritas no comprovante). Pra cada uma, use o valor da coluna "Em caixa" (se não tiver essa coluna, use o valor que aparecer). Se encontrar "Crédito" (ou "Cartão de Crédito"), chame de "Cartão de crédito". Se encontrar "Débito" (ou "Cartão de Débito"), chame de "Cartão de débito". Se encontrar QUALQUER PIX (linhas como "Pix", "TEF-PIX", "Pix na Entrega"), SOME todos os valores de PIX numa única categoria chamada "PIX". As demais categorias (Dinheiro, A prazo, Pago Online, Vale, Voucher, Cortesia, Funcionário, etc), mantenha o nome exatamente como está escrito no comprovante, sem inventar nem combinar. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "valor": 337.40}, {"nome": "Cartão de crédito", "valor": 4299.00}, ...]}.',
-        800
+        8192
       );
 
       console.log(
