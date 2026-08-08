@@ -165,7 +165,7 @@ function Conciliacao() {
                 <div className="categoria-identificacao">
                   <div className="categoria-icone">💳</div>
                   <div>
-                    <strong>{forma}</strong>
+                    <strong style={{ color: "#16ca50" }}>{forma}</strong>
                     <div>{formatarMoeda(valor)}</div>
                   </div>
                 </div>
@@ -206,7 +206,9 @@ function Conciliacao() {
               (grupo) => (
                 <div key={grupo.forma}>
                   <div className="panel-header">
-                    <strong>{grupo.forma}</strong>
+                    <strong style={{ color: "#16ca50" }}>
+                      {grupo.forma}
+                    </strong>
                     <span>{grupo.vendas.length}</span>
                   </div>
 
