@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import DashboardPremium from "./components/dashboardPremium";
 import "./App.css";
 import "./paginasInternas.css";
@@ -1829,6 +1831,75 @@ const statusCmv =
     URL.revokeObjectURL(url);
   }
 
+  function exportarRelatorioPDF() {
+    const nomeLoja =
+      lojaDashboard === "todas"
+        ? "Todas as lojas"
+        : lojas.find((loja) => String(loja.id) === String(lojaDashboard))
+            ?.nome || "-";
+
+    const documento = new jsPDF();
+
+    documento.setFontSize(16);
+    documento.text("Relatório financeiro", 14, 18);
+
+    documento.setFontSize(10);
+    documento.setTextColor(90, 90, 90);
+    documento.text(
+      `Período: ${formatarData(dataInicialRelatorio)} a ${formatarData(
+        dataFinalRelatorio
+      )}`,
+      14,
+      26
+    );
+    documento.text(`Loja: ${nomeLoja}`, 14, 32);
+    documento.text(
+      `Emitido em ${new Date().toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+      })}`,
+      14,
+      38
+    );
+
+    documento.setTextColor(20, 20, 20);
+    documento.setFontSize(11);
+    documento.text(
+      `Receitas: ${formatarMoeda(totaisRelatorio.receitas)}    Despesas: ${formatarMoeda(
+        totaisRelatorio.despesas
+      )}    Saldo: ${formatarMoeda(totaisRelatorio.saldo)}`,
+      14,
+      47
+    );
+
+    autoTable(documento, {
+      startY: 53,
+      head: [
+        [
+          "Data",
+          "Tipo",
+          "Descrição",
+          "Categoria",
+          "Fornecedor",
+          "Valor",
+        ],
+      ],
+      body: lancamentosRelatorio.map((item) => [
+        formatarData(item.data),
+        item.tipo === "receita" ? "Receita" : "Despesa",
+        item.descricao || "",
+        item.categoria || "-",
+        item.fornecedor || "-",
+        formatarMoeda(item.valor),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [20, 118, 255] },
+    });
+
+    documento.save(
+      `relatorio-${dataInicialRelatorio}-a-${dataFinalRelatorio}.pdf`
+    );
+  }
+
   function imprimirPagina() {
     window.print();
   }
@@ -1884,6 +1955,66 @@ const statusCmv =
     link.download = `fluxo-caixa-${dataInicialFluxo}-a-${dataFinalFluxo}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportarFluxoPDF() {
+    const nomeLoja =
+      lojaDashboard === "todas"
+        ? "Todas as lojas"
+        : lojas.find((loja) => String(loja.id) === String(lojaDashboard))
+            ?.nome || "-";
+
+    const documento = new jsPDF();
+
+    documento.setFontSize(16);
+    documento.text("Fluxo de Caixa", 14, 18);
+
+    documento.setFontSize(10);
+    documento.setTextColor(90, 90, 90);
+    documento.text(
+      `Período: ${formatarData(dataInicialFluxo)} a ${formatarData(
+        dataFinalFluxo
+      )}`,
+      14,
+      26
+    );
+    documento.text(`Loja: ${nomeLoja}`, 14, 32);
+    documento.text(
+      `Emitido em ${new Date().toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+      })}`,
+      14,
+      38
+    );
+
+    documento.setTextColor(20, 20, 20);
+    documento.setFontSize(11);
+    documento.text(
+      `Entradas: ${formatarMoeda(totaisFluxo.entradas)}    Saídas: ${formatarMoeda(
+        totaisFluxo.saidas
+      )}    Saldo: ${formatarMoeda(totaisFluxo.saldo)}`,
+      14,
+      47
+    );
+
+    autoTable(documento, {
+      startY: 53,
+      head: [["Data", "Descrição", "Categoria", "Tipo", "Entrada", "Saída"]],
+      body: lancamentosFluxo.map((item) => [
+        formatarData(item.data),
+        item.descricao || "",
+        item.categoria || "-",
+        item.tipo === "receita" ? "Receita" : "Despesa",
+        item.tipo === "receita" ? formatarMoeda(item.valor) : "-",
+        item.tipo === "despesa" ? formatarMoeda(item.valor) : "-",
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [20, 118, 255] },
+    });
+
+    documento.save(
+      `fluxo-caixa-${dataInicialFluxo}-a-${dataFinalFluxo}.pdf`
+    );
   }
 
   return (
@@ -2598,10 +2729,18 @@ const statusCmv =
 
                 <button
                   type="button"
+                  className="secondary-button"
+                  onClick={exportarFluxoPDF}
+                >
+                  📄 Exportar PDF
+                </button>
+
+                <button
+                  type="button"
                   className="primary-button"
                   onClick={imprimirPagina}
                 >
-                  Imprimir / Salvar PDF
+                  🖨️ Imprimir
                 </button>
               </div>
             </div>
@@ -2813,10 +2952,18 @@ const statusCmv =
 
                 <button
                   type="button"
+                  className="secondary-button"
+                  onClick={exportarRelatorioPDF}
+                >
+                  📄 Exportar PDF
+                </button>
+
+                <button
+                  type="button"
                   className="primary-button"
                   onClick={imprimirPagina}
                 >
-                  Imprimir / Salvar PDF
+                  🖨️ Imprimir
                 </button>
               </div>
             </div>
