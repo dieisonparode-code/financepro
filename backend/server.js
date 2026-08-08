@@ -1649,11 +1649,6 @@ function montarResumoSaipos(vendas, lancamentos) {
   const vendasValidas = vendas.filter((venda) => venda.canceled !== "Y");
   const vendasCanceladas = vendas.filter((venda) => venda.canceled === "Y");
 
-  const totalVendas = vendasValidas.reduce(
-    (soma, venda) => soma + Number(venda.totals?.total_amount || 0),
-    0
-  );
-
   const totaisPorFormaPagamento = {};
 
   vendasValidas.forEach((venda) => {
@@ -1665,6 +1660,31 @@ function montarResumoSaipos(vendas, lancamentos) {
         Number(pagamento.payment_amount || 0);
     });
   });
+
+  // Segundo a documentação da Saipos, o valor total da venda vem em
+  // venda.totals.total_amount. Mas já vimos casos reais em que isso some
+  // (fica tudo 0) mesmo com vendas de verdade e formas de pagamento com
+  // valor — provavelmente uma diferença de formato/versão da API pra essa
+  // conta. Por segurança, se o total "oficial" vier zerado mas tiver
+  // dinheiro nas formas de pagamento, usa a soma das formas de pagamento
+  // como valor de verdade (é a mesma fonte que já sabemos que funciona).
+  const totalVendasOficial = vendasValidas.reduce(
+    (soma, venda) => soma + Number(venda.totals?.total_amount || 0),
+    0
+  );
+
+  const totalVendasPorPagamentos = Object.values(
+    totaisPorFormaPagamento
+  ).reduce((soma, valor) => soma + valor, 0);
+
+  if (totalVendasOficial === 0 && totalVendasPorPagamentos > 0) {
+    console.error(
+      "montarResumoSaipos: venda.totals.total_amount veio zerado em todas as vendas, mas há valor nas formas de pagamento. Usando a soma das formas de pagamento como total_vendas. Verificar formato real do campo totals.total_amount na resposta da Saipos."
+    );
+  }
+
+  const totalVendas =
+    totalVendasOficial > 0 ? totalVendasOficial : totalVendasPorPagamentos;
 
   const totalLancamentosFinanceiros = lancamentos.reduce(
     (soma, lancamento) => soma + Number(lancamento.amount || 0),
