@@ -1775,7 +1775,11 @@ function agoraBrasilia() {
 function calcularPeriodoPagSeguro(data) {
   const hojeBrasilia = agoraBrasilia().toISOString().slice(0, 10);
 
-  if (data === hojeBrasilia) {
+  // ">=" e não só "===": o frontend agora usa o fuso do dispositivo de quem
+  // está usando o sistema (pode ser diferente do de Brasília, como Mato
+  // Grosso), então a data escolhida pode chegar aqui igual ou até "depois"
+  // do que já é hoje em Brasília. Nesses casos, sempre limita em "agora".
+  if (data >= hojeBrasilia) {
     // 1 minuto de margem pra não bater exatamente em "agora" e ser rejeitado.
     const agoraComMargem = new Date(agoraBrasilia().getTime() - 60 * 1000);
 

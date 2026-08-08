@@ -1,21 +1,18 @@
 import { useEffect, useState } from "react";
 import { buscarVendasPagSeguro } from "../services/api";
 
-// Não usar toISOString() aqui: ele converte pra UTC, e depois das 21h no
-// horário de Brasília (UTC-3) isso já vira o dia seguinte. Calculamos a data
-// direto no horário de Brasília, independente do fuso do dispositivo.
+// Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
+// bate com a expectativa de quem está usando a tela, seja qual for a loja.
+// A proteção contra "pedir data no futuro pra PagSeguro" fica só no backend
+// (calcularPeriodoPagSeguro), que sempre usa o horário de Brasília por ser o
+// que a PagSeguro exige — não precisa ser replicado aqui.
 function hoje() {
-  const formatador = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
 
-  const partes = formatador.formatToParts(new Date());
-  const obter = (tipo) => partes.find((parte) => parte.type === tipo)?.value;
-
-  return `${obter("year")}-${obter("month")}-${obter("day")}`;
+  return `${ano}-${mes}-${dia}`;
 }
 
 function formatarMoeda(valor) {
