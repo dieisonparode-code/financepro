@@ -1277,13 +1277,15 @@ const statusCmv =
     }));
   }
 
-  async function lerNotaAutomaticamente() {
-    if (!formulario.foto || lendoNota) return;
+  async function lerNotaAutomaticamente(fotoParaLer) {
+    const foto = fotoParaLer || formulario.foto;
+
+    if (!foto || lendoNota) return;
 
     setLendoNota(true);
 
     try {
-      const resultado = await lerNotaFiscal(formulario.foto);
+      const resultado = await lerNotaFiscal(foto);
 
       if (resultado.valor == null) {
         alert(
@@ -3230,6 +3232,7 @@ const statusCmv =
                     try {
                       const fotoComprimida = await comprimirImagem(arquivo);
                       alterarCampo("foto", fotoComprimida);
+                      await lerNotaAutomaticamente(fotoComprimida);
                     } catch (erro) {
                       console.error("Erro ao processar a foto:", erro);
                       alert(
@@ -3247,14 +3250,16 @@ const statusCmv =
                   htmlFor="foto-comprovante"
                   className="foto-button"
                   style={
-                    processandoFoto
+                    processandoFoto || lendoNota
                       ? { opacity: 0.6, pointerEvents: "none" }
                       : undefined
                   }
                 >
                   {processandoFoto
                     ? "Processando foto..."
-                    : "📄 Anexar nota fiscal"}
+                    : lendoNota
+                    ? "🤖 Lendo nota automaticamente..."
+                    : "📄🤖 Anexar e ler nota automaticamente"}
                 </label>
 
                 <small className="foto-ajuda">
@@ -3271,13 +3276,11 @@ const statusCmv =
 
                   <button
                     type="button"
-                    className="primary-button"
-                    onClick={lerNotaAutomaticamente}
+                    className="secondary-button"
+                    onClick={() => lerNotaAutomaticamente()}
                     disabled={lendoNota}
                   >
-                    {lendoNota
-                      ? "Lendo nota..."
-                      : "🤖 Ler nota automaticamente"}
+                    {lendoNota ? "Lendo nota..." : "🤖 Ler novamente"}
                   </button>
 
                   <button
