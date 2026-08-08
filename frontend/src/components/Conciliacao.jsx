@@ -27,12 +27,6 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
-// data vem no formato AAAA-MM-DD (do input type="date") — mostra só DD/MM.
-function formatarDataCurta(data) {
-  const [ano, mes, dia] = data.split("-");
-  return `${dia}/${mes}`;
-}
-
 // Status 3 (Paga) e 4 (Disponível) são as únicas que a PagSeguro já confirmou
 // como recebidas de verdade — o resto (aguardando, em análise, disputa,
 // devolvida, cancelada) é dinheiro que apareceu como venda mas ainda não
@@ -72,16 +66,17 @@ function agruparVendasPorFormaPagamento(vendas) {
 const INTERVALO_ATUALIZACAO_MS = 30 * 1000;
 
 function Conciliacao() {
-  const [data, setData] = useState(hoje());
+  const [dataInicio, setDataInicio] = useState(hoje());
+  const [dataFim, setDataFim] = useState(hoje());
   const [resumo, setResumo] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [atualizadoEm, setAtualizadoEm] = useState(null);
 
   // Acompanha qual era "hoje" da última vez que checamos — serve pra saber
-  // se a pessoa está vendo o dia atual (e por isso a data deve virar sozinha
-  // à meia-noite) ou se escolheu um dia antigo de propósito (e nesse caso não
-  // deve mexer na data escolhida por ela).
+  // se a pessoa está vendo o dia atual (e por isso a data final deve virar
+  // sozinha à meia-noite) ou se escolheu um período antigo de propósito (e
+  // nesse caso não deve mexer nas datas escolhidas por ela).
   const diaSeguidoRef = useRef(hoje());
 
   async function buscar() {
@@ -89,7 +84,7 @@ function Conciliacao() {
     setErro("");
 
     try {
-      const resultado = await buscarVendasPagSeguro(data);
+      const resultado = await buscarVendasPagSeguro(dataInicio, dataFim);
       setResumo(resultado);
       setAtualizadoEm(new Date());
     } catch (erroBusca) {
@@ -108,12 +103,19 @@ function Conciliacao() {
       const hojeAgora = hoje();
 
       if (hojeAgora !== diaSeguidoRef.current) {
-        const estavaSeguindoHoje = data === diaSeguidoRef.current;
+        const diaAnterior = diaSeguidoRef.current;
+        const estavaSeguindoFinal = dataFim === diaAnterior;
         diaSeguidoRef.current = hojeAgora;
 
-        if (estavaSeguindoHoje) {
-          setData(hojeAgora);
-          return; // o efeito reinicia sozinho por causa da dependência [data]
+        if (estavaSeguindoFinal) {
+          // Se a data inicial também era "hoje" (visualização de 1 dia só),
+          // ela acompanha junto pra continuar mostrando um único dia.
+          if (dataInicio === diaAnterior) {
+            setDataInicio(hojeAgora);
+          }
+
+          setDataFim(hojeAgora);
+          return; // o efeito reinicia sozinho por causa da dependência
         }
       }
 
@@ -122,7 +124,7 @@ function Conciliacao() {
 
     return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [dataInicio, dataFim]);
 
   const formasPagamento = Object.entries(
     resumo?.totais_por_forma_pagamento || {}
@@ -159,13 +161,6 @@ function Conciliacao() {
             >
               <div>
                 <span style={{ display: "inline-block", width: "20px" }}>
-                  📅
-                </span>{" "}
-                Data: <strong>{formatarDataCurta(data)}</strong>
-              </div>
-
-              <div>
-                <span style={{ display: "inline-block", width: "20px" }}>
                   💰
                 </span>{" "}
                 Total recebido:{" "}
@@ -195,11 +190,20 @@ function Conciliacao() {
 
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             <label style={{ margin: 0 }}>
-              Data
+              Data inicial
               <input
                 type="date"
-                value={data}
-                onChange={(evento) => setData(evento.target.value)}
+                value={dataInicio}
+                onChange={(evento) => setDataInicio(evento.target.value)}
+              />
+            </label>
+
+            <label style={{ margin: 0 }}>
+              Data final
+              <input
+                type="date"
+                value={dataFim}
+                onChange={(evento) => setDataFim(evento.target.value)}
               />
             </label>
 
@@ -242,7 +246,7 @@ function Conciliacao() {
           <div className="empty-state">
             {carregando
               ? "Buscando..."
-              : "Nenhuma venda encontrada nessa data."}
+              : "Nenhuma venda encontrada nesse período."}
           </div>
         ) : (
           <div

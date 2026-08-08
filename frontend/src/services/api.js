@@ -164,10 +164,13 @@ export async function buscarFechamentoSaipos(lojaId, data) {
   );
 }
 
-export async function buscarVendasPagSeguro(data) {
-  return requisicao(`/pagseguro/vendas?data=${encodeURIComponent(data)}`, {
-    headers: await cabecalhoAutenticado(),
-  });
+export async function buscarVendasPagSeguro(dataInicio, dataFim) {
+  return requisicao(
+    `/pagseguro/vendas?dataInicio=${encodeURIComponent(
+      dataInicio
+    )}&dataFim=${encodeURIComponent(dataFim)}`,
+    { headers: await cabecalhoAutenticado() }
+  );
 }
 
 export async function buscarFormasPagamento() {

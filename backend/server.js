@@ -1772,30 +1772,30 @@ function agoraBrasilia() {
   return new Date(Date.now() - TRES_HORAS_MS);
 }
 
-function calcularPeriodoPagSeguro(data) {
+function calcularPeriodoPagSeguro(dataInicio, dataFim) {
   const hojeBrasilia = agoraBrasilia().toISOString().slice(0, 10);
 
   // ">=" e não só "===": o frontend agora usa o fuso do dispositivo de quem
   // está usando o sistema (pode ser diferente do de Brasília, como Mato
   // Grosso), então a data escolhida pode chegar aqui igual ou até "depois"
   // do que já é hoje em Brasília. Nesses casos, sempre limita em "agora".
-  if (data >= hojeBrasilia) {
+  if (dataFim >= hojeBrasilia) {
     // 1 minuto de margem pra não bater exatamente em "agora" e ser rejeitado.
     const agoraComMargem = new Date(agoraBrasilia().getTime() - 60 * 1000);
 
     return {
-      dataInicio: `${data}T00:00:00`,
-      dataFim: agoraComMargem.toISOString().slice(0, 19),
+      dataInicioCompleta: `${dataInicio}T00:00:00`,
+      dataFimCompleta: agoraComMargem.toISOString().slice(0, 19),
     };
   }
 
   return {
-    dataInicio: `${data}T00:00:00`,
-    dataFim: `${data}T23:59:59`,
+    dataInicioCompleta: `${dataInicio}T00:00:00`,
+    dataFimCompleta: `${dataFim}T23:59:59`,
   };
 }
 
-async function buscarTransacoesPagSeguro(data) {
+async function buscarTransacoesPagSeguro(dataInicioPedida, dataFimPedida) {
   const email = process.env.PAGSEGURO_EMAIL;
   const token = process.env.PAGSEGURO_TOKEN;
 
@@ -1805,7 +1805,8 @@ async function buscarTransacoesPagSeguro(data) {
     );
   }
 
-  const { dataInicio, dataFim } = calcularPeriodoPagSeguro(data);
+  const { dataInicioCompleta: dataInicio, dataFimCompleta: dataFim } =
+    calcularPeriodoPagSeguro(dataInicioPedida, dataFimPedida);
 
   const parser = new XMLParser();
   const transacoes = [];
@@ -1899,15 +1900,32 @@ app.get(
   verificarPermissao("fechamento_caixa"),
   async function (req, res) {
     try {
-      const data = req.query.data;
+      const dataInicio = req.query.dataInicio || req.query.data;
+      const dataFim = req.query.dataFim || req.query.data;
 
-      if (!data) {
+      if (!dataInicio || !dataFim) {
         return res.status(400).json({
-          erro: "Informe a data (formato AAAA-MM-DD).",
+          erro: "Informe a data inicial e final (formato AAAA-MM-DD).",
         });
       }
 
-      const transacoes = await buscarTransacoesPagSeguro(data);
+      if (dataInicio > dataFim) {
+        return res.status(400).json({
+          erro: "A data inicial não pode ser depois da data final.",
+        });
+      }
+
+      const UM_DIA_MS = 24 * 60 * 60 * 1000;
+      const diferencaDias =
+        (new Date(dataFim) - new Date(dataInicio)) / UM_DIA_MS;
+
+      if (diferencaDias > 31) {
+        return res.status(400).json({
+          erro: "O período não pode ser maior que 31 dias.",
+        });
+      }
+
+      const transacoes = await buscarTransacoesPagSeguro(dataInicio, dataFim);
 
       const resumo = montarResumoPagSeguro(transacoes);
 
@@ -1981,7 +1999,7 @@ app.get(
           `${data} 00:00:00`,
           `${data} 23:59:59`
         ),
-        buscarTransacoesPagSeguro(data),
+        buscarTransacoesPagSeguro(data, data),
       ]);
 
       const resumoSaipos = montarResumoSaipos(vendasSaipos, []);
