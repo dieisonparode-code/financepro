@@ -12,6 +12,7 @@ function CadastroLojas({
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [raioMetros, setRaioMetros] = useState("200");
+  const [saiposIdStore, setSaiposIdStore] = useState("");
   const [capturandoLocal, setCapturandoLocal] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -22,6 +23,7 @@ function CadastroLojas({
     setLatitude("");
     setLongitude("");
     setRaioMetros("200");
+    setSaiposIdStore("");
     setEditandoId(null);
   }
 
@@ -67,6 +69,7 @@ function CadastroLojas({
       latitude: latitude ? Number(latitude) : null,
       longitude: longitude ? Number(longitude) : null,
       raio_metros: raioMetros ? Number(raioMetros) : 200,
+      saipos_id_store: saiposIdStore ? Number(saiposIdStore) : null,
     };
 
     try {
@@ -92,6 +95,9 @@ function CadastroLojas({
     setLatitude(loja.latitude != null ? String(loja.latitude) : "");
     setLongitude(loja.longitude != null ? String(loja.longitude) : "");
     setRaioMetros(String(loja.raio_metros || 200));
+    setSaiposIdStore(
+      loja.saipos_id_store != null ? String(loja.saipos_id_store) : ""
+    );
   }
 
   async function confirmarExclusao(loja) {
@@ -195,6 +201,23 @@ function CadastroLojas({
             />
           </label>
 
+          <label>
+            ID da loja na Saipos (opcional)
+            <input
+              type="number"
+              value={saiposIdStore}
+              onChange={(evento) => setSaiposIdStore(evento.target.value)}
+              placeholder="Ex.: 32136"
+            />
+          </label>
+
+          <small className="foto-ajuda">
+            Só preencha se essa loja usar a Saipos e você já tiver recebido o
+            token de acesso à API de Dados. É o número que identifica essa
+            loja lá dentro da Saipos — precisa dele pra puxar o fechamento de
+            caixa automaticamente.
+          </small>
+
           <div className="modal-actions">
             {editandoId && (
               <button
@@ -252,6 +275,11 @@ function CadastroLojas({
                             loja.raio_metros || 200
                           }m`
                         : "⚠️ Localização não definida"}
+                    </span>
+                    <span>
+                      {loja.saipos_id_store
+                        ? `🔗 Saipos conectada (ID ${loja.saipos_id_store})`
+                        : "🔗 Saipos não conectada"}
                     </span>
                   </div>
                 </div>

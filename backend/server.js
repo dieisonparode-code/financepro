@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
+const { XMLParser } = require("fast-xml-parser");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -234,6 +235,9 @@ function prepararLoja(dados = {}) {
     latitude: dados.latitude ?? null,
     longitude: dados.longitude ?? null,
     raio_metros: dados.raio_metros ? Number(dados.raio_metros) : 200,
+    saipos_id_store: dados.saipos_id_store
+      ? Number(dados.saipos_id_store)
+      : null,
   };
 }
 
@@ -1541,6 +1545,373 @@ app.delete("/fechamentos-caixa/:id", async function (req, res) {
     });
   }
 });
+
+const SAIPOS_DATA_API_BASE = "https://data.saipos.io/v1";
+
+async function consultarSaipos(caminho, parametros) {
+  const token = process.env.SAIPOS_TOKEN;
+
+  if (!token) {
+    throw new Error(
+      "SAIPOS_TOKEN não configurado no .env. Peça o token ao suporte da Saipos (API de Dados)."
+    );
+  }
+
+  const registros = [];
+  const limite = 300;
+  let posicao = 0;
+
+  while (true) {
+    const url = new URL(`${SAIPOS_DATA_API_BASE}${caminho}`);
+
+    Object.entries(parametros).forEach(([chave, valor]) => {
+      url.searchParams.set(chave, valor);
+    });
+
+    url.searchParams.set("p_limit", limite);
+    url.searchParams.set("p_offset", posicao);
+
+    const resposta = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!resposta.ok) {
+      const corpoErro = await resposta.text();
+
+      throw new Error(
+        `Saipos respondeu ${resposta.status}: ${corpoErro || resposta.statusText}`
+      );
+    }
+
+    const pagina = await resposta.json();
+
+    registros.push(...pagina);
+
+    if (pagina.length < limite) {
+      break;
+    }
+
+    posicao += limite;
+  }
+
+  return registros;
+}
+
+async function buscarVendasSaipos(idLojaSaipos, dataInicio, dataFim) {
+  const vendas = await consultarSaipos("/search_sales", {
+    p_date_column_filter: "shift_date",
+    p_filter_date_start: dataInicio,
+    p_filter_date_end: dataFim,
+  });
+
+  return vendas.filter(
+    (venda) => Number(venda.id_store) === Number(idLojaSaipos)
+  );
+}
+
+async function buscarLancamentosFinanceirosSaipos(
+  idLojaSaipos,
+  dataInicio,
+  dataFim
+) {
+  const lancamentos = await consultarSaipos("/search_financial_transactions", {
+    p_date_column_filter: "date",
+    p_filter_date_start: dataInicio,
+    p_filter_date_end: dataFim,
+  });
+
+  return lancamentos.filter(
+    (lancamento) => Number(lancamento.id_store) === Number(idLojaSaipos)
+  );
+}
+
+function montarResumoSaipos(vendas, lancamentos) {
+  const vendasValidas = vendas.filter((venda) => venda.canceled !== "Y");
+  const vendasCanceladas = vendas.filter((venda) => venda.canceled === "Y");
+
+  const totalVendas = vendasValidas.reduce(
+    (soma, venda) => soma + Number(venda.totals?.total_amount || 0),
+    0
+  );
+
+  const totaisPorFormaPagamento = {};
+
+  vendasValidas.forEach((venda) => {
+    (venda.payments || []).forEach((pagamento) => {
+      const forma = pagamento.desc_store_payment_type || "Não informado";
+
+      totaisPorFormaPagamento[forma] =
+        (totaisPorFormaPagamento[forma] || 0) +
+        Number(pagamento.payment_amount || 0);
+    });
+  });
+
+  const totalLancamentosFinanceiros = lancamentos.reduce(
+    (soma, lancamento) => soma + Number(lancamento.amount || 0),
+    0
+  );
+
+  return {
+    total_vendas: totalVendas,
+    quantidade_vendas: vendasValidas.length,
+    quantidade_canceladas: vendasCanceladas.length,
+    totais_por_forma_pagamento: totaisPorFormaPagamento,
+    total_lancamentos_financeiros: totalLancamentosFinanceiros,
+  };
+}
+
+app.get(
+  "/fechamento-saipos/:lojaId",
+  verificarPermissao("fechamento_caixa"),
+  async function (req, res) {
+    try {
+      const lojaId = Number(req.params.lojaId);
+      const data = req.query.data;
+
+      if (!Number.isFinite(lojaId)) {
+        return res.status(400).json({ erro: "ID da loja inválido." });
+      }
+
+      if (!data) {
+        return res.status(400).json({
+          erro: "Informe a data (formato AAAA-MM-DD).",
+        });
+      }
+
+      const { data: loja, error: erroLoja } = await supabase
+        .from("lojas")
+        .select("id, nome, saipos_id_store")
+        .eq("id", lojaId)
+        .single();
+
+      if (erroLoja) {
+        throw erroLoja;
+      }
+
+      if (!loja?.saipos_id_store) {
+        return res.status(400).json({
+          erro: `A loja "${loja?.nome || lojaId}" ainda não tem o ID da Saipos cadastrado. Configure em Lojas.`,
+        });
+      }
+
+      const dataInicio = `${data} 00:00:00`;
+      const dataFim = `${data} 23:59:59`;
+
+      const [vendas, lancamentos] = await Promise.all([
+        buscarVendasSaipos(loja.saipos_id_store, dataInicio, dataFim),
+        buscarLancamentosFinanceirosSaipos(
+          loja.saipos_id_store,
+          dataInicio,
+          dataFim
+        ),
+      ]);
+
+      const resumo = montarResumoSaipos(vendas, lancamentos);
+
+      await supabase.from("fechamento_saipos").upsert(
+        [
+          {
+            loja_id: lojaId,
+            data,
+            ...resumo,
+            atualizado_em: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "loja_id,data" }
+      );
+
+      res.json(resumo);
+    } catch (erro) {
+      console.error("Erro ao buscar fechamento na Saipos:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar os dados na Saipos.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+const PAGSEGURO_API_BASE = "https://ws.pagseguro.uol.com.br/v3";
+
+// Mapa conhecido dos códigos da PagSeguro (API clássica). Pode precisar de
+// ajuste quando testarmos com dados reais — a PagSeguro não documenta esses
+// números publicamente, isso é baseado no comportamento histórico da API.
+const statusPagSeguroRecebido = new Set([3, 4]); // 3=Paga, 4=Disponível
+const statusPagSeguroDescricao = {
+  1: "Aguardando pagamento",
+  2: "Em análise",
+  3: "Paga",
+  4: "Disponível",
+  5: "Em disputa",
+  6: "Devolvida",
+  7: "Cancelada",
+};
+const formaPagamentoPagSeguroDescricao = {
+  1: "Cartão de crédito",
+  2: "Boleto",
+  3: "Débito online",
+  4: "Saldo PagSeguro",
+  5: "Oi Paggo",
+  7: "Depósito em conta",
+  // 8 e 11 não são documentados oficialmente pela PagSeguro. Identificados
+  // pelo padrão da taxa cobrada (débito ~1%, PIX ~0,9%) e confirmado
+  // informalmente com o usuário — se notar valor errado, reveja aqui.
+  8: "Cartão de débito",
+  11: "PIX",
+};
+
+async function buscarTransacoesPagSeguro(dataInicio, dataFim) {
+  const email = process.env.PAGSEGURO_EMAIL;
+  const token = process.env.PAGSEGURO_TOKEN;
+
+  if (!email || !token) {
+    throw new Error(
+      "PAGSEGURO_EMAIL/PAGSEGURO_TOKEN não configurados no .env."
+    );
+  }
+
+  const parser = new XMLParser();
+  const transacoes = [];
+  let pagina = 1;
+
+  while (true) {
+    const url = new URL(`${PAGSEGURO_API_BASE}/transactions`);
+
+    url.searchParams.set("email", email);
+    url.searchParams.set("token", token);
+    url.searchParams.set("initialDate", dataInicio);
+    url.searchParams.set("finalDate", dataFim);
+    url.searchParams.set("page", pagina);
+    url.searchParams.set("maxPageResults", 100);
+
+    const resposta = await fetch(url);
+    const corpo = await resposta.text();
+
+    if (!resposta.ok) {
+      throw new Error(`PagSeguro respondeu ${resposta.status}: ${corpo}`);
+    }
+
+    const json = parser.parse(corpo);
+    const resultado = json?.transactionSearchResult;
+    const totalPaginas = Number(resultado?.totalPages || 1);
+    const listaTransacoes = resultado?.transactions?.transaction;
+
+    if (Array.isArray(listaTransacoes)) {
+      transacoes.push(...listaTransacoes);
+    } else if (listaTransacoes) {
+      transacoes.push(listaTransacoes);
+    }
+
+    if (pagina >= totalPaginas) {
+      break;
+    }
+
+    pagina += 1;
+  }
+
+  return transacoes;
+}
+
+function montarResumoPagSeguro(transacoes) {
+  const totaisPorFormaPagamento = {};
+  let totalRecebido = 0;
+  let quantidadeRecebida = 0;
+  let quantidadePendenteOuCancelada = 0;
+
+  transacoes.forEach((transacao) => {
+    const status = Number(transacao.status);
+    const valorLiquido = Number(transacao.netAmount || 0);
+    const tipoPagamento = Number(transacao.paymentMethod?.type);
+    const forma =
+      formaPagamentoPagSeguroDescricao[tipoPagamento] ||
+      `Tipo ${tipoPagamento || "desconhecido"}`;
+
+    if (statusPagSeguroRecebido.has(status)) {
+      totalRecebido += valorLiquido;
+      quantidadeRecebida += 1;
+      totaisPorFormaPagamento[forma] =
+        (totaisPorFormaPagamento[forma] || 0) + valorLiquido;
+    } else {
+      quantidadePendenteOuCancelada += 1;
+    }
+  });
+
+  return {
+    total_recebido: totalRecebido,
+    quantidade_recebida: quantidadeRecebida,
+    quantidade_pendente_ou_cancelada: quantidadePendenteOuCancelada,
+    totais_por_forma_pagamento: totaisPorFormaPagamento,
+  };
+}
+
+app.get(
+  "/conciliacao-pagamentos/:lojaId",
+  verificarPermissao("fechamento_caixa"),
+  async function (req, res) {
+    try {
+      const lojaId = Number(req.params.lojaId);
+      const data = req.query.data;
+
+      if (!Number.isFinite(lojaId)) {
+        return res.status(400).json({ erro: "ID da loja inválido." });
+      }
+
+      if (!data) {
+        return res.status(400).json({
+          erro: "Informe a data (formato AAAA-MM-DD).",
+        });
+      }
+
+      const { data: loja, error: erroLoja } = await supabase
+        .from("lojas")
+        .select("id, nome, saipos_id_store")
+        .eq("id", lojaId)
+        .single();
+
+      if (erroLoja) {
+        throw erroLoja;
+      }
+
+      if (!loja?.saipos_id_store) {
+        return res.status(400).json({
+          erro: `A loja "${loja?.nome || lojaId}" ainda não tem o ID da Saipos cadastrado. Configure em Lojas.`,
+        });
+      }
+
+      const [vendasSaipos, transacoesPagSeguro] = await Promise.all([
+        buscarVendasSaipos(
+          loja.saipos_id_store,
+          `${data} 00:00:00`,
+          `${data} 23:59:59`
+        ),
+        buscarTransacoesPagSeguro(
+          `${data}T00:00`,
+          `${data}T23:59`
+        ),
+      ]);
+
+      const resumoSaipos = montarResumoSaipos(vendasSaipos, []);
+      const resumoPagSeguro = montarResumoPagSeguro(transacoesPagSeguro);
+
+      const diferenca =
+        resumoSaipos.total_vendas - resumoPagSeguro.total_recebido;
+
+      res.json({
+        saipos: resumoSaipos,
+        pagseguro: resumoPagSeguro,
+        diferenca,
+      });
+    } catch (erro) {
+      console.error("Erro ao conciliar Saipos x PagSeguro:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível conciliar os pagamentos.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 app.get("/usuarios", verificarAdmin, async function (req, res) {
   try {

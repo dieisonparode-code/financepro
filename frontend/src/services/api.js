@@ -149,6 +149,13 @@ export async function buscarLogAuditoria() {
   });
 }
 
+export async function buscarFechamentoSaipos(lojaId, data) {
+  return requisicao(
+    `/fechamento-saipos/${lojaId}?data=${encodeURIComponent(data)}`,
+    { headers: await cabecalhoAutenticado() }
+  );
+}
+
 export function buscarFormasPagamento() {
   return requisicao("/formas-pagamento");
 }
