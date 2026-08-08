@@ -229,10 +229,8 @@ function Conciliacao() {
             ))}
           </div>
         )}
-      </article>
 
-      <article className="panel categoria-lista-panel">
-        <div className="panel-header">
+        <div className="panel-header" style={{ margin: "10px 0 10px" }}>
           <div>
             <span className="eyebrow">Últimas vendas</span>
             <h2>Caindo na PagSeguro, por forma de pagamento</h2>
