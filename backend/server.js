@@ -1761,7 +1761,36 @@ const formaPagamentoPagSeguroDescricao = {
   11: "PIX",
 };
 
-async function buscarTransacoesPagSeguro(dataInicio, dataFim) {
+const TRES_HORAS_MS = 3 * 60 * 60 * 1000;
+
+// A PagSeguro está no horário de Brasília (UTC-3, sem horário de verão desde
+// 2019), e o servidor onde o backend roda (Render) usa UTC. Por isso não dá
+// pra simplesmente usar "hoje 23:59" — se ainda não chegou lá no horário de
+// Brasília, a PagSeguro rejeita como "data no futuro".
+function agoraBrasilia() {
+  return new Date(Date.now() - TRES_HORAS_MS);
+}
+
+function calcularPeriodoPagSeguro(data) {
+  const hojeBrasilia = agoraBrasilia().toISOString().slice(0, 10);
+
+  if (data === hojeBrasilia) {
+    // 1 minuto de margem pra não bater exatamente em "agora" e ser rejeitado.
+    const agoraComMargem = new Date(agoraBrasilia().getTime() - 60 * 1000);
+
+    return {
+      dataInicio: `${data}T00:00:00`,
+      dataFim: agoraComMargem.toISOString().slice(0, 19),
+    };
+  }
+
+  return {
+    dataInicio: `${data}T00:00:00`,
+    dataFim: `${data}T23:59:59`,
+  };
+}
+
+async function buscarTransacoesPagSeguro(data) {
   const email = process.env.PAGSEGURO_EMAIL;
   const token = process.env.PAGSEGURO_TOKEN;
 
@@ -1770,6 +1799,8 @@ async function buscarTransacoesPagSeguro(dataInicio, dataFim) {
       "PAGSEGURO_EMAIL/PAGSEGURO_TOKEN não configurados no .env."
     );
   }
+
+  const { dataInicio, dataFim } = calcularPeriodoPagSeguro(data);
 
   const parser = new XMLParser();
   const transacoes = [];
@@ -1858,10 +1889,7 @@ app.get(
         });
       }
 
-      const transacoes = await buscarTransacoesPagSeguro(
-        `${data}T00:00`,
-        `${data}T23:59`
-      );
+      const transacoes = await buscarTransacoesPagSeguro(data);
 
       const resumo = montarResumoPagSeguro(transacoes);
 
@@ -1936,10 +1964,7 @@ app.get(
           `${data} 00:00:00`,
           `${data} 23:59:59`
         ),
-        buscarTransacoesPagSeguro(
-          `${data}T00:00`,
-          `${data}T23:59`
-        ),
+        buscarTransacoesPagSeguro(data),
       ]);
 
       const resumoSaipos = montarResumoSaipos(vendasSaipos, []);
