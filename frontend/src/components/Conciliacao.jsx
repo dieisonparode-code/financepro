@@ -212,8 +212,6 @@ function Conciliacao() {
             <span className="eyebrow">Últimas vendas</span>
             <h2>Caindo na PagSeguro, por forma de pagamento</h2>
           </div>
-
-          <strong>{resumo?.ultimas_vendas?.length || 0}</strong>
         </div>
 
         {!resumo || resumo.ultimas_vendas?.length === 0 ? (
