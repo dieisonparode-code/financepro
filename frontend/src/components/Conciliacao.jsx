@@ -30,6 +30,34 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
+const ORDEM_FORMAS_PAGAMENTO = ["Cartão de crédito", "Cartão de débito", "PIX"];
+
+function agruparVendasPorFormaPagamento(vendas) {
+  const grupos = new Map();
+
+  vendas.forEach((venda) => {
+    const forma = venda.forma_pagamento || "Outro";
+
+    if (!grupos.has(forma)) {
+      grupos.set(forma, []);
+    }
+
+    grupos.get(forma).push(venda);
+  });
+
+  const formasOrdenadas = [
+    ...ORDEM_FORMAS_PAGAMENTO.filter((forma) => grupos.has(forma)),
+    ...[...grupos.keys()].filter(
+      (forma) => !ORDEM_FORMAS_PAGAMENTO.includes(forma)
+    ),
+  ];
+
+  return formasOrdenadas.map((forma) => ({
+    forma,
+    vendas: grupos.get(forma),
+  }));
+}
+
 const INTERVALO_ATUALIZACAO_MS = 30 * 1000;
 
 function Conciliacao() {
@@ -147,11 +175,14 @@ function Conciliacao() {
         )}
       </article>
 
-      <article className="panel categoria-lista-panel">
+      <article
+        className="panel categoria-lista-panel"
+        style={{ gridColumn: "1 / -1" }}
+      >
         <div className="panel-header">
           <div>
             <span className="eyebrow">Últimas vendas</span>
-            <h2>Caindo na PagSeguro</h2>
+            <h2>Caindo na PagSeguro, por forma de pagamento</h2>
           </div>
 
           <strong>{resumo?.ultimas_vendas?.length || 0}</strong>
@@ -164,19 +195,40 @@ function Conciliacao() {
               : "Nenhuma venda encontrada nessa data."}
           </div>
         ) : (
-          <div className="categorias-lista">
-            {resumo.ultimas_vendas.map((venda) => (
-              <div className="categoria-item" key={venda.codigo}>
-                <div className="categoria-identificacao">
-                  <div className="categoria-icone">💰</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "1rem",
+            }}
+          >
+            {agruparVendasPorFormaPagamento(resumo.ultimas_vendas).map(
+              (grupo) => (
+                <div key={grupo.forma}>
+                  <div className="panel-header">
+                    <strong>{grupo.forma}</strong>
+                    <span>{grupo.vendas.length}</span>
+                  </div>
 
-                  <div>
-                    <strong>{formatarMoeda(venda.valor_liquido)}</strong>
-                    <div>{formatarDataHora(venda.data)}</div>
+                  <div className="categorias-lista">
+                    {grupo.vendas.map((venda) => (
+                      <div className="categoria-item" key={venda.codigo}>
+                        <div className="categoria-identificacao">
+                          <div className="categoria-icone">💰</div>
+
+                          <div>
+                            <strong>
+                              {formatarMoeda(venda.valor_liquido)}
+                            </strong>
+                            <div>{formatarDataHora(venda.data)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         )}
       </article>
