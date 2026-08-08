@@ -162,6 +162,7 @@ function Conciliacao() {
           erro_leitura:
             resultado.erro_leitura ||
             "Não foi possível ler os valores dessa foto.",
+          debugRespostaIa: resultado.debug_resposta_ia,
         });
         return;
       }
@@ -458,7 +459,22 @@ function Conciliacao() {
             }}
           >
             {resultadoFoto.erro_leitura ? (
-              resultadoFoto.erro_leitura
+              <>
+                {resultadoFoto.erro_leitura}
+                {resultadoFoto.debugRespostaIa && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      fontSize: "12px",
+                      color: "#9fb0c4",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    (debug — o que a IA respondeu:){" "}
+                    {resultadoFoto.debugRespostaIa}
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 ✅ Valores lidos e preenchidos na tabela abaixo.

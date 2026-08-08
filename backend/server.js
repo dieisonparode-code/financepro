@@ -2141,6 +2141,8 @@ app.post(
         150
       );
 
+      console.log("Resposta bruta da IA (conferir-fechamento):", textoResposta);
+
       let dadosLidos;
 
       try {
@@ -2153,6 +2155,7 @@ app.post(
           valores: null,
           erro_leitura:
             "Não foi possível ler os valores dessa foto. Tente uma foto mais nítida ou de outro ângulo.",
+          debug_resposta_ia: textoResposta,
         });
       }
 
@@ -2173,6 +2176,7 @@ app.post(
           valores: null,
           erro_leitura:
             "Não foi possível identificar nenhum valor nessa foto. Tente uma foto mais nítida ou de outro ângulo.",
+          debug_resposta_ia: textoResposta,
         });
       }
 
