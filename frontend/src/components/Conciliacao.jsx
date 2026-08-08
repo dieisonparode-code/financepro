@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   buscarVendasPagSeguro,
   conferirFechamentoFoto,
+  buscarFechamentosCaixa,
+  buscarFotoFechamentoCaixa,
 } from "../services/api";
 
 function comprimirImagem(arquivo, larguraMaxima = 1400, qualidade = 0.85) {
@@ -112,17 +114,44 @@ function Conciliacao() {
   const [atualizadoEm, setAtualizadoEm] = useState(null);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [resultadoFoto, setResultadoFoto] = useState(null);
+  const [fechamentosSalvos, setFechamentosSalvos] = useState([]);
+  const [carregandoFechamentos, setCarregandoFechamentos] = useState(false);
+  const [fechamentoSelecionado, setFechamentoSelecionado] = useState("");
 
-  async function conferirFoto(arquivo) {
-    if (!arquivo || !resumo) return;
+  useEffect(() => {
+    async function carregarFechamentosSalvos() {
+      setCarregandoFechamentos(true);
+
+      try {
+        const dados = await buscarFechamentosCaixa();
+
+        setFechamentosSalvos(
+          (Array.isArray(dados) ? dados : [])
+            .filter((item) => item.tipo === "caixa")
+            .sort(
+              (a, b) => new Date(b.criado_em) - new Date(a.criado_em)
+            )
+            .slice(0, 15)
+        );
+      } catch {
+        // silencioso — o botão de anexar continua funcionando normal
+      } finally {
+        setCarregandoFechamentos(false);
+      }
+    }
+
+    carregarFechamentosSalvos();
+  }, []);
+
+  async function conferirFotoDataUrl(fotoDataUrl) {
+    if (!fotoDataUrl || !resumo) return;
 
     setEnviandoFoto(true);
     setResultadoFoto(null);
 
     try {
-      const fotoComprimida = await comprimirImagem(arquivo);
       const resultado = await conferirFechamentoFoto(
-        fotoComprimida,
+        fotoDataUrl,
         resumo.total_recebido
       );
       setResultadoFoto(resultado);
@@ -132,6 +161,31 @@ function Conciliacao() {
           erroFoto.message || "Não foi possível conferir a foto.",
       });
     } finally {
+      setEnviandoFoto(false);
+    }
+  }
+
+  async function conferirFoto(arquivo) {
+    if (!arquivo || !resumo) return;
+
+    const fotoComprimida = await comprimirImagem(arquivo);
+    await conferirFotoDataUrl(fotoComprimida);
+  }
+
+  async function conferirFechamentoSalvo(id) {
+    if (!id || !resumo) return;
+
+    setEnviandoFoto(true);
+    setResultadoFoto(null);
+
+    try {
+      const resultado = await buscarFotoFechamentoCaixa(id);
+      await conferirFotoDataUrl(resultado?.foto);
+    } catch (erroFoto) {
+      setResultadoFoto({
+        erro_leitura:
+          erroFoto.message || "Não foi possível buscar essa foto.",
+      });
       setEnviandoFoto(false);
     }
   }
@@ -305,7 +359,6 @@ function Conciliacao() {
                 id="foto-fechamento-conciliacao"
                 type="file"
                 accept="image/*"
-                capture="environment"
                 disabled={enviandoFoto || !resumo}
                 onChange={async (evento) => {
                   const arquivo = evento.target.files?.[0];
@@ -328,9 +381,38 @@ function Conciliacao() {
               >
                 {enviandoFoto
                   ? "Lendo foto..."
-                  : "📸 Conferir foto do fechamento"}
+                  : "📸 Conferir nova foto"}
               </label>
             </div>
+
+            {fechamentosSalvos.length > 0 && (
+              <label style={{ margin: 0 }}>
+                Ou usar foto já enviada
+                <select
+                  value={fechamentoSelecionado}
+                  disabled={enviandoFoto || !resumo}
+                  onChange={(evento) => {
+                    const id = evento.target.value;
+                    setFechamentoSelecionado(id);
+
+                    if (id) {
+                      conferirFechamentoSalvo(id);
+                    }
+                  }}
+                >
+                  <option value="">
+                    {carregandoFechamentos
+                      ? "Carregando..."
+                      : "Selecione..."}
+                  </option>
+                  {fechamentosSalvos.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {new Date(item.criado_em).toLocaleString("pt-BR")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         </div>
 
