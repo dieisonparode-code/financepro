@@ -334,7 +334,7 @@
 .conciliacao-layout {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 8px;
   margin: 0 34px 18px;
 }
 

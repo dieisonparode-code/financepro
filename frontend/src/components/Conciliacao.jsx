@@ -157,10 +157,14 @@ function Conciliacao() {
         {resumo && (
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: "0.75rem",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.6rem",
               marginTop: "1rem",
+              maxWidth: "320px",
+              marginLeft: "auto",
+              marginRight: "auto",
             }}
           >
             <div className="categoria-item">

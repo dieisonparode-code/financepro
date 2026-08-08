@@ -1846,7 +1846,20 @@ async function buscarTransacoesPagSeguro(data) {
     pagina += 1;
   }
 
-  return transacoes;
+  // Como isso é buscado em tempo real (vendas novas entram enquanto pagina),
+  // a mesma transação pode aparecer em duas páginas diferentes. Remove
+  // duplicadas pelo código único da venda antes de devolver.
+  const vistas = new Set();
+  const semDuplicadas = [];
+
+  transacoes.forEach((transacao) => {
+    if (!vistas.has(transacao.code)) {
+      vistas.add(transacao.code);
+      semDuplicadas.push(transacao);
+    }
+  });
+
+  return semDuplicadas;
 }
 
 function montarResumoPagSeguro(transacoes) {
