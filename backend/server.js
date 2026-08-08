@@ -1866,13 +1866,16 @@ async function buscarTransacoesPagSeguro(dataInicioPedida, dataFimPedida) {
 
 function montarResumoPagSeguro(transacoes) {
   const totaisPorFormaPagamento = {};
+  const totaisBrutosPorFormaPagamento = {};
   let totalRecebido = 0;
+  let totalBruto = 0;
   let quantidadeRecebida = 0;
   let quantidadePendenteOuCancelada = 0;
 
   transacoes.forEach((transacao) => {
     const status = Number(transacao.status);
     const valorLiquido = Number(transacao.netAmount || 0);
+    const valorBruto = Number(transacao.grossAmount || 0);
     const tipoPagamento = Number(transacao.paymentMethod?.type);
     const forma =
       formaPagamentoPagSeguroDescricao[tipoPagamento] ||
@@ -1880,9 +1883,12 @@ function montarResumoPagSeguro(transacoes) {
 
     if (statusPagSeguroRecebido.has(status)) {
       totalRecebido += valorLiquido;
+      totalBruto += valorBruto;
       quantidadeRecebida += 1;
       totaisPorFormaPagamento[forma] =
         (totaisPorFormaPagamento[forma] || 0) + valorLiquido;
+      totaisBrutosPorFormaPagamento[forma] =
+        (totaisBrutosPorFormaPagamento[forma] || 0) + valorBruto;
     } else {
       quantidadePendenteOuCancelada += 1;
     }
@@ -1890,9 +1896,15 @@ function montarResumoPagSeguro(transacoes) {
 
   return {
     total_recebido: totalRecebido,
+    total_bruto: totalBruto,
     quantidade_recebida: quantidadeRecebida,
     quantidade_pendente_ou_cancelada: quantidadePendenteOuCancelada,
+    // Líquido: o que realmente caiu na conta (depois da taxa da PagSeguro).
     totais_por_forma_pagamento: totaisPorFormaPagamento,
+    // Bruto: o valor da venda antes da taxa — é isso que bate com o
+    // "Esperado" do comprovante de fechamento (a Saipos não desconta taxa
+    // de maquininha, ela só sabe quanto foi vendido).
+    totais_brutos_por_forma_pagamento: totaisBrutosPorFormaPagamento,
   };
 }
 

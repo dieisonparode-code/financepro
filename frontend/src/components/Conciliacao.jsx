@@ -499,8 +499,10 @@ function Conciliacao() {
             {(() => {
               const linhas = ["Cartão de crédito", "Cartão de débito", "PIX"].map(
                 (forma) => {
+                  // Bruto (antes da taxa da PagSeguro) — é isso que bate com
+                  // o "Esperado" do comprovante de fechamento da Saipos.
                   const valorSistema =
-                    resumo.totais_por_forma_pagamento?.[forma] || 0;
+                    resumo.totais_brutos_por_forma_pagamento?.[forma] || 0;
                   const valorInformadoTexto = valoresInformados[forma] ?? "";
                   const temInformado = valorInformadoTexto !== "";
                   const valorInformado = temInformado
@@ -530,7 +532,7 @@ function Conciliacao() {
                       <thead>
                         <tr>
                           <th>Forma de pagamento</th>
-                          <th>Sistema</th>
+                          <th>Sistema (bruto)</th>
                           <th>Informado</th>
                           <th>Diferença</th>
                         </tr>
