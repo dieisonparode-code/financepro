@@ -181,50 +181,25 @@ function Conciliacao() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "2px",
+              gap: "1px",
               marginTop: "0.3rem",
-              maxWidth: "320px",
-              marginLeft: "auto",
-              marginRight: "auto",
+              lineHeight: 1.5,
             }}
           >
-            <div className="categoria-item" style={{ padding: "6px 0" }}>
-              <div className="categoria-identificacao">
-                <div className="categoria-icone">💰</div>
-                <div>
-                  <strong>Total recebido</strong>
-                  <div>{formatarMoeda(resumo.total_recebido)}</div>
-                </div>
-              </div>
+            <div>
+              💰 Total recebido: <strong>{formatarMoeda(resumo.total_recebido)}</strong>
             </div>
 
-            <div className="categoria-item" style={{ padding: "6px 0" }}>
-              <div className="categoria-identificacao">
-                <div className="categoria-icone">🧾</div>
-                <div>
-                  <strong>Vendas</strong>
-                  <div>
-                    {resumo.quantidade_recebida} recebidas
-                    {resumo.quantidade_pendente_ou_cancelada > 0 &&
-                      ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
-                  </div>
-                </div>
-              </div>
+            <div>
+              🧾 Vendas: <strong>{resumo.quantidade_recebida} recebidas</strong>
+              {resumo.quantidade_pendente_ou_cancelada > 0 &&
+                ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
             </div>
 
             {formasPagamento.map(([forma, valor]) => (
-              <div
-                className="categoria-item"
-                style={{ padding: "6px 0" }}
-                key={forma}
-              >
-                <div className="categoria-identificacao">
-                  <div className="categoria-icone">💳</div>
-                  <div>
-                    <strong style={{ color: "#16ca50" }}>{forma}</strong>
-                    <div>{formatarMoeda(valor)}</div>
-                  </div>
-                </div>
+              <div key={forma}>
+                💳 <strong style={{ color: "#16ca50" }}>{forma}</strong>:{" "}
+                <strong>{formatarMoeda(valor)}</strong>
               </div>
             ))}
           </div>
