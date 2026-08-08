@@ -102,32 +102,40 @@ function Conciliacao() {
   );
 
   return (
-    <section className="categorias-layout">
-      <article className="panel categoria-form-panel">
-        <div className="panel-header">
-          <div>
-            <span className="eyebrow">Conciliação de pagamentos</span>
-            <h2>PagSeguro em tempo real</h2>
-          </div>
-        </div>
-
-        <label>
-          Data
-          <input
-            type="date"
-            value={data}
-            onChange={(evento) => setData(evento.target.value)}
-          />
-        </label>
-
-        <button
-          type="button"
-          className="primary-button"
-          onClick={buscar}
-          disabled={carregando}
+    <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <article className="panel">
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+            gap: "1rem",
+            marginBottom: resumo ? "1rem" : 0,
+          }}
         >
-          {carregando ? "Buscando..." : "🔄 Atualizar agora"}
-        </button>
+          <div style={{ marginRight: "auto" }}>
+            <span className="eyebrow">Conciliação de pagamentos</span>
+            <h2 style={{ margin: 0 }}>PagSeguro em tempo real</h2>
+          </div>
+
+          <label style={{ margin: 0 }}>
+            Data
+            <input
+              type="date"
+              value={data}
+              onChange={(evento) => setData(evento.target.value)}
+            />
+          </label>
+
+          <button
+            type="button"
+            className="primary-button"
+            onClick={buscar}
+            disabled={carregando}
+          >
+            {carregando ? "Buscando..." : "🔄 Atualizar agora"}
+          </button>
+        </div>
 
         <small className="foto-ajuda">
           Atualiza sozinho a cada 30 segundos, mostrando o que já está
@@ -140,7 +148,14 @@ function Conciliacao() {
         {erro && <div className="empty-state">{erro}</div>}
 
         {resumo && (
-          <div className="categorias-lista">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "0.75rem",
+              marginTop: "1rem",
+            }}
+          >
             <div className="categoria-item">
               <div className="categoria-identificacao">
                 <div className="categoria-icone">💰</div>
@@ -159,7 +174,7 @@ function Conciliacao() {
                   <div>
                     {resumo.quantidade_recebida} recebidas
                     {resumo.quantidade_pendente_ou_cancelada > 0 &&
-                      ` · ${resumo.quantidade_pendente_ou_cancelada} pendentes/canceladas`}
+                      ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
                   </div>
                 </div>
               </div>
@@ -180,10 +195,7 @@ function Conciliacao() {
         )}
       </article>
 
-      <article
-        className="panel categoria-lista-panel"
-        style={{ gridColumn: "1 / -1" }}
-      >
+      <article className="panel categoria-lista-panel">
         <div className="panel-header">
           <div>
             <span className="eyebrow">Últimas vendas</span>
