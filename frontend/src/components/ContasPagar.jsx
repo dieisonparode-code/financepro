@@ -50,12 +50,16 @@ function ContasPagar({
   editarConta,
   marcarComoPaga,
   removerConta,
+  lojas = [],
+  vePermissaoTotal = true,
+  lojaPadrao = null,
 }) {
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
   const [valor, setValor] = useState("");
   const [dataVencimento, setDataVencimento] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [lojaId, setLojaId] = useState(lojaPadrao ? String(lojaPadrao) : "");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [mostrarPagas, setMostrarPagas] = useState(false);
@@ -66,6 +70,7 @@ function ContasPagar({
     setValor("");
     setDataVencimento("");
     setObservacao("");
+    setLojaId(lojaPadrao ? String(lojaPadrao) : "");
     setEditandoId(null);
   }
 
@@ -74,6 +79,11 @@ function ContasPagar({
 
     if (!descricao.trim() || !dataVencimento) {
       alert("Informe a descrição e a data de vencimento.");
+      return;
+    }
+
+    if (!lojaId) {
+      alert("Selecione a loja. Esse campo é obrigatório.");
       return;
     }
 
@@ -86,6 +96,7 @@ function ContasPagar({
         valor,
         data_vencimento: dataVencimento,
         observacao,
+        loja_id: lojaId,
       };
 
       if (editandoId) {
@@ -109,6 +120,7 @@ function ContasPagar({
     setValor(conta.valor);
     setDataVencimento(conta.data_vencimento);
     setObservacao(conta.observacao || "");
+    setLojaId(conta.loja_id ? String(conta.loja_id) : "");
   }
 
   async function confirmarPagamento(conta) {
@@ -180,6 +192,31 @@ function ContasPagar({
               placeholder="Ex.: Frigorífico X"
             />
           </label>
+
+          {vePermissaoTotal && (
+            <label>
+              <span className="rotulo-campo">
+                Loja
+                <span className="campo-obrigatorio">Obrigatório</span>
+              </span>
+              <select
+                value={lojaId}
+                onChange={(evento) => setLojaId(evento.target.value)}
+                style={
+                  !lojaId
+                    ? { borderColor: "#ef4444", borderWidth: "2px" }
+                    : undefined
+                }
+              >
+                <option value="">Selecione a loja...</option>
+                {lojas.map((loja) => (
+                  <option key={loja.id} value={loja.id}>
+                    {loja.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="form-row">
             <label>
@@ -283,6 +320,14 @@ function ContasPagar({
                         {formatarMoeda(conta.valor)} — vence em{" "}
                         {formatarData(conta.data_vencimento)}
                       </div>
+                      {vePermissaoTotal && (
+                        <span>
+                          🏬{" "}
+                          {lojas.find(
+                            (loja) => String(loja.id) === String(conta.loja_id)
+                          )?.nome || "Sem loja"}
+                        </span>
+                      )}
                       <span className={situacao.classe}>
                         {situacao.rotulo}
                       </span>

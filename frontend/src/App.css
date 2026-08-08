@@ -536,11 +536,32 @@ td {
   text-align: center;
 }
 
+.print-only {
+  display: none;
+}
+
+.fluxo-print-header {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 18px;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.fluxo-print-header strong {
+  font-size: 18px;
+}
+
 @media print {
   .sidebar,
   .topbar,
   .no-print {
     display: none !important;
+  }
+
+  .print-only {
+    display: flex !important;
   }
 
   .main-content {

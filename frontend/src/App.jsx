@@ -834,14 +834,20 @@ useEffect(() => {
 }, [vePermissaoTotal, perfil]);
 
 const lancamentosVisiveis = useMemo(() => {
-  if (vePermissaoTotal || !perfil) {
-    return lancamentos;
+  if (!vePermissaoTotal && perfil) {
+    return lancamentos.filter(
+      (item) => String(item.loja_id || "") === String(perfil.loja_id || "")
+    );
   }
 
-  return lancamentos.filter(
-    (item) => String(item.loja_id || "") === String(perfil.loja_id || "")
-  );
-}, [lancamentos, vePermissaoTotal, perfil]);
+  if (vePermissaoTotal && lojaDashboard !== "todas") {
+    return lancamentos.filter(
+      (item) => String(item.loja_id || "") === String(lojaDashboard)
+    );
+  }
+
+  return lancamentos;
+}, [lancamentos, vePermissaoTotal, perfil, lojaDashboard]);
 
 const lancamentosAprovados = useMemo(() => {
   return lancamentosVisiveis.filter(
@@ -948,6 +954,25 @@ const lancamentosFiltrados = useMemo(() => {
 
   return lancamentosVisiveis;
 }, [lancamentosVisiveis, pagina]);
+
+const contasPagarFiltradas = useMemo(() => {
+  if (!vePermissaoTotal && perfil) {
+    return contasPagar.filter(
+      (conta) =>
+        !conta.loja_id ||
+        String(conta.loja_id) === String(perfil.loja_id || "")
+    );
+  }
+
+  if (vePermissaoTotal && lojaDashboard !== "todas") {
+    return contasPagar.filter(
+      (conta) =>
+        !conta.loja_id || String(conta.loja_id) === String(lojaDashboard)
+    );
+  }
+
+  return contasPagar;
+}, [contasPagar, vePermissaoTotal, perfil, lojaDashboard]);
 
 const lancamentosRelatorio = useMemo(() => {
   return lancamentosAprovados.filter((item) => {
@@ -1179,6 +1204,8 @@ const statusCmv =
 
     if (!vePermissaoTotal && perfil?.loja_id) {
       formularioInicial.loja_id = perfil.loja_id;
+    } else if (vePermissaoTotal && lojaDashboard !== "todas") {
+      formularioInicial.loja_id = lojaDashboard;
     }
 
     setFormulario(formularioInicial);
@@ -1329,6 +1356,11 @@ const statusCmv =
 
     if (!valorNumerico || valorNumerico <= 0) {
       alert("Informe um valor válido.");
+      return;
+    }
+
+    if (!formulario.loja_id) {
+      alert("Selecione a loja. Esse campo é obrigatório.");
       return;
     }
 
@@ -1795,8 +1827,61 @@ const statusCmv =
     URL.revokeObjectURL(url);
   }
 
-  function imprimirRelatorio() {
+  function imprimirPagina() {
     window.print();
+  }
+
+  function exportarFluxoCSV() {
+    const cabecalho = [
+      "Data",
+      "Descrição",
+      "Categoria",
+      "Tipo",
+      "Entrada",
+      "Saída",
+    ];
+
+    const linhas = lancamentosFluxo.map((item) => [
+      item.data || "",
+      item.descricao || "",
+      item.categoria || "",
+      item.tipo === "receita" ? "Receita" : "Despesa",
+      item.tipo === "receita"
+        ? Number(item.valor || 0).toFixed(2).replace(".", ",")
+        : "",
+      item.tipo === "despesa"
+        ? Number(item.valor || 0).toFixed(2).replace(".", ",")
+        : "",
+    ]);
+
+    const linhaTotais = [
+      "",
+      "",
+      "",
+      "TOTAIS DO PERÍODO",
+      Number(totaisFluxo.entradas || 0).toFixed(2).replace(".", ","),
+      Number(totaisFluxo.saidas || 0).toFixed(2).replace(".", ","),
+    ];
+
+    const escapar = (valor) =>
+      `"${String(valor).replace(/"/g, '""')}"`;
+
+    const csv = [
+      cabecalho.map(escapar).join(";"),
+      ...linhas.map((linha) => linha.map(escapar).join(";")),
+      linhaTotais.map(escapar).join(";"),
+    ].join("\n");
+
+    const arquivo = new Blob(["﻿" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(arquivo);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fluxo-caixa-${dataInicialFluxo}-a-${dataFinalFluxo}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -2038,6 +2123,31 @@ const statusCmv =
       </div>
 
       <div className="topbar-actions">
+        {pagina !== "conciliacao" && pagina !== "vendas-saipos" && (
+          vePermissaoTotal ? (
+            <select
+              className="topbar-loja-select no-print"
+              value={lojaDashboard}
+              onChange={(evento) => setLojaDashboard(evento.target.value)}
+              title="Filtrar tudo por loja"
+            >
+              <option value="todas">🏬 Todas as lojas</option>
+              {lojas.map((loja) => (
+                <option key={loja.id} value={String(loja.id)}>
+                  🏬 {loja.nome}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="topbar-loja-atual no-print">
+              🏬{" "}
+              {lojas.find(
+                (loja) => String(loja.id) === String(perfil?.loja_id)
+              )?.nome || "Sua loja"}
+            </span>
+          )
+        )}
+
         {pagina === "despesas" && (
           <button
             type="button"
@@ -2420,12 +2530,21 @@ const statusCmv =
 
         {pagina === "contas-pagar" && (
           <ContasPagar
-            contas={contasPagar}
+            contas={contasPagarFiltradas}
             carregando={carregandoContasPagar}
             adicionarConta={adicionarContaPagar}
             editarConta={editarContaPagar}
             marcarComoPaga={pagarContaPagar}
             removerConta={removerContaPagar}
+            lojas={lojas}
+            vePermissaoTotal={vePermissaoTotal}
+            lojaPadrao={
+              !vePermissaoTotal
+                ? perfil?.loja_id || null
+                : lojaDashboard !== "todas"
+                ? lojaDashboard
+                : null
+            }
           />
         )}
 
@@ -2453,7 +2572,7 @@ const statusCmv =
         )}
 
         {pagina === "fluxo" && (
-          <section className="panel fluxo-panel">
+          <section className="panel fluxo-panel report-print-area">
             <div className="panel-header fluxo-header">
               <div>
                 <span className="eyebrow">
@@ -2465,9 +2584,47 @@ const statusCmv =
                   evolução acumulada.
                 </p>
               </div>
+
+              <div className="report-actions no-print">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={exportarFluxoCSV}
+                >
+                  Exportar Excel/CSV
+                </button>
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={imprimirPagina}
+                >
+                  Imprimir / Salvar PDF
+                </button>
+              </div>
             </div>
 
-            <div className="fluxo-filters">
+            <div className="print-only fluxo-print-header">
+              <strong>
+                Fechamento — {formatarData(dataInicialFluxo)} a{" "}
+                {formatarData(dataFinalFluxo)}
+              </strong>
+              <span>
+                Loja:{" "}
+                {lojaDashboard === "todas"
+                  ? "Todas as lojas"
+                  : lojas.find(
+                      (loja) => String(loja.id) === String(lojaDashboard)
+                    )?.nome || "-"}
+              </span>
+              <span>
+                Emitido em {new Date().toLocaleString("pt-BR", {
+                  timeZone: "America/Sao_Paulo",
+                })}
+              </span>
+            </div>
+
+            <div className="fluxo-filters no-print">
               <label>
                 Data inicial
                 <input
@@ -2655,7 +2812,7 @@ const statusCmv =
                 <button
                   type="button"
                   className="primary-button"
-                  onClick={imprimirRelatorio}
+                  onClick={imprimirPagina}
                 >
                   Imprimir / Salvar PDF
                 </button>
@@ -3153,14 +3310,22 @@ const statusCmv =
 
               {vePermissaoTotal && (
                 <label>
-                  Loja
+                  <span className="rotulo-campo">
+                    Loja
+                    <span className="campo-obrigatorio">Obrigatório</span>
+                  </span>
                   <select
                     value={formulario.loja_id}
                     onChange={(evento) =>
                       alterarCampo("loja_id", evento.target.value)
                     }
+                    style={
+                      !formulario.loja_id
+                        ? { borderColor: "#ef4444", borderWidth: "2px" }
+                        : undefined
+                    }
                   >
-                    <option value="">Sem loja definida</option>
+                    <option value="">Selecione a loja...</option>
                     {lojas.map((loja) => (
                       <option key={loja.id} value={loja.id}>
                         {loja.nome}
