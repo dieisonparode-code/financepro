@@ -532,17 +532,19 @@ function Conciliacao() {
                       <thead>
                         <tr>
                           <th>Forma de pagamento</th>
+                          <th>Valor real pago</th>
                           <th>Valor da foto</th>
                           <th>Diferença</th>
                         </tr>
                       </thead>
                       <tbody>
                         {linhas.map(
-                          ({ forma, temInformado, diferenca, bateu }) => (
+                          ({ forma, valorSistema, temInformado, diferenca, bateu }) => (
                             <tr key={forma}>
                               <td style={{ color: "#16ca50", fontWeight: 700 }}>
                                 {forma}
                               </td>
+                              <td>{formatarMoeda(valorSistema)}</td>
                               <td>
                                 <input
                                   type="text"
