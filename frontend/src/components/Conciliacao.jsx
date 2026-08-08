@@ -62,9 +62,15 @@ function formatarMoeda(valor) {
   });
 }
 
+// Sempre mostra no horário de Uberlândia (onde a loja fica), não no fuso do
+// dispositivo de quem está olhando — senão parece que a venda foi em outro
+// horário do que realmente foi (ex: alguém acessando de Mato Grosso, que é
+// 1 hora atrás de Uberlândia).
 function formatarDataHora(dataIso) {
   if (!dataIso) return "";
-  return new Date(dataIso).toLocaleString("pt-BR");
+  return new Date(dataIso).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 // Status 3 (Paga) e 4 (Disponível) são as únicas que a PagSeguro já confirmou
