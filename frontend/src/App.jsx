@@ -68,6 +68,7 @@ import ContasPagar, { diasAte } from "./components/ContasPagar";
 import ContasReceber from "./components/ContasReceber";
 import LogAuditoria from "./components/LogAuditoria";
 import VendasSaipos from "./components/VendasSaipos";
+import Conciliacao from "./components/Conciliacao";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -1870,6 +1871,15 @@ const statusCmv =
             </button>
           )}
 
+          {temPermissao("fechamento_caixa") && (
+            <button
+              className={pagina === "conciliacao" ? "active" : ""}
+              onClick={() => setPagina("conciliacao")}
+            >
+              Conciliação
+            </button>
+          )}
+
           {ehAdministrador && (
             <button
               className={pagina === "lojas" ? "active" : ""}
@@ -2339,6 +2349,10 @@ const statusCmv =
 
         {pagina === "vendas-saipos" && temPermissao("fechamento_caixa") && (
           <VendasSaipos lojas={lojas} />
+        )}
+
+        {pagina === "conciliacao" && temPermissao("fechamento_caixa") && (
+          <Conciliacao />
         )}
 
         {pagina === "contas-receber" && (

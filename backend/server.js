@@ -1846,6 +1846,57 @@ function montarResumoPagSeguro(transacoes) {
 }
 
 app.get(
+  "/pagseguro/vendas",
+  verificarPermissao("fechamento_caixa"),
+  async function (req, res) {
+    try {
+      const data = req.query.data;
+
+      if (!data) {
+        return res.status(400).json({
+          erro: "Informe a data (formato AAAA-MM-DD).",
+        });
+      }
+
+      const transacoes = await buscarTransacoesPagSeguro(
+        `${data}T00:00`,
+        `${data}T23:59`
+      );
+
+      const resumo = montarResumoPagSeguro(transacoes);
+
+      const ultimasVendas = transacoes
+        .slice()
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 50)
+        .map((transacao) => ({
+          codigo: transacao.code,
+          data: transacao.date,
+          status: Number(transacao.status),
+          status_descricao:
+            statusPagSeguroDescricao[Number(transacao.status)] ||
+            "Desconhecido",
+          forma_pagamento:
+            formaPagamentoPagSeguroDescricao[
+              Number(transacao.paymentMethod?.type)
+            ] || `Tipo ${transacao.paymentMethod?.type || "desconhecido"}`,
+          valor_bruto: Number(transacao.grossAmount || 0),
+          valor_liquido: Number(transacao.netAmount || 0),
+        }));
+
+      res.json({ ...resumo, ultimas_vendas: ultimasVendas });
+    } catch (erro) {
+      console.error("Erro ao buscar vendas na PagSeguro:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar as vendas na PagSeguro.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get(
   "/conciliacao-pagamentos/:lojaId",
   verificarPermissao("fechamento_caixa"),
   async function (req, res) {

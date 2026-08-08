@@ -156,6 +156,12 @@ export async function buscarFechamentoSaipos(lojaId, data) {
   );
 }
 
+export async function buscarVendasPagSeguro(data) {
+  return requisicao(`/pagseguro/vendas?data=${encodeURIComponent(data)}`, {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export function buscarFormasPagamento() {
   return requisicao("/formas-pagamento");
 }
