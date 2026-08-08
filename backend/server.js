@@ -2168,8 +2168,8 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Ele mostra os valores separados por forma de pagamento. Encontre os valores de: CRÉDITO (cartão de crédito), DÉBITO (cartão de débito) e PIX. Dê sua MELHOR ESTIMATIVA de cada um mesmo sem 100% de certeza — é melhor arriscar um palpite razoável do que deixar em branco. Se algum desses três realmente não aparecer no comprovante, use null pra ele. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"credito": 123.45, "debito": 123.45, "pix": 123.45} (use null em vez de número se não encontrar aquele valor).',
-        500
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria (geralmente tem uma seção "CONFERÊNCIA" com colunas Forma de Pagamento / Esperado / Em caixa / Diferença). Liste TODAS as formas de pagamento/categorias que aparecerem nessa seção (pode ter várias: Dinheiro, A prazo, Crédito, Débito, Pago Online, Vale, Voucher, Cortesia, Funcionário, PIX, TEF-Débito, TEF-PIX, etc — exatamente como estão escritas no comprovante). Pra cada uma, use o valor da coluna "Em caixa" (se não tiver essa coluna, use o valor que aparecer). Se encontrar "Crédito" (ou "Cartão de Crédito"), chame de "Cartão de crédito". Se encontrar "Débito" (ou "Cartão de Débito"), chame de "Cartão de débito". Se encontrar QUALQUER PIX (linhas como "Pix", "TEF-PIX", "Pix na Entrega"), SOME todos os valores de PIX numa única categoria chamada "PIX". As demais categorias (Dinheiro, A prazo, Pago Online, Vale, Voucher, Cortesia, Funcionário, etc), mantenha o nome exatamente como está escrito no comprovante, sem inventar nem combinar. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "valor": 337.40}, {"nome": "Cartão de crédito", "valor": 4299.00}, ...]}.',
+        800
       );
 
       console.log(
@@ -2196,19 +2196,19 @@ app.post(
         });
       }
 
-      const valores = {
-        "Cartão de crédito":
-          dadosLidos.credito != null ? Number(dadosLidos.credito) : null,
-        "Cartão de débito":
-          dadosLidos.debito != null ? Number(dadosLidos.debito) : null,
-        PIX: dadosLidos.pix != null ? Number(dadosLidos.pix) : null,
-      };
+      const categorias = Array.isArray(dadosLidos.categorias)
+        ? dadosLidos.categorias
+        : [];
 
-      const nenhumValorLido = Object.values(valores).every(
-        (valor) => valor == null
-      );
+      const valores = {};
 
-      if (nenhumValorLido) {
+      categorias.forEach((categoria) => {
+        if (categoria?.nome != null && categoria?.valor != null) {
+          valores[categoria.nome] = Number(categoria.valor);
+        }
+      });
+
+      if (Object.keys(valores).length === 0) {
         return res.json({
           valores: null,
           erro_leitura:

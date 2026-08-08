@@ -503,33 +503,46 @@ function Conciliacao() {
             </div>
 
             {(() => {
-              const linhas = ["Cartão de crédito", "Cartão de débito", "PIX"].map(
-                (forma) => {
-                  // Bruto (antes da taxa da PagSeguro) — é isso que bate com
-                  // o "Esperado" do comprovante de fechamento da Saipos.
-                  const valorSistema =
-                    resumo.totais_brutos_por_forma_pagamento?.[forma] || 0;
-                  const valorInformadoTexto = valoresInformados[forma] ?? "";
-                  const temInformado = valorInformadoTexto !== "";
-                  const valorInformado = temInformado
-                    ? Number(valorInformadoTexto.replace(",", "."))
-                    : null;
-                  // Positivo = faltou dinheiro (sistema esperava mais do que
-                  // foi informado). Negativo = sobrou (veio mais do que
-                  // o sistema esperava).
-                  const diferenca = temInformado
+              const totaisBrutos = resumo.totais_brutos_por_forma_pagamento || {};
+
+              const linhas = Object.keys(valoresInformados).map((forma) => {
+                // Bruto (antes da taxa da PagSeguro) — é isso que bate com
+                // o "Esperado" do comprovante de fechamento da Saipos.
+                // Só Crédito/Débito/PIX têm esse dado — as outras categorias
+                // (Dinheiro, Vale, Voucher, etc) não passam pela PagSeguro,
+                // então não têm "Sistema" pra comparar ainda.
+                const temSistema = forma in totaisBrutos;
+                const valorSistema = totaisBrutos[forma] || 0;
+                const valorInformadoTexto = valoresInformados[forma] ?? "";
+                const temInformado = valorInformadoTexto !== "";
+                const valorInformado = temInformado
+                  ? Number(valorInformadoTexto.replace(",", "."))
+                  : null;
+                // Positivo = faltou dinheiro (sistema esperava mais do que
+                // foi informado). Negativo = sobrou (veio mais do que
+                // o sistema esperava).
+                const diferenca =
+                  temInformado && temSistema
                     ? Number((valorSistema - valorInformado).toFixed(2))
                     : null;
-                  const bateu = temInformado && Math.abs(diferenca) < 0.01;
+                const bateu = diferenca != null && Math.abs(diferenca) < 0.01;
 
-                  return { forma, valorSistema, temInformado, diferenca, bateu };
-                }
-              );
+                return {
+                  forma,
+                  valorSistema,
+                  temSistema,
+                  temInformado,
+                  diferenca,
+                  bateu,
+                };
+              });
 
               const diferencaTotal = linhas
-                .filter((linha) => linha.temInformado)
+                .filter((linha) => linha.temInformado && linha.temSistema)
                 .reduce((soma, linha) => soma + linha.diferenca, 0);
-              const algumInformado = linhas.some((linha) => linha.temInformado);
+              const algumInformado = linhas.some(
+                (linha) => linha.temInformado && linha.temSistema
+              );
 
               return (
                 <>
@@ -545,12 +558,21 @@ function Conciliacao() {
                       </thead>
                       <tbody>
                         {linhas.map(
-                          ({ forma, valorSistema, temInformado, diferenca, bateu }) => (
+                          ({
+                            forma,
+                            valorSistema,
+                            temSistema,
+                            temInformado,
+                            diferenca,
+                            bateu,
+                          }) => (
                             <tr key={forma}>
                               <td style={{ color: "#16ca50", fontWeight: 700 }}>
                                 {forma}
                               </td>
-                              <td>{formatarMoeda(valorSistema)}</td>
+                              <td>
+                                {temSistema ? formatarMoeda(valorSistema) : "—"}
+                              </td>
                               <td>
                                 <input
                                   type="text"
@@ -568,17 +590,20 @@ function Conciliacao() {
                               </td>
                               <td
                                 style={{
-                                  color: !temInformado
-                                    ? undefined
-                                    : bateu
-                                    ? "#16ca50"
-                                    : diferenca > 0
-                                    ? "#ff4655"
-                                    : "#16ca50",
+                                  color:
+                                    !temInformado || !temSistema
+                                      ? undefined
+                                      : bateu
+                                      ? "#16ca50"
+                                      : diferenca > 0
+                                      ? "#ff4655"
+                                      : "#16ca50",
                                   fontWeight: 700,
                                 }}
                               >
-                                {!temInformado
+                                {!temSistema
+                                  ? "(sem comparação ainda)"
+                                  : !temInformado
                                   ? "—"
                                   : bateu
                                   ? "✅ Bateu"
