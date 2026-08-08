@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buscarVendasPagSeguro } from "../services/api";
 
 // Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
@@ -72,6 +72,12 @@ function Conciliacao() {
   const [erro, setErro] = useState("");
   const [atualizadoEm, setAtualizadoEm] = useState(null);
 
+  // Acompanha qual era "hoje" da última vez que checamos — serve pra saber
+  // se a pessoa está vendo o dia atual (e por isso a data deve virar sozinha
+  // à meia-noite) ou se escolheu um dia antigo de propósito (e nesse caso não
+  // deve mexer na data escolhida por ela).
+  const diaSeguidoRef = useRef(hoje());
+
   async function buscar() {
     setCarregando(true);
     setErro("");
@@ -92,7 +98,22 @@ function Conciliacao() {
   useEffect(() => {
     buscar();
 
-    const intervalo = setInterval(buscar, INTERVALO_ATUALIZACAO_MS);
+    const intervalo = setInterval(() => {
+      const hojeAgora = hoje();
+
+      if (hojeAgora !== diaSeguidoRef.current) {
+        const estavaSeguindoHoje = data === diaSeguidoRef.current;
+        diaSeguidoRef.current = hojeAgora;
+
+        if (estavaSeguindoHoje) {
+          setData(hojeAgora);
+          return; // o efeito reinicia sozinho por causa da dependência [data]
+        }
+      }
+
+      buscar();
+    }, INTERVALO_ATUALIZACAO_MS);
+
     return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
