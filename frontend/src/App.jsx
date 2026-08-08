@@ -3147,23 +3147,24 @@ const statusCmv =
                 </label>
               </div>
 
-              <label>
-                Loja
-                <select
-                  value={formulario.loja_id}
-                  disabled={!vePermissaoTotal}
-                  onChange={(evento) =>
-                    alterarCampo("loja_id", evento.target.value)
-                  }
-                >
-                  <option value="">Sem loja definida</option>
-                  {lojas.map((loja) => (
-                    <option key={loja.id} value={loja.id}>
-                      {loja.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {vePermissaoTotal && (
+                <label>
+                  Loja
+                  <select
+                    value={formulario.loja_id}
+                    onChange={(evento) =>
+                      alterarCampo("loja_id", evento.target.value)
+                    }
+                  >
+                    <option value="">Sem loja definida</option>
+                    {lojas.map((loja) => (
+                      <option key={loja.id} value={loja.id}>
+                        {loja.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               {tipoLancamento === "receita" && (
                 <label>
