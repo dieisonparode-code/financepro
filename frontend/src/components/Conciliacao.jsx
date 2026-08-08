@@ -255,11 +255,11 @@ function Conciliacao() {
             {agruparVendasPorFormaPagamento(resumo.ultimas_vendas).map(
               (grupo) => (
                 <div key={grupo.forma}>
-                  <div className="panel-header">
+                  <div style={{ marginBottom: "10px" }}>
                     <strong style={{ color: "#16ca50" }}>
                       {grupo.forma}
-                    </strong>
-                    <span>{grupo.vendas.length}</span>
+                    </strong>{" "}
+                    <span>({grupo.vendas.length})</span>
                   </div>
 
                   <div className="categorias-lista">
