@@ -102,7 +102,7 @@ function Conciliacao() {
   );
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <section className="conciliacao-layout">
       <article className="panel">
         <div
           style={{
@@ -127,23 +127,30 @@ function Conciliacao() {
             />
           </label>
 
-          <button
-            type="button"
-            className="primary-button"
-            onClick={buscar}
-            disabled={carregando}
-          >
-            {carregando ? "Buscando..." : "🔄 Atualizar agora"}
-          </button>
-        </div>
+          <div>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={buscar}
+              disabled={carregando}
+            >
+              {carregando ? "Buscando..." : "🔄 Atualizar agora"}
+            </button>
 
-        <small className="foto-ajuda">
-          Atualiza sozinho a cada 30 segundos, mostrando o que já está
-          disponível no extrato da PagSeguro.{" "}
-          {atualizadoEm && (
-            <>Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR")}.</>
-          )}
-        </small>
+            <small
+              className="foto-ajuda"
+              style={{ display: "block", marginTop: "6px" }}
+            >
+              Atualiza sozinho a cada 30s.{" "}
+              {atualizadoEm && (
+                <>
+                  Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR")}
+                  .
+                </>
+              )}
+            </small>
+          </div>
+        </div>
 
         {erro && <div className="empty-state">{erro}</div>}
 

@@ -1966,7 +1966,13 @@ const statusCmv =
       <div>
         <span className="eyebrow">FinancePro</span>
 
-        <h1 style={pagina === "conciliacao" ? { fontSize: "1.3rem" } : undefined}>
+        <h1
+          style={
+            pagina === "conciliacao"
+              ? { fontSize: "1.6rem", color: "#fff" }
+              : undefined
+          }
+        >
           {pagina === "receitas"
             ? "Receitas"
             : pagina === "despesas"
@@ -1983,14 +1989,14 @@ const statusCmv =
             ? "Usuários"
             : pagina === "estoque"
             ? "Estoque"
-            : pagina === "conciliacao"
-            ? "Conciliação"
             : "FinancePro"}
         </h1>
 
-        {pagina !== "conciliacao" && (
-          <p>Gestão financeira profissional e centralizada.</p>
-        )}
+        <p>
+          {pagina === "conciliacao"
+            ? "Conciliação de pagamentos"
+            : "Gestão financeira profissional e centralizada."}
+        </p>
       </div>
 
       <div className="topbar-actions">

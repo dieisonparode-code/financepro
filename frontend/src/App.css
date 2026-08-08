@@ -331,6 +331,13 @@
   margin: 0 34px 18px;
 }
 
+.conciliacao-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0 34px 18px;
+}
+
 .categorias-layout > .panel {
   margin: 0 !important;
 }
