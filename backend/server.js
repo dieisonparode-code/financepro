@@ -272,7 +272,7 @@ app.get("/", function (req, res) {
 const colunasListagem =
   "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
-app.get("/lancamentos", async function (req, res) {
+app.get("/lancamentos", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("lancamentos")
@@ -298,7 +298,7 @@ app.get("/lancamentos", async function (req, res) {
   }
 });
 
-app.get("/lancamentos/:id/foto", async function (req, res) {
+app.get("/lancamentos/:id/foto", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -332,7 +332,7 @@ app.get("/lancamentos/:id/foto", async function (req, res) {
   }
 });
 
-app.get("/lancamentos/:id/foto-mercadoria", async function (req, res) {
+app.get("/lancamentos/:id/foto-mercadoria", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -366,7 +366,7 @@ app.get("/lancamentos/:id/foto-mercadoria", async function (req, res) {
   }
 });
 
-app.post("/lancamentos", async function (req, res) {
+app.post("/lancamentos", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const { perfil } = await obterPerfilOpcional(req);
     const dadosPreparados = prepararLancamento(req.body);
@@ -419,7 +419,7 @@ app.post("/lancamentos", async function (req, res) {
   }
 });
 
-app.put("/lancamentos/:id", async function (req, res) {
+app.put("/lancamentos/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -467,6 +467,7 @@ app.put("/lancamentos/:id", async function (req, res) {
 
 app.delete(
   "/lancamentos/:id",
+  verificarPermissao("financeiro"),
   async function (req, res) {
     try {
       const id = Number(req.params.id);
@@ -579,7 +580,7 @@ app.put(
   }
 );
 
-app.get("/lojas", async function (req, res) {
+app.get("/lojas", verificarAdmin, async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("lojas")
@@ -601,7 +602,7 @@ app.get("/lojas", async function (req, res) {
   }
 });
 
-app.post("/lojas", async function (req, res) {
+app.post("/lojas", verificarAdmin, async function (req, res) {
   try {
     const dadosLoja = prepararLoja(req.body);
 
@@ -634,7 +635,7 @@ app.post("/lojas", async function (req, res) {
   }
 });
 
-app.put("/lojas/:id", async function (req, res) {
+app.put("/lojas/:id", verificarAdmin, async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -676,7 +677,7 @@ app.put("/lojas/:id", async function (req, res) {
   }
 });
 
-app.delete("/lojas/:id", async function (req, res) {
+app.delete("/lojas/:id", verificarAdmin, async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -708,7 +709,7 @@ app.delete("/lojas/:id", async function (req, res) {
   }
 });
 
-app.get("/categorias", async function (req, res) {
+app.get("/categorias", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("categorias")
@@ -730,7 +731,7 @@ app.get("/categorias", async function (req, res) {
   }
 });
 
-app.post("/categorias", async function (req, res) {
+app.post("/categorias", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const nome = (req.body.nome || "").trim();
 
@@ -767,7 +768,7 @@ app.post("/categorias", async function (req, res) {
   }
 });
 
-app.put("/categorias/:id", async function (req, res) {
+app.put("/categorias/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -813,7 +814,7 @@ app.put("/categorias/:id", async function (req, res) {
   }
 });
 
-app.delete("/categorias/:id", async function (req, res) {
+app.delete("/categorias/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -854,7 +855,7 @@ function prepararCliente(dados = {}) {
   };
 }
 
-app.get("/clientes", async function (req, res) {
+app.get("/clientes", verificarPermissao("clientes"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("clientes")
@@ -876,7 +877,7 @@ app.get("/clientes", async function (req, res) {
   }
 });
 
-app.post("/clientes", async function (req, res) {
+app.post("/clientes", verificarPermissao("clientes"), async function (req, res) {
   try {
     const dadosCliente = prepararCliente(req.body);
 
@@ -907,7 +908,7 @@ app.post("/clientes", async function (req, res) {
   }
 });
 
-app.put("/clientes/:id", async function (req, res) {
+app.put("/clientes/:id", verificarPermissao("clientes"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -947,7 +948,7 @@ app.put("/clientes/:id", async function (req, res) {
   }
 });
 
-app.delete("/clientes/:id", async function (req, res) {
+app.delete("/clientes/:id", verificarPermissao("clientes"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -977,7 +978,7 @@ app.delete("/clientes/:id", async function (req, res) {
   }
 });
 
-app.get("/clientes/:id/atendimentos", async function (req, res) {
+app.get("/clientes/:id/atendimentos", verificarPermissao("clientes"), async function (req, res) {
   try {
     const clienteId = Number(req.params.id);
 
@@ -1009,7 +1010,7 @@ app.get("/clientes/:id/atendimentos", async function (req, res) {
   }
 });
 
-app.post("/clientes/:id/atendimentos", async function (req, res) {
+app.post("/clientes/:id/atendimentos", verificarPermissao("clientes"), async function (req, res) {
   try {
     const clienteId = Number(req.params.id);
 
@@ -1050,7 +1051,7 @@ app.post("/clientes/:id/atendimentos", async function (req, res) {
   }
 });
 
-app.delete("/atendimentos/:id", async function (req, res) {
+app.delete("/atendimentos/:id", verificarPermissao("clientes"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1116,7 +1117,7 @@ app.get("/log-auditoria", verificarAdmin, async function (req, res) {
   }
 });
 
-app.get("/formas-pagamento", async function (req, res) {
+app.get("/formas-pagamento", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("formas_pagamento")
@@ -1138,7 +1139,7 @@ app.get("/formas-pagamento", async function (req, res) {
   }
 });
 
-app.post("/formas-pagamento", async function (req, res) {
+app.post("/formas-pagamento", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const dados = prepararFormaPagamento(req.body);
 
@@ -1169,7 +1170,7 @@ app.post("/formas-pagamento", async function (req, res) {
   }
 });
 
-app.put("/formas-pagamento/:id", async function (req, res) {
+app.put("/formas-pagamento/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const dados = prepararFormaPagamento(req.body);
 
@@ -1201,7 +1202,7 @@ app.put("/formas-pagamento/:id", async function (req, res) {
   }
 });
 
-app.delete("/formas-pagamento/:id", async function (req, res) {
+app.delete("/formas-pagamento/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const { error } = await supabase
       .from("formas_pagamento")
@@ -1234,7 +1235,7 @@ function prepararContaPagar(dados = {}) {
   };
 }
 
-app.get("/contas-pagar", async function (req, res) {
+app.get("/contas-pagar", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("contas_pagar")
@@ -1256,7 +1257,7 @@ app.get("/contas-pagar", async function (req, res) {
   }
 });
 
-app.post("/contas-pagar", async function (req, res) {
+app.post("/contas-pagar", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const dadosConta = prepararContaPagar(req.body);
 
@@ -1295,7 +1296,7 @@ app.post("/contas-pagar", async function (req, res) {
   }
 });
 
-app.put("/contas-pagar/:id", async function (req, res) {
+app.put("/contas-pagar/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1343,7 +1344,7 @@ app.put("/contas-pagar/:id", async function (req, res) {
   }
 });
 
-app.put("/contas-pagar/:id/pagar", async function (req, res) {
+app.put("/contas-pagar/:id/pagar", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1386,7 +1387,7 @@ app.put("/contas-pagar/:id/pagar", async function (req, res) {
   }
 });
 
-app.delete("/contas-pagar/:id", async function (req, res) {
+app.delete("/contas-pagar/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1421,7 +1422,7 @@ app.delete("/contas-pagar/:id", async function (req, res) {
 const colunasFechamentoListagem =
   "id, loja_id, tipo, nome_pessoa, valor, tem_foto, observacao, criado_em";
 
-app.get("/fechamentos-caixa", async function (req, res) {
+app.get("/fechamentos-caixa", verificarPermissao("fechamento_caixa"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("fechamentos_caixa")
@@ -1443,7 +1444,7 @@ app.get("/fechamentos-caixa", async function (req, res) {
   }
 });
 
-app.get("/fechamentos-caixa/:id/foto", async function (req, res) {
+app.get("/fechamentos-caixa/:id/foto", verificarPermissao("fechamento_caixa"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1474,7 +1475,7 @@ app.get("/fechamentos-caixa/:id/foto", async function (req, res) {
   }
 });
 
-app.post("/fechamentos-caixa", async function (req, res) {
+app.post("/fechamentos-caixa", verificarPermissao("fechamento_caixa"), async function (req, res) {
   try {
     const dados = prepararFechamentoCaixa(req.body);
 
@@ -1516,7 +1517,7 @@ app.post("/fechamentos-caixa", async function (req, res) {
   }
 });
 
-app.delete("/fechamentos-caixa/:id", async function (req, res) {
+app.delete("/fechamentos-caixa/:id", verificarPermissao("fechamento_caixa"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -2208,7 +2209,7 @@ app.put(
   }
 );
 
-app.get("/insumos", async function (req, res) {
+app.get("/insumos", verificarPermissao("estoque"), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("insumos")
@@ -2230,7 +2231,7 @@ app.get("/insumos", async function (req, res) {
   }
 });
 
-app.post("/insumos", async function (req, res) {
+app.post("/insumos", verificarPermissao("estoque"), async function (req, res) {
   try {
     const dadosInsumo = prepararInsumo(req.body);
 
@@ -2274,7 +2275,7 @@ app.post("/insumos", async function (req, res) {
   }
 });
 
-app.put("/insumos/:id", async function (req, res) {
+app.put("/insumos/:id", verificarPermissao("estoque"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -2314,7 +2315,7 @@ app.put("/insumos/:id", async function (req, res) {
   }
 });
 
-app.delete("/insumos/:id", async function (req, res) {
+app.delete("/insumos/:id", verificarPermissao("estoque"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -2344,7 +2345,7 @@ app.delete("/insumos/:id", async function (req, res) {
   }
 });
 
-app.post("/insumos/:id/movimentacao", async function (req, res) {
+app.post("/insumos/:id/movimentacao", verificarPermissao("estoque"), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -2432,6 +2433,7 @@ app.post("/insumos/:id/movimentacao", async function (req, res) {
 
 app.get(
   "/insumos/:id/movimentacoes",
+  verificarPermissao("estoque"),
   async function (req, res) {
     try {
       const id = Number(req.params.id);

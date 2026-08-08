@@ -49,16 +49,20 @@ export function obterApiUrl() {
   return API_URL;
 }
 
-export function buscarLancamentos() {
-  return requisicao("/lancamentos");
+export async function buscarLancamentos() {
+  return requisicao("/lancamentos", { headers: await cabecalhoAutenticado() });
 }
 
-export function buscarFotoLancamento(id) {
-  return requisicao(`/lancamentos/${id}/foto`);
+export async function buscarFotoLancamento(id) {
+  return requisicao(`/lancamentos/${id}/foto`, {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
-export function buscarFotoMercadoriaLancamento(id) {
-  return requisicao(`/lancamentos/${id}/foto-mercadoria`);
+export async function buscarFotoMercadoriaLancamento(id) {
+  return requisicao(`/lancamentos/${id}/foto-mercadoria`, {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
 export async function criarLancamento(dados) {
@@ -77,9 +81,10 @@ export async function atualizarLancamento(id, dados) {
   });
 }
 
-export function excluirLancamento(id) {
+export async function excluirLancamento(id) {
   return requisicao(`/lancamentos/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
@@ -105,42 +110,45 @@ export async function atualizarConfiguracaoAprovacao(ativa) {
   });
 }
 
-export function buscarInsumos() {
-  return requisicao("/insumos");
+export async function buscarInsumos() {
+  return requisicao("/insumos", { headers: await cabecalhoAutenticado() });
 }
 
-export function criarInsumo(dados) {
+export async function criarInsumo(dados) {
   return requisicao("/insumos", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarInsumo(id, dados) {
+export async function atualizarInsumo(id, dados) {
   return requisicao(`/insumos/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirInsumo(id) {
+export async function excluirInsumo(id) {
   return requisicao(`/insumos/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function registrarMovimentacaoEstoque(id, dados) {
+export async function registrarMovimentacaoEstoque(id, dados) {
   return requisicao(`/insumos/${id}/movimentacao`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function buscarMovimentacoesEstoque(id) {
-  return requisicao(`/insumos/${id}/movimentacoes`);
+export async function buscarMovimentacoesEstoque(id) {
+  return requisicao(`/insumos/${id}/movimentacoes`, {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
 export async function buscarLogAuditoria() {
@@ -162,34 +170,37 @@ export async function buscarVendasPagSeguro(data) {
   });
 }
 
-export function buscarFormasPagamento() {
-  return requisicao("/formas-pagamento");
+export async function buscarFormasPagamento() {
+  return requisicao("/formas-pagamento", {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
-export function criarFormaPagamento(dados) {
+export async function criarFormaPagamento(dados) {
   return requisicao("/formas-pagamento", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarFormaPagamento(id, dados) {
+export async function atualizarFormaPagamento(id, dados) {
   return requisicao(`/formas-pagamento/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirFormaPagamento(id) {
+export async function excluirFormaPagamento(id) {
   return requisicao(`/formas-pagamento/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function buscarContasPagar() {
-  return requisicao("/contas-pagar");
+export async function buscarContasPagar() {
+  return requisicao("/contas-pagar", { headers: await cabecalhoAutenticado() });
 }
 
 export async function criarContaPagar(dados) {
@@ -222,100 +233,110 @@ export async function excluirContaPagar(id) {
   });
 }
 
-export function buscarClientes() {
-  return requisicao("/clientes");
+export async function buscarClientes() {
+  return requisicao("/clientes", { headers: await cabecalhoAutenticado() });
 }
 
-export function criarCliente(dados) {
+export async function criarCliente(dados) {
   return requisicao("/clientes", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarCliente(id, dados) {
+export async function atualizarCliente(id, dados) {
   return requisicao(`/clientes/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirCliente(id) {
+export async function excluirCliente(id) {
   return requisicao(`/clientes/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function buscarAtendimentosCliente(id) {
-  return requisicao(`/clientes/${id}/atendimentos`);
+export async function buscarAtendimentosCliente(id) {
+  return requisicao(`/clientes/${id}/atendimentos`, {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
-export function criarAtendimentoCliente(id, dados) {
+export async function criarAtendimentoCliente(id, dados) {
   return requisicao(`/clientes/${id}/atendimentos`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirAtendimento(id) {
+export async function excluirAtendimento(id) {
   return requisicao(`/atendimentos/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function buscarCategorias() {
-  return requisicao("/categorias");
+export async function buscarCategorias() {
+  return requisicao("/categorias", { headers: await cabecalhoAutenticado() });
 }
 
-export function criarCategoria(dados) {
+export async function criarCategoria(dados) {
   return requisicao("/categorias", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function atualizarCategoria(id, dados) {
+export async function atualizarCategoria(id, dados) {
   return requisicao(`/categorias/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirCategoria(id) {
+export async function excluirCategoria(id) {
   return requisicao(`/categorias/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function buscarFechamentosCaixa() {
-  return requisicao("/fechamentos-caixa");
+export async function buscarFechamentosCaixa() {
+  return requisicao("/fechamentos-caixa", {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
-export function buscarFotoFechamentoCaixa(id) {
-  return requisicao(`/fechamentos-caixa/${id}/foto`);
+export async function buscarFotoFechamentoCaixa(id) {
+  return requisicao(`/fechamentos-caixa/${id}/foto`, {
+    headers: await cabecalhoAutenticado(),
+  });
 }
 
-export function criarFechamentoCaixa(dados) {
+export async function criarFechamentoCaixa(dados) {
   return requisicao("/fechamentos-caixa", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await cabecalhoAutenticado(),
     body: JSON.stringify(dados),
   });
 }
 
-export function excluirFechamentoCaixa(id) {
+export async function excluirFechamentoCaixa(id) {
   return requisicao(`/fechamentos-caixa/${id}`, {
     method: "DELETE",
+    headers: await cabecalhoAutenticado(),
   });
 }
 
-export function buscarLojas() {
-  return requisicao("/lojas");
+export async function buscarLojas() {
+  return requisicao("/lojas", { headers: await cabecalhoAutenticado() });
 }
 
 export async function criarLoja(dados) {
