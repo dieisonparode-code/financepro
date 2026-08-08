@@ -2075,7 +2075,7 @@ app.post(
               },
               {
                 type: "text",
-                text: 'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Encontre o VALOR TOTAL GERAL do fechamento (não um valor parcial). Responda APENAS com o número, no formato 1234.56 (ponto como separador decimal, sem "R$", sem texto, sem explicação). Se não conseguir identificar um valor total com confiança, responda exatamente: INDEFINIDO',
+                text: 'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. Pode ter vários valores (por forma de pagamento, parciais, etc). Encontre o VALOR TOTAL GERAL do fechamento — normalmente é o maior valor, costuma estar perto de palavras como "TOTAL", "TOTAL GERAL", "TOTAL DO DIA" ou "VALOR TOTAL", geralmente no final do comprovante. Dê sua MELHOR ESTIMATIVA mesmo que não tenha 100% de certeza — é melhor arriscar um palpite razoável do que recusar. Responda APENAS com o número, no formato 1234.56 (ponto como separador decimal, sem "R$", sem texto, sem explicação). Só responda exatamente INDEFINIDO se a imagem estiver realmente ilegível ou não for um comprovante financeiro.',
               },
             ],
           },
@@ -2088,15 +2088,20 @@ app.post(
         .join("")
         .trim();
 
-      if (textoResposta === "INDEFINIDO" || !/^\d+(\.\d+)?$/.test(textoResposta)) {
+      // Extrai o número da resposta em vez de exigir que a resposta inteira
+      // seja só o número — a IA às vezes acrescenta algo mesmo pedindo pra
+      // não fazer isso (ex: "1234.56" vs "R$ 1234.56" vs "1234.56.").
+      const numeroEncontrado = textoResposta.match(/\d+(?:\.\d+)?/);
+
+      if (textoResposta.includes("INDEFINIDO") || !numeroEncontrado) {
         return res.json({
           valor_lido: null,
           erro_leitura:
-            "Não foi possível identificar o valor total na foto com confiança. Tente uma foto mais nítida.",
+            "Não foi possível identificar o valor total na foto com confiança. Tente uma foto mais nítida ou de outro ângulo.",
         });
       }
 
-      const valorLido = Number(textoResposta);
+      const valorLido = Number(numeroEncontrado[0]);
       const valorEsperado = Number(valor_esperado || 0);
       const diferenca = Number((valorLido - valorEsperado).toFixed(2));
       const bateu = Math.abs(diferenca) < 0.01;
