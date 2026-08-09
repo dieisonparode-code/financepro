@@ -840,7 +840,23 @@ function FinanceApp() {
 const [mesDashboard, setMesDashboard] = useState(
   hojeLocal().slice(0, 7)
 );
-const [lojaDashboard, setLojaDashboard] = useState("todas");
+const [lojaDashboard, setLojaDashboard] = useState(() => {
+  try {
+    return localStorage.getItem("financepro_loja_selecionada") || "todas";
+  } catch {
+    return "todas";
+  }
+});
+
+// Guarda a loja escolhida pra continuar a mesma depois de recarregar a
+// página (sem isso, sempre voltava pra "Todas as lojas" a cada atualização).
+useEffect(() => {
+  try {
+    localStorage.setItem("financepro_loja_selecionada", lojaDashboard);
+  } catch {
+    // localStorage indisponível (aba anônima, etc.) — segue sem salvar.
+  }
+}, [lojaDashboard]);
 
 useEffect(() => {
   if (!vePermissaoTotal && perfil?.loja_id) {
