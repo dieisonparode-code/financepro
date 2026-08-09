@@ -198,6 +198,19 @@ function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
   return raioTerra * c;
 }
 
+// Usa o fuso horário do próprio dispositivo (não força UTC) — toISOString()
+// converte pra UTC, e isso já causou lançamento salvando com a data de
+// amanhã pra quem está num fuso mais atrasado (ex.: Mato Grosso, UTC-4)
+// perto da meia-noite local (que já é o dia seguinte em UTC).
+function hojeLocal() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
 function criarFormularioInicial(tipo = "receita") {
   return {
     descricao: "",
@@ -221,7 +234,7 @@ function criarFormularioInicial(tipo = "receita") {
     capturado_em: null,
     loja_id: "",
     forma_pagamento_id: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeLocal(),
   };
 }
 function App() {
@@ -324,7 +337,7 @@ function FinanceApp() {
   const [categoriasCadastradas, setCategoriasCadastradas] = useState([]);
   const [carregandoCategorias, setCarregandoCategorias] = useState(true);
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = hojeLocal();
   const primeiroDiaMes = `${hoje.slice(0, 7)}-01`;
 
   const [dataInicialRelatorio, setDataInicialRelatorio] =
@@ -825,7 +838,7 @@ function FinanceApp() {
   }, []);
 
 const [mesDashboard, setMesDashboard] = useState(
-  new Date().toISOString().slice(0, 7)
+  hojeLocal().slice(0, 7)
 );
 const [lojaDashboard, setLojaDashboard] = useState("todas");
 
@@ -1245,9 +1258,7 @@ const statusCmv =
       precisao_metros: lancamento.precisao_metros ?? null,
       capturado_em: lancamento.capturado_em || null,
       loja_id: lancamento.loja_id || "",
-      data:
-        lancamento.data ||
-        new Date().toISOString().slice(0, 10),
+      data: lancamento.data || hojeLocal(),
     });
 
     setModalAberto(true);
@@ -2344,7 +2355,7 @@ const statusCmv =
                 <div key={item.id} className="transaction-item">
                   <div>
                     <strong>
-                      {item.descricao}
+                      {item.fornecedor || "-"}
                       {item.status === "pendente" && (
                         <span className="badge-status badge-status-pendente">
                           ⏳ Pendente
@@ -2358,7 +2369,7 @@ const statusCmv =
                     </strong>
                     <span>{item.grupo || "-"}</span>
                     <span>{item.categoria || "-"}</span>
-                    <span>{item.fornecedor || "-"}</span>
+                    <span>{item.descricao}</span>
                     <span>
                       🏬{" "}
                       {lojas.find((loja) => loja.id === item.loja_id)

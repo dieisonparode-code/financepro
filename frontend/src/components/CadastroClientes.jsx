@@ -5,6 +5,18 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
+// Usa o fuso horário do dispositivo (não força UTC) — toISOString() já
+// causou lançamento salvando com a data de amanhã perto da meia-noite
+// local em fusos mais atrasados (ex.: Mato Grosso, UTC-4).
+function hojeLocal() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -34,9 +46,7 @@ function CadastroClientes({
   const [clienteAberto, setClienteAberto] = useState(null);
   const [atendimentos, setAtendimentos] = useState([]);
   const [carregandoAtendimentos, setCarregandoAtendimentos] = useState(false);
-  const [dataAtendimento, setDataAtendimento] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [dataAtendimento, setDataAtendimento] = useState(hojeLocal());
   const [valorAtendimento, setValorAtendimento] = useState("");
   const [observacaoAtendimento, setObservacaoAtendimento] = useState("");
   const [salvandoAtendimento, setSalvandoAtendimento] = useState(false);
@@ -115,7 +125,7 @@ function CadastroClientes({
   async function abrirHistorico(cliente) {
     setClienteAberto(cliente);
     setCarregandoAtendimentos(true);
-    setDataAtendimento(new Date().toISOString().slice(0, 10));
+    setDataAtendimento(hojeLocal());
     setValorAtendimento("");
     setObservacaoAtendimento("");
 
