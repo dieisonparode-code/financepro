@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import DashboardPremium from "./components/dashboardPremium";
 import "./App.css";
 import "./paginasInternas.css";
@@ -1917,7 +1915,15 @@ const statusCmv =
     URL.revokeObjectURL(url);
   }
 
-  function exportarRelatorioPDF() {
+  async function exportarRelatorioPDF() {
+    // Carrega as bibliotecas de PDF só na hora de usar (em vez de no
+    // carregamento inicial do sistema) — deixa o resto do sistema mais
+    // rápido pra quem nunca exporta PDF.
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+
     const nomeLoja =
       lojaDashboard === "todas"
         ? "Todas as lojas"
@@ -2043,7 +2049,12 @@ const statusCmv =
     URL.revokeObjectURL(url);
   }
 
-  function exportarFluxoPDF() {
+  async function exportarFluxoPDF() {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+
     const nomeLoja =
       lojaDashboard === "todas"
         ? "Todas as lojas"
