@@ -1326,6 +1326,33 @@ const statusCmv =
     editandoIdRef.current = null;
   }
 
+  // Tecla Esc fecha o modal aberto (foto ou formulário de lançamento), sem
+  // precisar clicar no ×. Fecha só o de "cima" (foto tem prioridade, porque
+  // pode estar aberta em cima do formulário de lançamento).
+  useEffect(() => {
+    function aoTeclarEsc(evento) {
+      if (evento.key !== "Escape") return;
+
+      if (fotoVisualizada) {
+        setFotoVisualizada(null);
+      } else if (fotoMercadoriaVisualizada) {
+        setFotoMercadoriaVisualizada(null);
+      } else if (fotoRelatorioCaixaVisualizada) {
+        setFotoRelatorioCaixaVisualizada(null);
+      } else if (modalAberto) {
+        fecharModal();
+      }
+    }
+
+    window.addEventListener("keydown", aoTeclarEsc);
+    return () => window.removeEventListener("keydown", aoTeclarEsc);
+  }, [
+    fotoVisualizada,
+    fotoMercadoriaVisualizada,
+    fotoRelatorioCaixaVisualizada,
+    modalAberto,
+  ]);
+
   function alterarCampo(campo, valor) {
     setFormulario((anterior) => ({
       ...anterior,
