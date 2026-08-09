@@ -3360,18 +3360,14 @@ const statusCmv =
 
             <form onSubmit={salvarLancamento}>
               <label>
-                <span className="rotulo-campo">
-                  Descrição
-                  <span className="campo-obrigatorio">Obrigatório</span>
-                </span>
+                Fornecedor
                 <input
                   type="text"
-                  value={formulario.descricao}
+                  value={formulario.fornecedor}
                   onChange={(evento) =>
-                    alterarCampo("descricao", evento.target.value)
+                    alterarCampo("fornecedor", evento.target.value)
                   }
-                  placeholder="Ex.: Compra de carne"
-                  required
+                  placeholder="Ex.: Distribuidora ABC"
                 />
               </label>
 
@@ -3495,14 +3491,18 @@ const statusCmv =
               )}
 
               <label>
-                Fornecedor
+                <span className="rotulo-campo">
+                  Descrição
+                  <span className="campo-obrigatorio">Obrigatório</span>
+                </span>
                 <input
                   type="text"
-                  value={formulario.fornecedor}
+                  value={formulario.descricao}
                   onChange={(evento) =>
-                    alterarCampo("fornecedor", evento.target.value)
+                    alterarCampo("descricao", evento.target.value)
                   }
-                  placeholder="Ex.: Distribuidora ABC"
+                  placeholder="Ex.: Compra de carne"
+                  required
                 />
               </label>
 
