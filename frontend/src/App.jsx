@@ -1364,10 +1364,6 @@ const statusCmv =
         .replace(",", ".")
     );
 
-    if (!formulario.descricao.trim()) {
-      alert("Informe a descrição.");
-      return;
-    }
 
     if (!valorNumerico || valorNumerico <= 0) {
       alert("Informe um valor válido.");
@@ -3491,10 +3487,7 @@ const statusCmv =
               )}
 
               <label>
-                <span className="rotulo-campo">
-                  Descrição
-                  <span className="campo-obrigatorio">Obrigatório</span>
-                </span>
+                Descrição
                 <input
                   type="text"
                   value={formulario.descricao}
@@ -3502,7 +3495,6 @@ const statusCmv =
                     alterarCampo("descricao", evento.target.value)
                   }
                   placeholder="Ex.: Compra de carne"
-                  required
                 />
               </label>
 
