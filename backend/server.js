@@ -451,6 +451,22 @@ app.put("/lancamentos/:id", verificarPermissao("financeiro"), async function (re
       });
     }
 
+    const { data: lancamentoExistente, error: erroBusca } = await supabase
+      .from("lancamentos")
+      .select("data")
+      .eq("id", id)
+      .single();
+
+    if (erroBusca) {
+      throw erroBusca;
+    }
+
+    if (mesBloqueado(lancamentoExistente?.data)) {
+      return res.status(403).json({
+        erro: "Esse lançamento é de um mês já encerrado e não pode mais ser editado.",
+      });
+    }
+
     const { data, error } = await supabase
       .from("lancamentos")
       .update(lancamentoAtualizado)
@@ -494,6 +510,22 @@ app.delete(
       if (!Number.isFinite(id)) {
         return res.status(400).json({
           erro: "ID do lançamento inválido.",
+        });
+      }
+
+      const { data: lancamentoExistente, error: erroBusca } = await supabase
+        .from("lancamentos")
+        .select("data")
+        .eq("id", id)
+        .single();
+
+      if (erroBusca) {
+        throw erroBusca;
+      }
+
+      if (mesBloqueado(lancamentoExistente?.data)) {
+        return res.status(403).json({
+          erro: "Esse lançamento é de um mês já encerrado e não pode mais ser excluído.",
         });
       }
 
@@ -1843,6 +1875,18 @@ const TRES_HORAS_MS = 3 * 60 * 60 * 1000;
 // Brasília, a PagSeguro rejeita como "data no futuro".
 function agoraBrasilia() {
   return new Date(Date.now() - TRES_HORAS_MS);
+}
+
+// Trava de mês fechado: automática, sem precisar "fechar o mês" na mão.
+// Qualquer lançamento com data de um mês anterior ao mês atual (horário de
+// Brasília) fica bloqueado pra editar/excluir. Quando o mês virar, o mês
+// que era "atual" passa a ficar travado sozinho, sem nenhuma ação manual.
+function mesBloqueado(dataLancamento) {
+  if (!dataLancamento) return false;
+
+  const mesAtual = agoraBrasilia().toISOString().slice(0, 7);
+
+  return String(dataLancamento).slice(0, 7) < mesAtual;
 }
 
 function calcularPeriodoPagSeguro(dataInicio, dataFim) {

@@ -211,6 +211,17 @@ function hojeLocal() {
   return `${ano}-${mes}-${dia}`;
 }
 
+// Mês fechado automaticamente: qualquer lançamento de um mês anterior ao
+// mês atual não pode mais ser editado/excluído. Sem botão de "fechar mês" —
+// assim que o mês vira, o mês anterior já fica travado sozinho.
+function mesLancamentoBloqueado(item) {
+  if (!item?.data) return false;
+
+  const mesAtual = hojeLocal().slice(0, 7);
+
+  return item.data.slice(0, 7) < mesAtual;
+}
+
 function criarFormularioInicial(tipo = "receita") {
   return {
     descricao: "",
@@ -2470,7 +2481,17 @@ const statusCmv =
                     </strong>
 
                     <div className="transaction-actions">
-                      {(item.tipo !== "receita" || ehAdministrador) && (
+                      {mesLancamentoBloqueado(item) && (
+                        <span
+                          className="badge-status badge-status-pendente"
+                          title="Lançamento de um mês já encerrado — não pode mais editar ou excluir."
+                        >
+                          🔒 Mês encerrado
+                        </span>
+                      )}
+
+                      {!mesLancamentoBloqueado(item) &&
+                        (item.tipo !== "receita" || ehAdministrador) && (
                         <button
                           type="button"
                           className="edit-button"
@@ -2583,7 +2604,8 @@ const statusCmv =
                           </>
                         )}
 
-                      {(item.tipo !== "receita" || ehAdministrador) && (
+                      {!mesLancamentoBloqueado(item) &&
+                        (item.tipo !== "receita" || ehAdministrador) && (
                       <button
                         type="button"
                         className="delete-button"
