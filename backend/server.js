@@ -2188,9 +2188,14 @@ app.post(
         });
       }
 
+      // Não pede a data da nota pra IA de propósito: a data do lançamento
+      // é sempre a data em que o lançamento é feito no sistema (hoje, ou a
+      // que o usuário escolher no formulário), nunca a data impressa na
+      // nota/comprovante. Extrair e devolver essa data já causou bug (o
+      // formulário sobrescrevia a data de lançamento com a da nota).
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento (se estiver visível), e a DATA da compra no formato AAAA-MM-DD (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "data": "AAAA-MM-DD ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null, "data": null}.',
+        'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
         8192
       );
 
@@ -2203,7 +2208,6 @@ app.post(
         return res.json({
           valor: null,
           fornecedor: null,
-          data: null,
           erro_leitura:
             "Não foi possível ler os dados dessa nota. Preencha manualmente.",
         });
@@ -2212,7 +2216,6 @@ app.post(
       res.json({
         valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
         fornecedor: dadosLidos.fornecedor || null,
-        data: dadosLidos.data || null,
       });
     } catch (erro) {
       console.error("Erro ao ler nota fiscal:", erro.message);
