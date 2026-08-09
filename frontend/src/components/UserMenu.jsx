@@ -216,14 +216,6 @@ function UserMenu({ usuario, sair }) {
           <button
             type="button"
             className="user-menu-sair"
-            onClick={abrirMfa}
-          >
-            🔐 Verificação em duas etapas
-          </button>
-
-          <button
-            type="button"
-            className="user-menu-sair"
             onClick={sair}
           >
             Sair
