@@ -1331,7 +1331,9 @@ const statusCmv =
           maximumFractionDigits: 2,
         }),
         fornecedor: resultado.fornecedor || anterior.fornecedor,
-        data: resultado.data || anterior.data,
+        // A data do campo é a data de lançamento (hoje) — não a data da nota
+        // fiscal lida pela foto. A leitura automática só preenche valor e
+        // fornecedor, nunca troca a data escolhida/padrão do formulário.
       }));
     } catch (erro) {
       alert(erro.message || "Não foi possível ler a nota fiscal.");
