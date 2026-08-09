@@ -10,6 +10,12 @@ export default function Login() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
 
+  // Segunda etapa (verificação em duas etapas): só aparece pra quem já
+  // ativou o 2FA na própria conta. Quem não ativou nunca vê essa tela.
+  const [etapa, setEtapa] = useState("senha");
+  const [fatorId, setFatorId] = useState(null);
+  const [codigoMfa, setCodigoMfa] = useState("");
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -29,8 +35,64 @@ export default function Login() {
       return;
     }
 
+    const { data: nivel } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+    if (nivel?.nextLevel === "aal2" && nivel?.currentLevel !== "aal2") {
+      const { data: fatores } = await supabase.auth.mfa.listFactors();
+      const fatorTotp = fatores?.totp?.[0];
+
+      if (fatorTotp) {
+        setFatorId(fatorTotp.id);
+        setEtapa("codigo");
+        setCarregando(false);
+        return;
+      }
+    }
+
     login(data.session);
     navigate("/", { replace: true });
+  }
+
+  async function confirmarCodigoMfa(evento) {
+    evento.preventDefault();
+    setErro("");
+    setCarregando(true);
+
+    try {
+      const { data: desafio, error: erroDesafio } =
+        await supabase.auth.mfa.challenge({ factorId: fatorId });
+
+      if (erroDesafio) {
+        throw erroDesafio;
+      }
+
+      const { data: verificado, error: erroVerificar } =
+        await supabase.auth.mfa.verify({
+          factorId,
+          challengeId: desafio.id,
+          code: codigoMfa.trim(),
+        });
+
+      if (erroVerificar) {
+        throw erroVerificar;
+      }
+
+      login(verificado);
+      navigate("/", { replace: true });
+    } catch {
+      setErro("Código incorreto. Confira o app autenticador e tente de novo.");
+      setCodigoMfa("");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  function voltarParaSenha() {
+    setEtapa("senha");
+    setCodigoMfa("");
+    setErro("");
+    setSenha("");
   }
 
   return (
@@ -901,7 +963,10 @@ export default function Login() {
           </section>
 
           <section className="login-access-area">
-            <form className="login-form-card" onSubmit={entrar}>
+            <form
+              className="login-form-card"
+              onSubmit={etapa === "codigo" ? confirmarCodigoMfa : entrar}
+            >
               <div className="login-security">
                 <svg
                   width="15"
@@ -919,113 +984,160 @@ export default function Login() {
               </div>
 
               <h2 className="login-form-title">
-                Bem-vindo ao FinancePro
+                {etapa === "codigo"
+                  ? "Verificação em duas etapas"
+                  : "Bem-vindo ao FinancePro"}
               </h2>
 
               <p className="login-form-subtitle">
-                Identifique-se para acessar o painel financeiro e os recursos
-                de gestão.
+                {etapa === "codigo"
+                  ? "Abra o app autenticador no seu celular e digite o código de 6 dígitos."
+                  : "Identifique-se para acessar o painel financeiro e os recursos de gestão."}
               </p>
 
-              <label className="login-label" htmlFor="email">
-                E-mail corporativo
-              </label>
+              {etapa === "codigo" ? (
+                <>
+                  <label className="login-label" htmlFor="codigo-mfa">
+                    Código de verificação
+                  </label>
 
-              <div className="login-input-wrapper">
-                <span className="login-input-icon">
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <rect width="20" height="16" x="2" y="4" rx="2" />
-                    <path d="m22 7-10 6L2 7" />
-                  </svg>
-                </span>
+                  <div className="login-input-wrapper">
+                    <span className="login-input-icon">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <rect width="18" height="11" x="3" y="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    </span>
 
-                <input
-                  id="email"
-                  className="login-input"
-                  type="email"
-                  placeholder="nome@empresa.com"
-                  value={email}
-                  onChange={(evento) => setEmail(evento.target.value)}
-                  autoComplete="email"
-                  required
-                />
-              </div>
+                    <input
+                      id="codigo-mfa"
+                      className="login-input"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="000000"
+                      maxLength={6}
+                      value={codigoMfa}
+                      onChange={(evento) =>
+                        setCodigoMfa(
+                          evento.target.value.replace(/\D/g, "")
+                        )
+                      }
+                      autoFocus
+                      required
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label className="login-label" htmlFor="email">
+                    E-mail corporativo
+                  </label>
 
-              <label className="login-label" htmlFor="senha">
-                Senha de acesso
-              </label>
+                  <div className="login-input-wrapper">
+                    <span className="login-input-icon">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <rect width="20" height="16" x="2" y="4" rx="2" />
+                        <path d="m22 7-10 6L2 7" />
+                      </svg>
+                    </span>
 
-              <div className="login-input-wrapper">
-                <span className="login-input-icon">
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <rect width="18" height="11" x="3" y="11" rx="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                </span>
+                    <input
+                      id="email"
+                      className="login-input"
+                      type="email"
+                      placeholder="nome@empresa.com"
+                      value={email}
+                      onChange={(evento) => setEmail(evento.target.value)}
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
 
-                <input
-                  id="senha"
-                  className="login-input"
-                  type={mostrarSenha ? "text" : "password"}
-                  placeholder="Digite sua senha"
-                  value={senha}
-                  onChange={(evento) => setSenha(evento.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
+                  <label className="login-label" htmlFor="senha">
+                    Senha de acesso
+                  </label>
 
-                <button
-                  className="login-show-password"
-                  type="button"
-                  onClick={() => setMostrarSenha((valor) => !valor)}
-                  aria-label={
-                    mostrarSenha ? "Ocultar senha" : "Mostrar senha"
-                  }
-                >
-                  {mostrarSenha ? (
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                  <div className="login-input-wrapper">
+                    <span className="login-input-icon">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <rect width="18" height="11" x="3" y="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    </span>
+
+                    <input
+                      id="senha"
+                      className="login-input"
+                      type={mostrarSenha ? "text" : "password"}
+                      placeholder="Digite sua senha"
+                      value={senha}
+                      onChange={(evento) => setSenha(evento.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+
+                    <button
+                      className="login-show-password"
+                      type="button"
+                      onClick={() => setMostrarSenha((valor) => !valor)}
+                      aria-label={
+                        mostrarSenha ? "Ocultar senha" : "Mostrar senha"
+                      }
                     >
-                      <path d="m2 2 20 20" />
-                      <path d="M6.7 6.7C4.7 8.1 3.2 10 2 12c2.3 4 5.7 6 10 6 1.2 0 2.3-.2 3.3-.5" />
-                      <path d="M10.7 10.7a2 2 0 0 0 2.6 2.6" />
-                      <path d="M14.2 5.2A11 11 0 0 0 12 5c-4.3 0-7.7 2-10 6" />
-                      <path d="M18.5 8.5A13.5 13.5 0 0 1 22 12a12.8 12.8 0 0 1-2.2 3" />
-                    </svg>
-                  ) : (
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
-                </button>
-              </div>
+                      {mostrarSenha ? (
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="m2 2 20 20" />
+                          <path d="M6.7 6.7C4.7 8.1 3.2 10 2 12c2.3 4 5.7 6 10 6 1.2 0 2.3-.2 3.3-.5" />
+                          <path d="M10.7 10.7a2 2 0 0 0 2.6 2.6" />
+                          <path d="M14.2 5.2A11 11 0 0 0 12 5c-4.3 0-7.7 2-10 6" />
+                          <path d="M18.5 8.5A13.5 13.5 0 0 1 22 12a12.8 12.8 0 0 1-2.2 3" />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
 
               {erro && (
                 <div className="login-error">
@@ -1054,8 +1166,12 @@ export default function Login() {
                 {carregando ? (
                   <>
                     <span className="login-spinner" />
-                    Validando acesso...
+                    {etapa === "codigo"
+                      ? "Verificando..."
+                      : "Validando acesso..."}
                   </>
+                ) : etapa === "codigo" ? (
+                  "Confirmar código"
                 ) : (
                   <>
                     Acessar painel financeiro
@@ -1074,6 +1190,24 @@ export default function Login() {
                   </>
                 )}
               </button>
+
+              {etapa === "codigo" && (
+                <button
+                  type="button"
+                  onClick={voltarParaSenha}
+                  style={{
+                    marginTop: "14px",
+                    background: "none",
+                    border: "none",
+                    color: "#8fa5c1",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  ← Voltar e entrar com outra conta
+                </button>
+              )}
 
               <div className="login-trust">
                 <svg
