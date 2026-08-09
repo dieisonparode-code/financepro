@@ -81,18 +81,25 @@ export async function criarLancamento(dados) {
   });
 }
 
-export async function atualizarLancamento(id, dados) {
+export async function atualizarLancamento(id, dados, senhaConfirmacao) {
   return requisicao(`/lancamentos/${id}`, {
     method: "PUT",
     headers: await cabecalhoAutenticado(),
-    body: JSON.stringify(dados),
+    body: JSON.stringify(
+      senhaConfirmacao
+        ? { ...dados, senha_confirmacao: senhaConfirmacao }
+        : dados
+    ),
   });
 }
 
-export async function excluirLancamento(id) {
+export async function excluirLancamento(id, senhaConfirmacao) {
   return requisicao(`/lancamentos/${id}`, {
     method: "DELETE",
     headers: await cabecalhoAutenticado(),
+    body: senhaConfirmacao
+      ? JSON.stringify({ senha_confirmacao: senhaConfirmacao })
+      : undefined,
   });
 }
 

@@ -310,6 +310,8 @@ function FinanceApp() {
     useState(false);
   const [lendoNota, setLendoNota] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
+  const [senhaExclusaoMesEncerrado, setSenhaExclusaoMesEncerrado] =
+    useState("");
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
   const [carregandoFotoMercadoriaId, setCarregandoFotoMercadoriaId] =
     useState(null);
@@ -1475,11 +1477,29 @@ const statusCmv =
       data: formulario.data,
     };
 
+    let senhaMesEncerrado;
+
+    if (editandoId) {
+      const itemOriginal = lancamentos.find(
+        (item) => item.id === editandoId
+      );
+
+      if (mesLancamentoBloqueado(itemOriginal)) {
+        senhaMesEncerrado = window.prompt(
+          "Esse lançamento é de um mês já encerrado. Digite sua senha de login pra confirmar a edição:"
+        );
+
+        if (!senhaMesEncerrado) {
+          return;
+        }
+      }
+    }
+
     setSalvando(true);
 
     try {
       const salvo = editandoId
-        ? await atualizarLancamento(editandoId, dados)
+        ? await atualizarLancamento(editandoId, dados, senhaMesEncerrado)
         : await criarLancamento(dados);
 
       setLancamentos((anteriores) =>
@@ -1504,10 +1524,12 @@ const statusCmv =
 
   function pedirConfirmacaoExclusao(id) {
     setConfirmandoExclusao(id);
+    setSenhaExclusaoMesEncerrado("");
   }
 
   function cancelarExclusao() {
     setConfirmandoExclusao(null);
+    setSenhaExclusaoMesEncerrado("");
   }
 
   async function confirmarExclusao() {
@@ -1516,7 +1538,7 @@ const statusCmv =
     if (!id) return;
 
     try {
-      await excluirLancamento(id);
+      await excluirLancamento(id, senhaExclusaoMesEncerrado || undefined);
 
       setLancamentos((anteriores) =>
         anteriores.filter((item) => item.id !== id)
@@ -1528,6 +1550,7 @@ const statusCmv =
       );
     } finally {
       setConfirmandoExclusao(null);
+      setSenhaExclusaoMesEncerrado("");
     }
   }
 
@@ -2484,13 +2507,17 @@ const statusCmv =
                       {mesLancamentoBloqueado(item) && (
                         <span
                           className="badge-status badge-status-pendente"
-                          title="Lançamento de um mês já encerrado — não pode mais editar ou excluir."
+                          title={
+                            ehAdministrador
+                              ? "Lançamento de mês encerrado — só editando/excluindo com sua senha."
+                              : "Lançamento de um mês já encerrado — não pode mais editar ou excluir."
+                          }
                         >
                           🔒 Mês encerrado
                         </span>
                       )}
 
-                      {!mesLancamentoBloqueado(item) &&
+                      {(!mesLancamentoBloqueado(item) || ehAdministrador) &&
                         (item.tipo !== "receita" || ehAdministrador) && (
                         <button
                           type="button"
@@ -2604,7 +2631,7 @@ const statusCmv =
                           </>
                         )}
 
-                      {!mesLancamentoBloqueado(item) &&
+                      {(!mesLancamentoBloqueado(item) || ehAdministrador) &&
                         (item.tipo !== "receita" || ehAdministrador) && (
                       <button
                         type="button"
@@ -3910,6 +3937,33 @@ const statusCmv =
 
             <p>Essa ação não pode ser desfeita.</p>
 
+            {(() => {
+              const itemExclusao = lancamentos.find(
+                (item) => item.id === confirmandoExclusao
+              );
+
+              if (!mesLancamentoBloqueado(itemExclusao)) {
+                return null;
+              }
+
+              return (
+                <label>
+                  <span className="rotulo-campo">
+                    🔒 Mês encerrado — digite sua senha pra confirmar
+                    <span className="campo-obrigatorio">Obrigatório</span>
+                  </span>
+                  <input
+                    type="password"
+                    value={senhaExclusaoMesEncerrado}
+                    onChange={(evento) =>
+                      setSenhaExclusaoMesEncerrado(evento.target.value)
+                    }
+                    placeholder="Sua senha de login"
+                  />
+                </label>
+              );
+            })()}
+
             <div className="modal-actions">
               <button
                 type="button"
@@ -3923,6 +3977,13 @@ const statusCmv =
                 type="button"
                 className="primary-button"
                 onClick={confirmarExclusao}
+                disabled={
+                  mesLancamentoBloqueado(
+                    lancamentos.find(
+                      (item) => item.id === confirmandoExclusao
+                    )
+                  ) && !senhaExclusaoMesEncerrado
+                }
               >
                 Sim
               </button>

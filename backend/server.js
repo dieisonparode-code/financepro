@@ -462,9 +462,29 @@ app.put("/lancamentos/:id", verificarPermissao("financeiro"), async function (re
     }
 
     if (mesBloqueado(lancamentoExistente?.data)) {
-      return res.status(403).json({
-        erro: "Esse lançamento é de um mês já encerrado e não pode mais ser editado.",
-      });
+      const ehAdmin = req.perfilLogado?.perfil === "administrador";
+      const senhaOk =
+        ehAdmin &&
+        (await senhaAdminConfirmada(
+          req.usuarioLogado.email,
+          req.body.senha_confirmacao
+        ));
+
+      if (!senhaOk) {
+        return res.status(403).json({
+          erro: ehAdmin
+            ? "Senha incorreta. Digite sua senha pra confirmar a edição de um lançamento de mês encerrado."
+            : "Esse lançamento é de um mês já encerrado e não pode mais ser editado.",
+        });
+      }
+
+      registrarAuditoria(
+        req,
+        "destravou mês encerrado (editar)",
+        "lancamentos",
+        id,
+        null
+      );
     }
 
     const { data, error } = await supabase
@@ -524,9 +544,29 @@ app.delete(
       }
 
       if (mesBloqueado(lancamentoExistente?.data)) {
-        return res.status(403).json({
-          erro: "Esse lançamento é de um mês já encerrado e não pode mais ser excluído.",
-        });
+        const ehAdmin = req.perfilLogado?.perfil === "administrador";
+        const senhaOk =
+          ehAdmin &&
+          (await senhaAdminConfirmada(
+            req.usuarioLogado.email,
+            req.body?.senha_confirmacao
+          ));
+
+        if (!senhaOk) {
+          return res.status(403).json({
+            erro: ehAdmin
+              ? "Senha incorreta. Digite sua senha pra confirmar a exclusão de um lançamento de mês encerrado."
+              : "Esse lançamento é de um mês já encerrado e não pode mais ser excluído.",
+          });
+        }
+
+        registrarAuditoria(
+          req,
+          "destravou mês encerrado (excluir)",
+          "lancamentos",
+          id,
+          null
+        );
       }
 
       const { error } = await supabase
@@ -1887,6 +1927,34 @@ function mesBloqueado(dataLancamento) {
   const mesAtual = agoraBrasilia().toISOString().slice(0, 7);
 
   return String(dataLancamento).slice(0, 7) < mesAtual;
+}
+
+// Único jeito de "destravar" um lançamento de mês encerrado: o administrador
+// confirma digitando a própria senha de login. Verifica de verdade contra o
+// Supabase Auth (não confia só no que o frontend manda) — chama o mesmo
+// endpoint de login que o app usa, só pra checar se a senha bate, sem guardar
+// nem usar a sessão gerada.
+async function senhaAdminConfirmada(email, senha) {
+  if (!email || !senha) return false;
+
+  try {
+    const resposta = await fetch(
+      `${supabaseUrl}/auth/v1/token?grant_type=password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: process.env.SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ email, password: senha }),
+      }
+    );
+
+    return resposta.ok;
+  } catch (erro) {
+    console.error("Erro ao confirmar senha do admin:", erro.message);
+    return false;
+  }
 }
 
 function calcularPeriodoPagSeguro(dataInicio, dataFim) {
