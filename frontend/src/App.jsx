@@ -2921,7 +2921,7 @@ const statusCmv =
         {pagina === "auditoria" && ehAdministrador && <LogAuditoria />}
 
         {pagina === "vendas-saipos" && temPermissaoFechamento("vendas_saipos") && (
-          <VendasSaipos lojas={lojas} />
+          <VendasSaipos lojas={lojas} ehAdministrador={ehAdministrador} />
         )}
 
         {pagina === "conciliacao" && temPermissaoFechamento("conciliacao") && (

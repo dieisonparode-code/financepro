@@ -179,6 +179,14 @@ export async function buscarFechamentoSaipos(lojaId, data) {
   );
 }
 
+export async function importarReceitasSaipos(lojaId, data) {
+  return requisicao(`/fechamento-saipos/${lojaId}/importar-receitas`, {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ data }),
+  });
+}
+
 export async function conferirFechamentoFoto(foto) {
   return requisicao("/pagseguro/conferir-fechamento", {
     method: "POST",

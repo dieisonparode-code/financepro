@@ -1843,6 +1843,8 @@ function montarResumoSaipos(vendas, lancamentos) {
   const vendasCanceladas = vendas.filter((venda) => venda.canceled === "Y");
 
   const totaisPorFormaPagamento = {};
+  const totaisPorCanal = {};
+  const quantidadePorCanal = {};
 
   vendasValidas.forEach((venda) => {
     (venda.payments || []).forEach((pagamento) => {
@@ -1852,6 +1854,25 @@ function montarResumoSaipos(vendas, lancamentos) {
         (totaisPorFormaPagamento[forma] || 0) +
         Number(pagamento.payment_amount || 0);
     });
+
+    // A Saipos traz o parceiro/canal (iFood, Brendi, etc.) em
+    // partner_sale.desc_partner_sale. Venda de balcão/direto não tem
+    // partner_sale nenhum. Isso é diferente da forma de pagamento: uma
+    // venda "Pago Online" pode ter vindo do iFood OU da Brendi, então só a
+    // forma de pagamento não diz de onde o pedido veio.
+    const canal = venda.partner_sale?.desc_partner_sale || "Balcão/Direto";
+    const valorOficialVenda = Number(
+      venda.total_amount ?? venda.totals?.total_amount ?? 0
+    );
+    const valorPorPagamentosVenda = (venda.payments || []).reduce(
+      (soma, pagamento) => soma + Number(pagamento.payment_amount || 0),
+      0
+    );
+    const valorVenda =
+      valorOficialVenda > 0 ? valorOficialVenda : valorPorPagamentosVenda;
+
+    totaisPorCanal[canal] = (totaisPorCanal[canal] || 0) + valorVenda;
+    quantidadePorCanal[canal] = (quantidadePorCanal[canal] || 0) + 1;
   });
 
   // A documentação da Saipos descreve o valor total dentro de
@@ -1887,9 +1908,284 @@ function montarResumoSaipos(vendas, lancamentos) {
     quantidade_vendas: vendasValidas.length,
     quantidade_canceladas: vendasCanceladas.length,
     totais_por_forma_pagamento: totaisPorFormaPagamento,
+    totais_por_canal: totaisPorCanal,
+    quantidade_por_canal: quantidadePorCanal,
     total_lancamentos_financeiros: totalLancamentosFinanceiros,
   };
 }
+
+// Formas de pagamento que a Saipos usa em vendas de balcão (sem
+// partner_sale) e o nome correspondente cadastrado em "formas_pagamento".
+// O que não está aqui (Dinheiro, Cortesia, Vale, A prazo funcionário) não
+// tem taxa/prazo de cartão pra calcular, então fica de fora da importação
+// automática por enquanto.
+const MAPA_PAGAMENTO_BALCAO_SAIPOS = {
+  Crédito: "Cartão de Crédito",
+  Débito: "Cartão de Débito",
+  "Pix Conta Bancária": "PIX",
+  "Pago Online via Pix": "PIX",
+};
+
+// Mesma conta que o frontend faz em salvarLancamento() (App.jsx) ao escolher
+// uma forma de pagamento — replicada aqui pra poder rodar sozinho no
+// backend, sem depender de alguém abrir a tela.
+function calcularRecebimento(valorBruto, formaPagamento, dataBaseStr) {
+  const taxa = Number(formaPagamento?.taxa_percentual || 0);
+  const prazo = Number(formaPagamento?.prazo_dias || 0);
+  const diaSemanaAlvo = formaPagamento?.dia_semana_pagamento;
+
+  const valorLiquidoEsperado = valorBruto - (valorBruto * taxa) / 100;
+  const dataBase = new Date(`${dataBaseStr}T12:00:00`);
+
+  if (diaSemanaAlvo != null) {
+    do {
+      dataBase.setDate(dataBase.getDate() + 1);
+    } while (dataBase.getDay() !== Number(diaSemanaAlvo));
+  } else {
+    dataBase.setDate(dataBase.getDate() + prazo);
+  }
+
+  return {
+    valorLiquidoEsperado,
+    dataPrevistaRecebimento: dataBase.toISOString().slice(0, 10),
+  };
+}
+
+// Agrupa as vendas do dia por canal (iFood, Brendi, ... — vem de
+// partner_sale.desc_partner_sale) ou, pra venda de balcão/direto (sem
+// partner_sale), por forma de pagamento individual. Cada grupo que tiver
+// uma forma de pagamento cadastrada com esse nome vira 1 lançamento de
+// receita (criado ou atualizado, nunca duplicado — usa uma marca no campo
+// observacao pra reconhecer se aquele grupo/dia já foi importado antes).
+async function importarVendasSaiposComoLancamentos(loja, dataStr) {
+  const vendas = await buscarVendasSaipos(
+    loja.saipos_id_store,
+    `${dataStr} 00:00:00`,
+    `${dataStr} 23:59:59`
+  );
+  const vendasValidas = vendas.filter((venda) => venda.canceled !== "Y");
+
+  const { data: formasPagamento, error: erroFormas } = await supabase
+    .from("formas_pagamento")
+    .select("*");
+
+  if (erroFormas) {
+    throw erroFormas;
+  }
+
+  const grupos = {};
+  const pulados = {};
+
+  function registrarPulado(motivo, quantidade = 1) {
+    pulados[motivo] = (pulados[motivo] || 0) + quantidade;
+  }
+
+  vendasValidas.forEach((venda) => {
+    const canal = venda.partner_sale?.desc_partner_sale || null;
+    const valorOficial = Number(
+      venda.total_amount ?? venda.totals?.total_amount ?? 0
+    );
+    const valorPorPagamentos = (venda.payments || []).reduce(
+      (soma, pagamento) => soma + Number(pagamento.payment_amount || 0),
+      0
+    );
+    const valorVenda = valorOficial > 0 ? valorOficial : valorPorPagamentos;
+
+    if (canal) {
+      const forma = (formasPagamento || []).find(
+        (item) => item.nome.toLowerCase() === canal.toLowerCase()
+      );
+      const chave = `canal:${canal}`;
+
+      if (!grupos[chave]) {
+        grupos[chave] = {
+          forma,
+          valorBruto: 0,
+          quantidade: 0,
+          rotulo: canal,
+          canalSlug: canal.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+        };
+      }
+
+      grupos[chave].valorBruto += valorVenda;
+      grupos[chave].quantidade += 1;
+
+      if (!forma) {
+        registrarPulado(
+          `Canal "${canal}" ainda não tem forma de pagamento cadastrada com esse nome`
+        );
+      }
+    } else {
+      (venda.payments || []).forEach((pagamento) => {
+        const nomeSaipos = pagamento.desc_store_payment_type || "Não informado";
+        const nomeCadastro = MAPA_PAGAMENTO_BALCAO_SAIPOS[nomeSaipos];
+
+        if (!nomeCadastro) {
+          registrarPulado(
+            `Forma "${nomeSaipos}" (venda de balcão) sem taxa/prazo pra calcular — não é importada`
+          );
+          return;
+        }
+
+        const forma = (formasPagamento || []).find(
+          (item) => item.nome === nomeCadastro
+        );
+        const chave = `balcao:${nomeSaipos}`;
+
+        if (!grupos[chave]) {
+          grupos[chave] = {
+            forma,
+            valorBruto: 0,
+            quantidade: 0,
+            rotulo: `${nomeSaipos} (balcão)`,
+            canalSlug: `balcao_${nomeSaipos
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")}`,
+          };
+        }
+
+        grupos[chave].valorBruto += Number(pagamento.payment_amount || 0);
+        grupos[chave].quantidade += 1;
+
+        if (!forma) {
+          registrarPulado(
+            `Forma "${nomeCadastro}" não está cadastrada em Formas de Pagamento`
+          );
+        }
+      });
+    }
+  });
+
+  const resultado = { criados: [], atualizados: [], pulados };
+  let indiceParaId = 0;
+
+  for (const grupo of Object.values(grupos)) {
+    if (!grupo.forma || grupo.valorBruto <= 0) {
+      continue;
+    }
+
+    const chaveUnica = `SAIPOS:${loja.saipos_id_store}:${dataStr}:${grupo.canalSlug}`;
+
+    const { valorLiquidoEsperado, dataPrevistaRecebimento } =
+      calcularRecebimento(grupo.valorBruto, grupo.forma, dataStr);
+
+    const dadosLancamento = {
+      tipo: "receita",
+      descricao: `Vendas ${grupo.rotulo}`,
+      valor: grupo.valorBruto,
+      data: dataStr,
+      loja_id: loja.id,
+      fornecedor: grupo.rotulo,
+      forma_pagamento_id: grupo.forma.id,
+      valor_bruto: grupo.valorBruto,
+      valor_liquido_esperado: valorLiquidoEsperado,
+      data_prevista_recebimento: dataPrevistaRecebimento,
+      observacao: `[${chaveUnica}] Importado automaticamente da Saipos — ${grupo.quantidade} venda(s) em ${dataStr}.`,
+      status: "aprovado",
+    };
+
+    const { data: existentes, error: erroBusca } = await supabase
+      .from("lancamentos")
+      .select("id")
+      .ilike("observacao", `%${chaveUnica}%`)
+      .limit(1);
+
+    if (erroBusca) {
+      throw erroBusca;
+    }
+
+    if (existentes && existentes[0]) {
+      const { error: erroUpdate } = await supabase
+        .from("lancamentos")
+        .update(dadosLancamento)
+        .eq("id", existentes[0].id);
+
+      if (erroUpdate) {
+        throw erroUpdate;
+      }
+
+      resultado.atualizados.push({
+        canal: grupo.rotulo,
+        valor: grupo.valorBruto,
+        quantidade: grupo.quantidade,
+      });
+    } else {
+      indiceParaId += 1;
+
+      const { error: erroInsert } = await supabase.from("lancamentos").insert([
+        { id: Date.now() + indiceParaId, ...dadosLancamento },
+      ]);
+
+      if (erroInsert) {
+        throw erroInsert;
+      }
+
+      resultado.criados.push({
+        canal: grupo.rotulo,
+        valor: grupo.valorBruto,
+        quantidade: grupo.quantidade,
+      });
+    }
+  }
+
+  return resultado;
+}
+
+app.post(
+  "/fechamento-saipos/:lojaId/importar-receitas",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const lojaId = Number(req.params.lojaId);
+      const data = req.body?.data;
+
+      if (!Number.isFinite(lojaId)) {
+        return res.status(400).json({ erro: "ID da loja inválido." });
+      }
+
+      if (!data) {
+        return res.status(400).json({
+          erro: "Informe a data (formato AAAA-MM-DD).",
+        });
+      }
+
+      const { data: loja, error: erroLoja } = await supabase
+        .from("lojas")
+        .select("id, nome, saipos_id_store")
+        .eq("id", lojaId)
+        .single();
+
+      if (erroLoja) {
+        throw erroLoja;
+      }
+
+      if (!loja?.saipos_id_store) {
+        return res.status(400).json({
+          erro: `A loja "${loja?.nome || lojaId}" ainda não tem o ID da Saipos cadastrado.`,
+        });
+      }
+
+      const resultado = await importarVendasSaiposComoLancamentos(loja, data);
+
+      registrarAuditoria(
+        req,
+        "importou",
+        "lancamentos",
+        `${loja.id}:${data}`,
+        `Importação automática da Saipos (${loja.nome}, ${data}): ${resultado.criados.length} criado(s), ${resultado.atualizados.length} atualizado(s), ${Object.keys(resultado.pulados).length} tipo(s) pulado(s).`
+      );
+
+      res.json(resultado);
+    } catch (erro) {
+      console.error("Erro ao importar vendas da Saipos como receita:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível importar as vendas como receita.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 app.get(
   "/fechamento-saipos/:lojaId",
