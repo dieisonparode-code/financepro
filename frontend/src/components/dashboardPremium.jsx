@@ -174,6 +174,12 @@ export default function DashboardPremium({
   lojaDashboard = "todas",
   setLojaDashboard = () => {},
   ehAdministrador = true,
+  temAcessoFinanceiro = true,
+  acessoCardSaldo = true,
+  acessoCardReceitas = true,
+  acessoCardDespesas = true,
+  acessoCardFluxoCaixa = true,
+  acessoCardProximosRecebimentos = true,
 }) {
   const receitas = numero(totais.receitas);
   const despesas = numero(totais.despesas);
@@ -438,21 +444,23 @@ export default function DashboardPremium({
         </div>
 
         <div className="fp-topo-acoes">
-          <label className="fp-periodo">
-            <span>Período</span>
-            <select
-              value={mesDashboard}
-              onChange={(evento) =>
-                setMesDashboard(evento.target.value)
-              }
-            >
-              {MESES.map(([valor, texto]) => (
-                <option key={valor} value={valor}>
-                  {texto}
-                </option>
-              ))}
-            </select>
-          </label>
+          {temAcessoFinanceiro && (
+            <label className="fp-periodo">
+              <span>Período</span>
+              <select
+                value={mesDashboard}
+                onChange={(evento) =>
+                  setMesDashboard(evento.target.value)
+                }
+              >
+                {MESES.map(([valor, texto]) => (
+                  <option key={valor} value={valor}>
+                    {texto}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <button type="button" className="fp-botao-icone" aria-label="Pesquisar">
             ⌕
@@ -471,7 +479,15 @@ export default function DashboardPremium({
         </div>
       </header>
 
-      {cmvStatus !== "Dentro da meta" && cmvStatus !== "Sem dados" && (
+      {!temAcessoFinanceiro && (
+        <div className="empty-state">
+          Sua conta não tem permissão pra ver informações financeiras. Peça
+          ao administrador pra liberar o acesso em Usuários, ou use uma das
+          opções disponíveis no menu.
+        </div>
+      )}
+
+      {temAcessoFinanceiro && cmvStatus !== "Dentro da meta" && cmvStatus !== "Sem dados" && (
         <div
           className={
             cmvStatus === "Risco elevado"
@@ -497,7 +513,7 @@ export default function DashboardPremium({
         </div>
       )}
 
-      {ehAdministrador && lojas.length > 0 && (
+      {temAcessoFinanceiro && ehAdministrador && lojas.length > 0 && (
         <section className="fp-lojas-seletor">
           <button
             type="button"
@@ -524,7 +540,9 @@ export default function DashboardPremium({
         </section>
       )}
 
+      {temAcessoFinanceiro && (
       <section className="fp-kpis">
+        {acessoCardReceitas && (
         <CartaoPrincipal
           classe="verde"
           titulo="Receitas"
@@ -533,7 +551,9 @@ export default function DashboardPremium({
           icone="↑"
           grafico={<MiniLinha valores={valoresReceitas} cor="#18d653" />}
         />
+        )}
 
+        {acessoCardDespesas && (
         <CartaoPrincipal
           classe="vermelho"
           titulo="Despesas"
@@ -542,7 +562,9 @@ export default function DashboardPremium({
           icone="↓"
           grafico={<MiniLinha valores={valoresDespesas} cor="#ff3545" />}
         />
+        )}
 
+        {acessoCardFluxoCaixa && (
         <CartaoPrincipal
           classe="roxo"
           titulo="Fluxo de caixa"
@@ -556,7 +578,9 @@ export default function DashboardPremium({
             />
           }
         />
+        )}
 
+        {acessoCardSaldo && (
         <CartaoPrincipal
           classe="azul"
           titulo="Saldo"
@@ -567,7 +591,9 @@ export default function DashboardPremium({
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
         />
+        )}
 
+        {acessoCardProximosRecebimentos && (
         <CartaoPrincipal
           classe="ciano"
           titulo="Próximos Recebimentos"
@@ -576,8 +602,11 @@ export default function DashboardPremium({
           icone="⏳"
           grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
         />
+        )}
       </section>
+      )}
 
+      {temAcessoFinanceiro && (
       <section className="fp-metricas">
         <article>
           <div>
@@ -615,7 +644,9 @@ export default function DashboardPremium({
           <b className="fp-sacola">♧</b>
         </article>
       </section>
+      )}
 
+      {temAcessoFinanceiro && (
       <section className="fp-grade">
         <article className="fp-painel fp-comparativo">
           <header>
@@ -855,6 +886,7 @@ export default function DashboardPremium({
           </div>
         </article>
       </section>
+      )}
     </main>
   );
 }

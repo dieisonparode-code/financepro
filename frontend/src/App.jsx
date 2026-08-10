@@ -285,6 +285,38 @@ function FinanceApp() {
   function temPermissaoFechamento(chave) {
     return temPermissao(chave) || temPermissao("fechamento_caixa");
   }
+
+  // O Dashboard mostra numeros financeiros (Receitas, Despesas, Saldo...) —
+  // so deve mostrar isso pra quem tem pelo menos uma permissao financeira.
+  // Sem essa checagem, ate um usuario com TODAS as permissoes zeradas via
+  // ver o resumo financeiro completo ao abrir o sistema.
+  const temAcessoFinanceiroDashboard =
+    ehAdministrador ||
+    [
+      "saldo",
+      "receitas",
+      "despesas",
+      "categorias",
+      "fluxo_caixa",
+      "relatorios",
+      "contas_pagar",
+      "contas_receber",
+      "proximos_recebimentos",
+      "financeiro",
+    ].some((chave) => temPermissao(chave));
+
+  // Cada card do Dashboard tem a própria permissão — usuário pode ter
+  // Despesas sem ver Saldo, por exemplo. "financeiro" (legado) continua
+  // dando acesso a todos, pra quem já tinha esse grupo marcado antes.
+  const acessoCardSaldo = ehAdministrador || temPermissaoFinanceira("saldo");
+  const acessoCardReceitas =
+    ehAdministrador || temPermissaoFinanceira("receitas");
+  const acessoCardDespesas =
+    ehAdministrador || temPermissaoFinanceira("despesas");
+  const acessoCardFluxoCaixa =
+    ehAdministrador || temPermissaoFinanceira("fluxo_caixa");
+  const acessoCardProximosRecebimentos =
+    ehAdministrador || temPermissaoFinanceira("proximos_recebimentos");
   const navigate = useNavigate();
 
   async function sair() {
@@ -2539,6 +2571,12 @@ const statusCmv =
       lojaDashboard={lojaDashboard}
       setLojaDashboard={setLojaDashboard}
       ehAdministrador={vePermissaoTotal}
+      temAcessoFinanceiro={temAcessoFinanceiroDashboard}
+      acessoCardSaldo={acessoCardSaldo}
+      acessoCardReceitas={acessoCardReceitas}
+      acessoCardDespesas={acessoCardDespesas}
+      acessoCardFluxoCaixa={acessoCardFluxoCaixa}
+      acessoCardProximosRecebimentos={acessoCardProximosRecebimentos}
     />
   )}
   

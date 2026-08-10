@@ -1,11 +1,13 @@
 import { useState } from "react";
 
 const permissoesDisponiveis = [
+  { valor: "saldo", rotulo: "Saldo (Dashboard)" },
   { valor: "receitas", rotulo: "Receitas" },
   { valor: "despesas", rotulo: "Despesas" },
   { valor: "categorias", rotulo: "Categorias" },
   { valor: "fluxo_caixa", rotulo: "Fluxo de Caixa" },
   { valor: "relatorios", rotulo: "Relatórios" },
+  { valor: "proximos_recebimentos", rotulo: "Próximos Recebimentos (Dashboard)" },
   { valor: "contas_pagar", rotulo: "Contas a Pagar" },
   { valor: "contas_receber", rotulo: "Contas a Receber" },
   { valor: "estoque", rotulo: "Estoque / Insumos" },
