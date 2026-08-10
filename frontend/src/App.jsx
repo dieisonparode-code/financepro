@@ -27,6 +27,10 @@ import {
   excluirCategoria as excluirCategoriaApi,
   buscarFormasPagamento,
   buscarDinheiroInformado,
+  buscarNotasFiscais,
+  criarNotaFiscal,
+  excluirNotaFiscal,
+  buscarFotoNotaFiscal,
   criarFormaPagamento,
   atualizarFormaPagamento,
   excluirFormaPagamento,
@@ -72,6 +76,7 @@ import LogAuditoria from "./components/LogAuditoria";
 import VendasSaipos from "./components/VendasSaipos";
 import Conciliacao from "./components/Conciliacao";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
+import NotasFiscais from "./components/NotasFiscais";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
 import CadastroInsumos from "./components/CadastroInsumos";
@@ -400,6 +405,9 @@ function FinanceApp() {
   const [fechamentosCaixa, setFechamentosCaixa] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(true);
 
+  const [notasFiscais, setNotasFiscais] = useState([]);
+  const [carregandoNotasFiscais, setCarregandoNotasFiscais] = useState(true);
+
   const [clientes, setClientes] = useState([]);
   const [carregandoClientes, setCarregandoClientes] = useState(true);
 
@@ -710,6 +718,32 @@ function FinanceApp() {
       supabase.removeChannel(canalFechamentos);
     };
   }, []);
+
+  useEffect(() => {
+    async function carregarNotasFiscaisSalvas() {
+      try {
+        setCarregandoNotasFiscais(true);
+        const dados = await buscarNotasFiscais();
+        setNotasFiscais(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar notas fiscais:", erro);
+      } finally {
+        setCarregandoNotasFiscais(false);
+      }
+    }
+
+    carregarNotasFiscaisSalvas();
+  }, []);
+
+  async function adicionarNotaFiscal(dados) {
+    const salva = await criarNotaFiscal(dados);
+    setNotasFiscais((anteriores) => [salva, ...anteriores]);
+  }
+
+  async function removerNotaFiscal(id) {
+    await excluirNotaFiscal(id);
+    setNotasFiscais((anteriores) => anteriores.filter((item) => item.id !== id));
+  }
 
   useEffect(() => {
     async function carregarDados() {
@@ -2457,6 +2491,15 @@ const statusCmv =
             </button>
           )}
 
+          {temPermissao("notas_fiscais") && (
+            <button
+              className={pagina === "notas-fiscais" ? "active" : ""}
+              onClick={() => setPagina("notas-fiscais")}
+            >
+              Nota Fiscal
+            </button>
+          )}
+
           {temPermissaoFechamento("vendas_saipos") && (
             <button
               className={pagina === "vendas-saipos" ? "active" : ""}
@@ -3087,6 +3130,18 @@ const statusCmv =
             adicionarFechamento={adicionarFechamentoCaixa}
             removerFechamento={removerFechamentoCaixa}
             buscarFoto={buscarFotoFechamentoCaixa}
+          />
+        )}
+
+        {pagina === "notas-fiscais" && (
+          <NotasFiscais
+            notas={notasFiscais}
+            carregando={carregandoNotasFiscais}
+            lojas={lojas}
+            lojaPadrao={vePermissaoTotal ? null : perfil?.loja_id || null}
+            adicionarNota={adicionarNotaFiscal}
+            removerNota={removerNotaFiscal}
+            buscarFoto={buscarFotoNotaFiscal}
           />
         )}
 

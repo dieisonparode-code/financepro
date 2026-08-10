@@ -12,6 +12,7 @@ const permissoesDisponiveis = [
   { valor: "contas_receber", rotulo: "Contas a Receber" },
   { valor: "estoque", rotulo: "Estoque / Insumos" },
   { valor: "fechamento_caixa", rotulo: "Fechamento de Caixa" },
+  { valor: "notas_fiscais", rotulo: "Nota Fiscal" },
   { valor: "vendas_saipos", rotulo: "Vendas (Saipos)" },
   { valor: "conciliacao", rotulo: "Conciliação" },
   { valor: "aprovar_despesas", rotulo: "Aprovar Despesas" },

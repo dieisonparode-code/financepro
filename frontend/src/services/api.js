@@ -281,6 +281,31 @@ export async function buscarDinheiroInformado() {
   });
 }
 
+export async function buscarNotasFiscais() {
+  return requisicao("/notas-fiscais", { headers: await cabecalhoAutenticado() });
+}
+
+export async function buscarFotoNotaFiscal(id) {
+  return requisicao(`/notas-fiscais/${id}/foto`, {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarNotaFiscal(dados) {
+  return requisicao("/notas-fiscais", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function excluirNotaFiscal(id) {
+  return requisicao(`/notas-fiscais/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function lerFotoContaPagar(foto) {
   return requisicao("/contas-pagar/ler-foto", {
     method: "POST",

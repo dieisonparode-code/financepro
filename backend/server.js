@@ -22,6 +22,7 @@ const PERM_CONTAS_RECEBER = ["contas_receber"];
 const PERM_FECHAMENTO_CAIXA = ["fechamento_caixa"];
 const PERM_VENDAS_SAIPOS = ["vendas_saipos"];
 const PERM_CONCILIACAO = ["conciliacao"];
+const PERM_NOTAS_FISCAIS = ["notas_fiscais"];
 
 app.use(cors());
 
@@ -3037,6 +3038,132 @@ app.get(
   }
 );
 
+// Arquivo simples de notas fiscais/comprovantes de pagamento — só anexar
+// e importar (foto ou arquivo), sem OCR nem vínculo automático com
+// despesa. Tabela e permissão próprias, independentes de Fechamento de
+// Caixa e Despesas.
+const colunasNotaFiscalListagem = "id, loja_id, observacao, criado_em";
+
+app.get(
+  "/notas-fiscais",
+  verificarPermissao(PERM_NOTAS_FISCAIS),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("notas_fiscais")
+        .select(colunasNotaFiscalListagem)
+        .order("criado_em", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar notas fiscais:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar as notas fiscais.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/notas-fiscais/:id/foto",
+  verificarPermissao(PERM_NOTAS_FISCAIS),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("notas_fiscais")
+        .select("foto")
+        .eq("id", req.params.id)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ foto: data?.foto || "" });
+    } catch (erro) {
+      console.error("Erro ao buscar foto da nota fiscal:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar a foto.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/notas-fiscais",
+  verificarPermissao(PERM_NOTAS_FISCAIS),
+  async function (req, res) {
+    try {
+      const foto = req.body?.foto || "";
+      const lojaId = req.body?.loja_id ? Number(req.body.loja_id) : null;
+      const observacao = (req.body?.observacao || "").trim();
+
+      if (!foto) {
+        return res.status(400).json({
+          erro: "Envie a foto/arquivo da nota fiscal.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("notas_fiscais")
+        .insert([{ loja_id: lojaId, foto, observacao }])
+        .select(colunasNotaFiscalListagem)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "criou", "notas_fiscais", data.id, observacao || null);
+
+      res.status(201).json(data);
+    } catch (erro) {
+      console.error("Erro ao salvar nota fiscal:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível salvar a nota fiscal.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.delete(
+  "/notas-fiscais/:id",
+  verificarPermissao(PERM_NOTAS_FISCAIS),
+  async function (req, res) {
+    try {
+      const { error } = await supabase
+        .from("notas_fiscais")
+        .delete()
+        .eq("id", req.params.id);
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "excluiu", "notas_fiscais", req.params.id, null);
+
+      res.status(204).send();
+    } catch (erro) {
+      console.error("Erro ao excluir nota fiscal:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível excluir a nota fiscal.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.get("/usuarios", verificarAdmin, async function (req, res) {
   try {
     const { data, error } = await supabase
@@ -3090,6 +3217,7 @@ const PERMISSOES_VALIDAS = [
   "contas_receber",
   "estoque",
   "fechamento_caixa",
+  "notas_fiscais",
   "vendas_saipos",
   "conciliacao",
   "aprovar_despesas",
