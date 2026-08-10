@@ -1,5 +1,14 @@
 import { useMemo, useState } from "react";
 
+function hojeLocal() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
 function formatarData(data) {
   if (!data) return "Sem data";
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
@@ -133,10 +142,16 @@ function ContasReceber({
     }
   }
 
+  // Só mostra o que AINDA não caiu (data prevista no futuro) — sem isso,
+  // um teste antigo (PIX/Débito de dias passados) continuava aparecendo
+  // aqui pra sempre, mesmo já tendo caído de verdade há dias.
+  const hoje = hojeLocal();
+
   const previstos = lancamentos.filter(
     (item) =>
       item.tipo === "receita" &&
       item.data_prevista_recebimento &&
+      item.data_prevista_recebimento > hoje &&
       item.status_conciliacao !== "conciliado"
   );
 
