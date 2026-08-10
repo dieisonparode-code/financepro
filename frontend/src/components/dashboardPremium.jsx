@@ -252,6 +252,30 @@ export default function DashboardPremium({
     [lancamentos]
   );
 
+  // "A Receber": vendas a prazo (cartão com prazo, etc.) que já foram
+  // lançadas como receita mas cujo dinheiro ainda não caiu de verdade —
+  // olha TODOS os lançamentos, não só do mês selecionado, porque uma venda
+  // de julho pode estar prevista pra cair em agosto.
+  const aReceber = useMemo(() => {
+    return lancamentos
+      .filter(
+        (item) =>
+          item.tipo === "receita" &&
+          item.data_prevista_recebimento &&
+          item.status_conciliacao !== "conciliado"
+      )
+      .reduce(
+        (soma, item) =>
+          soma + numero(item.valor_liquido_esperado ?? item.valor),
+        0
+      );
+  }, [lancamentos]);
+
+  const valoresAReceber = useMemo(
+    () => [0.8, 0.9, 0.7, 1, 0.85, 0.95, 1].map((fator) => aReceber * fator),
+    [aReceber]
+  );
+
   const valoresReceitas = useMemo(
     () => [0.62, 0.7, 0.66, 0.78, 0.74, 0.88, 0.83, 0.96, 1].map((fator) => receitas * fator),
     [receitas]
@@ -407,6 +431,15 @@ export default function DashboardPremium({
       )}
 
       <section className="fp-kpis">
+        <CartaoPrincipal
+          classe="ciano"
+          titulo="A Receber"
+          valor={formatarMoeda(aReceber)}
+          legenda="Vendas a prazo ainda não recebidas"
+          icone="⏳"
+          grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
+        />
+
         <CartaoPrincipal
           classe="verde"
           titulo="Receitas"
