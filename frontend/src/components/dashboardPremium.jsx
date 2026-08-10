@@ -134,16 +134,16 @@ function CartaoPrincipal({
         <Icone className={classe}>{icone}</Icone>
       </div>
 
-      {emDinheiro != null && (
-        <div className="fp-kpi-bruto-taxa">
-          <span>💵 em dinheiro {emDinheiro}</span>
-        </div>
-      )}
-
       {temTaxa && (
         <div className="fp-kpi-bruto-taxa">
           <span>{bruto}</span>
           <span>Taxas {taxa}</span>
+        </div>
+      )}
+
+      {emDinheiro != null && (
+        <div className="fp-kpi-bruto-taxa">
+          <span>💵 em dinheiro {emDinheiro}</span>
         </div>
       )}
 
