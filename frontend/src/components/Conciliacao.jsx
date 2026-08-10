@@ -5,6 +5,7 @@ import {
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
 } from "../services/api";
+import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
 function comprimirImagem(arquivo, larguraMaxima = 1400, qualidade = 0.85) {
   return new Promise((resolve, reject) => {
@@ -112,6 +113,7 @@ function agruparVendasPorFormaPagamento(vendas) {
 const INTERVALO_ATUALIZACAO_MS = 30 * 1000;
 
 function Conciliacao() {
+  const [abaAtiva, setAbaAtiva] = useState("caixa");
   const inputFotoRef = useRef(null);
   const [dataInicio, setDataInicio] = useState(hoje());
   const [dataFim, setDataFim] = useState(hoje());
@@ -391,6 +393,27 @@ function Conciliacao() {
     Math.abs(confrontoCalculado.diferencaTotal) >= 0.01;
 
   return (
+    <>
+      <div className="conciliacao-abas">
+        <button
+          type="button"
+          className={abaAtiva === "caixa" ? "aba-ativa" : ""}
+          onClick={() => setAbaAtiva("caixa")}
+        >
+          Fechamento de Caixa
+        </button>
+        <button
+          type="button"
+          className={abaAtiva === "despesas" ? "aba-ativa" : ""}
+          onClick={() => setAbaAtiva("despesas")}
+        >
+          Despesas (Extrato Bancário)
+        </button>
+      </div>
+
+      {abaAtiva === "despesas" ? (
+        <ConciliacaoDespesas />
+      ) : (
     <section className="conciliacao-layout">
       {temDiferencaNoConfronto && (
         <div
@@ -933,6 +956,8 @@ function Conciliacao() {
         </div>
       )}
     </section>
+      )}
+    </>
   );
 }
 

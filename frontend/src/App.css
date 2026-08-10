@@ -383,6 +383,29 @@
   letter-spacing: 0.04em;
 }
 
+.conciliacao-abas {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.conciliacao-abas button {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(95, 135, 180, 0.25);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.conciliacao-abas button.aba-ativa {
+  opacity: 1;
+  background: #1476ff;
+  color: #fff;
+  border-color: #1476ff;
+}
+
 .categoria-identificacao {
   display: flex;
   align-items: center;
