@@ -308,6 +308,18 @@ export default function DashboardPremium({
     );
   }, [receitasAReceber]);
 
+  // Mesma quebra bruto/taxa/líquido que o card de Saldo já mostra, agora
+  // também pros "Próximos Recebimentos" — pra saber quanto vai cair de taxa
+  // quando esse dinheiro pendente realmente chegar.
+  const aReceberBruto = useMemo(() => {
+    return receitasAReceber.reduce((soma, item) => soma + numero(item.valor), 0);
+  }, [receitasAReceber]);
+
+  const taxaAReceber = aReceberBruto - aReceber;
+
+  const percentualTaxaAReceber =
+    aReceberBruto > 0 ? (taxaAReceber / aReceberBruto) * 100 : 0;
+
   const valoresAReceber = useMemo(
     () => [0.8, 0.9, 0.7, 1, 0.85, 0.95, 1].map((fator) => aReceber * fator),
     [aReceber]
@@ -603,6 +615,12 @@ export default function DashboardPremium({
           classe="ciano"
           titulo="Próximos Recebimentos"
           valor={formatarMoeda(aReceber)}
+          bruto={taxaAReceber > 0 ? formatarMoeda(aReceberBruto) : null}
+          taxa={
+            taxaAReceber > 0
+              ? `${formatarMoeda(taxaAReceber)} (${percentualTaxaAReceber.toFixed(2)}%)`
+              : null
+          }
           legenda={legendaProximosRecebimentos}
           icone="⏳"
           grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
