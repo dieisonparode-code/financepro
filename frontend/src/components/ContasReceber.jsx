@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function formatarData(data) {
   if (!data) return "Sem data";
@@ -37,6 +37,9 @@ function ContasReceber({
   const [diaSemanaPagamento, setDiaSemanaPagamento] = useState("");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [mostrarCalculadora, setMostrarCalculadora] = useState(false);
+  const [calcBruto, setCalcBruto] = useState("");
+  const [calcRecebido, setCalcRecebido] = useState("");
 
   function limparFormulario() {
     setNome("");
@@ -78,6 +81,25 @@ function ContasReceber({
     } finally {
       setSalvando(false);
     }
+  }
+
+  const taxaCalculada = useMemo(() => {
+    const bruto = Number(String(calcBruto).replace(",", "."));
+    const recebido = Number(String(calcRecebido).replace(",", "."));
+
+    if (!bruto || bruto <= 0 || !recebido || recebido < 0) {
+      return null;
+    }
+
+    return ((1 - recebido / bruto) * 100).toFixed(4);
+  }, [calcBruto, calcRecebido]);
+
+  function usarTaxaCalculada() {
+    if (taxaCalculada == null) return;
+    setTaxaPercentual(taxaCalculada);
+    setMostrarCalculadora(false);
+    setCalcBruto("");
+    setCalcRecebido("");
   }
 
   function iniciarEdicao(forma) {
@@ -195,6 +217,69 @@ function ContasReceber({
               />
             </label>
           </div>
+
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setMostrarCalculadora((anterior) => !anterior)}
+            style={{ marginBottom: 12 }}
+          >
+            🧮 {mostrarCalculadora ? "Fechar calculadora" : "Não sei a taxa exata — calcular"}
+          </button>
+
+          {mostrarCalculadora && (
+            <div className="panel" style={{ marginBottom: 16, padding: 14 }}>
+              <p style={{ marginTop: 0, fontSize: 13, opacity: 0.8 }}>
+                Digite o valor bruto (o que a Saipos/sistema mostrou como
+                vendido) e o valor real que caiu na conta (o que o extrato ou
+                o portal da plataforma mostrou) — calculo a taxa exata pra
+                você.
+              </p>
+
+              <div className="form-row">
+                <label>
+                  Valor bruto (vendido)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ex.: 8335,72"
+                    value={calcBruto}
+                    onChange={(evento) => setCalcBruto(evento.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Valor real recebido
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ex.: 7268,94"
+                    value={calcRecebido}
+                    onChange={(evento) => setCalcRecebido(evento.target.value)}
+                  />
+                </label>
+              </div>
+
+              {taxaCalculada != null ? (
+                <>
+                  <p style={{ fontSize: 15 }}>
+                    Taxa calculada: <strong>{taxaCalculada}%</strong>
+                  </p>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={usarTaxaCalculada}
+                  >
+                    Usar essa taxa
+                  </button>
+                </>
+              ) : (
+                <p style={{ fontSize: 13, opacity: 0.7 }}>
+                  Preencha os dois valores pra calcular.
+                </p>
+              )}
+            </div>
+          )}
 
           <label>
             Paga sempre num dia fixo da semana? (opcional)

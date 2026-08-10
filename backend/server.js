@@ -1810,16 +1810,58 @@ async function consultarSaipos(caminho, parametros) {
   return registros;
 }
 
+// A API da Saipos, de vez em quando, devolve uma resposta 200 (sem erro
+// nenhum pro retry normal pegar) mas com MENOS vendas do que realmente
+// existem naquele período — confirmado várias vezes comparando a mesma
+// consulta feita duas vezes em seguida. Pra dado financeiro isso é grave
+// (uma venda perdida na importação automática é dinheiro que nunca entra
+// no sistema, sem ninguém notar). Por isso: nunca confia na primeira
+// resposta sozinha — busca de novo e fica com a versão MAIS completa
+// (mais vendas). Se as duas tentativas baterem, já para; senão, tenta até
+// 3 vezes.
 async function buscarVendasSaipos(idLojaSaipos, dataInicio, dataFim) {
-  const vendas = await consultarSaipos("/search_sales", {
-    p_date_column_filter: "shift_date",
-    p_filter_date_start: dataInicio,
-    p_filter_date_end: dataFim,
-  });
+  const tentativas = [];
+  const numeroTentativas = 3;
 
-  return vendas.filter(
-    (venda) => Number(venda.id_store) === Number(idLojaSaipos)
+  for (let i = 0; i < numeroTentativas; i++) {
+    const vendas = await consultarSaipos("/search_sales", {
+      p_date_column_filter: "shift_date",
+      p_filter_date_start: dataInicio,
+      p_filter_date_end: dataFim,
+    });
+
+    const vendasDaLoja = vendas.filter(
+      (venda) => Number(venda.id_store) === Number(idLojaSaipos)
+    );
+
+    tentativas.push(vendasDaLoja);
+
+    if (
+      i > 0 &&
+      tentativas[i].length === tentativas[i - 1].length &&
+      tentativas[i].length > 0
+    ) {
+      break;
+    }
+
+    if (i < numeroTentativas - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+  }
+
+  const melhorResultado = tentativas.reduce((melhor, atual) =>
+    atual.length > melhor.length ? atual : melhor
   );
+
+  if (tentativas.some((t) => t.length !== melhorResultado.length)) {
+    console.error(
+      `buscarVendasSaipos: respostas inconsistentes da Saipos pra loja ${idLojaSaipos} (${dataInicio} a ${dataFim}) — tentativas retornaram ${tentativas
+        .map((t) => t.length)
+        .join(", ")} vendas. Usando a mais completa (${melhorResultado.length}).`
+    );
+  }
+
+  return melhorResultado;
 }
 
 async function buscarLancamentosFinanceirosSaipos(
