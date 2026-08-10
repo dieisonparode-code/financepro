@@ -298,12 +298,16 @@ function FinanceApp() {
   // davam acesso a várias telas de uma vez; agora cada tela tem sua própria
   // permissão específica. Quem já tinha o grupo antigo marcado continua com
   // acesso a tudo que esse grupo cobria, sem precisar remarcar nada.
+  // Removida a compatibilidade com os grupos antigos "financeiro" e
+  // "fechamento_caixa" (que davam acesso a várias telas de uma vez) — a
+  // pedido do usuário, cada caixinha de permissão agora vale exatamente o
+  // que está marcado, sem nenhuma exceção/atalho por trás.
   function temPermissaoFinanceira(chave) {
-    return temPermissao(chave) || temPermissao("financeiro");
+    return temPermissao(chave);
   }
 
   function temPermissaoFechamento(chave) {
-    return temPermissao(chave) || temPermissao("fechamento_caixa");
+    return temPermissao(chave);
   }
 
   // O Dashboard mostra numeros financeiros (Receitas, Despesas, Saldo...) —
@@ -322,12 +326,11 @@ function FinanceApp() {
       "contas_pagar",
       "contas_receber",
       "proximos_recebimentos",
-      "financeiro",
     ].some((chave) => temPermissao(chave));
 
   // Cada card do Dashboard tem a própria permissão — usuário pode ter
-  // Despesas sem ver Saldo, por exemplo. "financeiro" (legado) continua
-  // dando acesso a todos, pra quem já tinha esse grupo marcado antes.
+  // Despesas sem ver Saldo, por exemplo. Sem nenhum atalho por trás: só o
+  // que está marcado individualmente vale.
   const acessoCardSaldo = ehAdministrador || temPermissaoFinanceira("saldo");
   const acessoCardReceitas =
     ehAdministrador || temPermissaoFinanceira("receitas");

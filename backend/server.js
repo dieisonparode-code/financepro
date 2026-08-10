@@ -9,24 +9,19 @@ const Anthropic = require("@anthropic-ai/sdk");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Grupos de permissão granular. "financeiro" e "fechamento_caixa" ficam
-// sempre incluídos como chave "legado" — quem já tinha esses marcados antes
-// continua com acesso igual, mesmo sem re-selecionar as novas caixinhas
-// específicas.
-const PERM_LANCAMENTOS = [
-  "financeiro",
-  "receitas",
-  "despesas",
-  "fluxo_caixa",
-  "relatorios",
-];
-const PERM_DESPESAS = ["financeiro", "despesas"];
-const PERM_CATEGORIAS = ["financeiro", "categorias"];
-const PERM_CONTAS_PAGAR = ["financeiro", "contas_pagar"];
-const PERM_CONTAS_RECEBER = ["financeiro", "contas_receber"];
+// Grupos de permissão granular. Removida a compatibilidade com as chaves
+// "legado" ("financeiro"/"fechamento_caixa" davam acesso a várias telas de
+// uma vez) — a pedido do usuário, cada caixinha de permissão vale
+// exatamente o que está marcado, sem nenhum atalho por trás que libere
+// telas extras sem querer.
+const PERM_LANCAMENTOS = ["receitas", "despesas", "fluxo_caixa", "relatorios"];
+const PERM_DESPESAS = ["despesas"];
+const PERM_CATEGORIAS = ["categorias"];
+const PERM_CONTAS_PAGAR = ["contas_pagar"];
+const PERM_CONTAS_RECEBER = ["contas_receber"];
 const PERM_FECHAMENTO_CAIXA = ["fechamento_caixa"];
-const PERM_VENDAS_SAIPOS = ["fechamento_caixa", "vendas_saipos"];
-const PERM_CONCILIACAO = ["fechamento_caixa", "conciliacao"];
+const PERM_VENDAS_SAIPOS = ["vendas_saipos"];
+const PERM_CONCILIACAO = ["conciliacao"];
 
 app.use(cors());
 
