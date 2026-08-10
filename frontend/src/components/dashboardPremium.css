@@ -521,6 +521,72 @@ body {
   background: linear-gradient(145deg, #06172a, #051426);
 }
 
+.fp-proximos-recebimentos {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--fp-borda);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #06172a, #051426);
+}
+
+.fp-proximos-recebimentos-titulo {
+  margin-bottom: 12px;
+  color: #8fa4bd;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fp-proximos-recebimentos-lista {
+  display: flex;
+  flex-direction: column;
+}
+
+.fp-proximo-recebimento-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 46px;
+  border-bottom: 1px solid rgba(82, 113, 149, 0.16);
+}
+
+.fp-proximo-recebimento-item:last-child {
+  border-bottom: 0;
+}
+
+.fp-proximo-recebimento-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.fp-proximo-recebimento-data span {
+  color: #7389a3;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.fp-proximo-recebimento-data strong {
+  font-size: 15px;
+}
+
+.fp-proximo-recebimento-descricao {
+  overflow: hidden;
+  color: #b9c7d8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-proximo-recebimento-valor {
+  color: #06b6d4;
+  font-size: 13px;
+}
+
 .fp-metricas article {
   position: relative;
   display: flex;

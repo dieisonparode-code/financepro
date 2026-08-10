@@ -145,6 +145,8 @@ export default function DashboardPremium({
   mesDashboard = "2026-08",
   setMesDashboard = () => {},
   lancamentos = [],
+  todosLancamentos = [],
+  formasPagamento = [],
   formatarMoeda = (valor) =>
     numero(valor).toLocaleString("pt-BR", {
       style: "currency",
@@ -254,27 +256,70 @@ export default function DashboardPremium({
 
   // "A Receber": vendas a prazo (cartão com prazo, etc.) que já foram
   // lançadas como receita mas cujo dinheiro ainda não caiu de verdade —
-  // olha TODOS os lançamentos, não só do mês selecionado, porque uma venda
-  // de julho pode estar prevista pra cair em agosto.
+  // olha TODOS os lançamentos aprovados, não só o mês selecionado no
+  // filtro do Dashboard, porque uma venda de julho pode estar prevista
+  // pra cair em agosto.
+  const receitasAReceber = useMemo(() => {
+    return todosLancamentos.filter(
+      (item) =>
+        item.tipo === "receita" &&
+        item.data_prevista_recebimento &&
+        item.status_conciliacao !== "conciliado"
+    );
+  }, [todosLancamentos]);
+
   const aReceber = useMemo(() => {
-    return lancamentos
-      .filter(
-        (item) =>
-          item.tipo === "receita" &&
-          item.data_prevista_recebimento &&
-          item.status_conciliacao !== "conciliado"
-      )
-      .reduce(
-        (soma, item) =>
-          soma + numero(item.valor_liquido_esperado ?? item.valor),
-        0
-      );
-  }, [lancamentos]);
+    return receitasAReceber.reduce(
+      (soma, item) =>
+        soma + numero(item.valor_liquido_esperado ?? item.valor),
+      0
+    );
+  }, [receitasAReceber]);
 
   const valoresAReceber = useMemo(
     () => [0.8, 0.9, 0.7, 1, 0.85, 0.95, 1].map((fator) => aReceber * fator),
     [aReceber]
   );
+
+  function nomeFormaPagamento(id) {
+    return formasPagamento.find((forma) => forma.id === id)?.nome || null;
+  }
+
+  // Próximos recebimentos: as mesmas receitas a receber, mas organizadas
+  // em ordem de data (a mais próxima primeiro), pra virar uma "agenda" de
+  // quando o dinheiro cai.
+  const proximosRecebimentos = useMemo(() => {
+    return [...receitasAReceber]
+      .sort((a, b) =>
+        String(a.data_prevista_recebimento).localeCompare(
+          String(b.data_prevista_recebimento)
+        )
+      )
+      .slice(0, 8)
+      .map((item) => ({
+        id: item.id,
+        data: item.data_prevista_recebimento,
+        descricao:
+          nomeFormaPagamento(item.forma_pagamento_id) ||
+          item.fornecedor ||
+          item.descricao ||
+          "Recebimento",
+        valor: numero(item.valor_liquido_esperado ?? item.valor),
+      }));
+  }, [receitasAReceber, formasPagamento]);
+
+  function formatarDiaSemana(data) {
+    if (!data) return { semana: "—", dia: "—" };
+
+    const dataLocal = new Date(`${data}T12:00:00`);
+    const semana = dataLocal
+      .toLocaleDateString("pt-BR", { weekday: "short" })
+      .replace(".", "")
+      .toUpperCase();
+    const dia = String(dataLocal.getDate()).padStart(2, "0");
+
+    return { semana, dia };
+  }
 
   const valoresReceitas = useMemo(
     () => [0.62, 0.7, 0.66, 0.78, 0.74, 0.88, 0.83, 0.96, 1].map((fator) => receitas * fator),
@@ -432,12 +477,12 @@ export default function DashboardPremium({
 
       <section className="fp-kpis">
         <CartaoPrincipal
-          classe="ciano"
-          titulo="A Receber"
-          valor={formatarMoeda(aReceber)}
-          legenda="Vendas a prazo ainda não recebidas"
-          icone="⏳"
-          grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
+          classe="azul"
+          titulo="Saldo"
+          valor={formatarMoeda(saldo)}
+          legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
+          icone="▣"
+          grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
         />
 
         <CartaoPrincipal
@@ -459,15 +504,6 @@ export default function DashboardPremium({
         />
 
         <CartaoPrincipal
-          classe="azul"
-          titulo="Saldo"
-          valor={formatarMoeda(saldo)}
-          legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
-          icone="▣"
-          grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
-        />
-
-        <CartaoPrincipal
           classe="roxo"
           titulo="Fluxo de caixa"
           valor={formatarMoeda(saldo)}
@@ -480,7 +516,50 @@ export default function DashboardPremium({
             />
           }
         />
+
+        <CartaoPrincipal
+          classe="ciano"
+          titulo="A Receber"
+          valor={formatarMoeda(aReceber)}
+          legenda="Vendas a prazo ainda não recebidas"
+          icone="⏳"
+          grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
+        />
       </section>
+
+      {proximosRecebimentos.length > 0 && (
+        <section className="fp-proximos-recebimentos">
+          <div className="fp-proximos-recebimentos-titulo">
+            Próximos recebimentos
+          </div>
+
+          <div className="fp-proximos-recebimentos-lista">
+            {proximosRecebimentos.map((item) => {
+              const { semana, dia } = formatarDiaSemana(item.data);
+
+              return (
+                <div
+                  className="fp-proximo-recebimento-item"
+                  key={item.id}
+                >
+                  <div className="fp-proximo-recebimento-data">
+                    <span>{semana}</span>
+                    <strong>{dia}</strong>
+                  </div>
+
+                  <span className="fp-proximo-recebimento-descricao">
+                    {item.descricao}
+                  </span>
+
+                  <strong className="fp-proximo-recebimento-valor">
+                    {formatarMoeda(item.valor)}
+                  </strong>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="fp-metricas">
         <article>
