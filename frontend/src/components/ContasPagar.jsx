@@ -1,4 +1,42 @@
 import { useState } from "react";
+import { lerFotoContaPagar } from "../services/api";
+
+// Mesma compressão já usada em Despesas/Conciliação — reduz o tamanho antes
+// de guardar (a foto vira base64 direto na tabela, sem isso ficaria pesado).
+function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+
+    leitor.onload = () => {
+      const imagem = new Image();
+
+      imagem.onload = () => {
+        const escala = Math.min(1, larguraMaxima / imagem.width);
+        const largura = Math.round(imagem.width * escala);
+        const altura = Math.round(imagem.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(imagem, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      };
+
+      imagem.onerror = () =>
+        reject(new Error("Não foi possível ler a imagem selecionada."));
+
+      imagem.src = leitor.result;
+    };
+
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+
+    leitor.readAsDataURL(arquivo);
+  });
+}
 
 function formatarData(data) {
   if (!data) return "Sem data";
@@ -63,6 +101,10 @@ function ContasPagar({
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [mostrarPagas, setMostrarPagas] = useState(false);
+  const [foto, setFoto] = useState("");
+  const [processandoFoto, setProcessandoFoto] = useState(false);
+  const [lendoFoto, setLendoFoto] = useState(false);
+  const [fotoVisualizada, setFotoVisualizada] = useState(null);
 
   function limparFormulario() {
     setDescricao("");
@@ -72,6 +114,40 @@ function ContasPagar({
     setObservacao("");
     setLojaId(lojaPadrao ? String(lojaPadrao) : "");
     setEditandoId(null);
+    setFoto("");
+  }
+
+  async function lerFotoAutomaticamente(fotoParaLer) {
+    const fotoAlvo = fotoParaLer || foto;
+
+    if (!fotoAlvo || lendoFoto) return;
+
+    setLendoFoto(true);
+
+    try {
+      const resultado = await lerFotoContaPagar(fotoAlvo);
+
+      if (resultado.valor == null) {
+        alert(
+          resultado.erro_leitura ||
+            "Não consegui identificar o valor dessa foto. Preencha manualmente."
+        );
+        return;
+      }
+
+      // Esse campo é <input type="number"> (formato com ponto decimal),
+      // diferente do campo de valor de Despesas — não usar formatação
+      // brasileira com vírgula aqui, o input nativo não aceita.
+      setValor(Number(resultado.valor).toFixed(2));
+
+      if (resultado.fornecedor) {
+        setFornecedor(resultado.fornecedor);
+      }
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a foto.");
+    } finally {
+      setLendoFoto(false);
+    }
   }
 
   async function salvar(evento) {
@@ -99,6 +175,7 @@ function ContasPagar({
         data_vencimento: dataVencimento,
         observacao,
         loja_id: lojaId,
+        foto,
       };
 
       if (editandoId) {
@@ -123,6 +200,7 @@ function ContasPagar({
     setDataVencimento(conta.data_vencimento);
     setObservacao(conta.observacao || "");
     setLojaId(conta.loja_id ? String(conta.loja_id) : "");
+    setFoto(conta.foto || "");
   }
 
   async function confirmarPagamento(conta) {
@@ -230,6 +308,85 @@ function ContasPagar({
             />
           </label>
 
+          <div className="foto-upload">
+            <span className="foto-upload-title">
+              📄 Foto do boleto/nota
+            </span>
+
+            <input
+              id="foto-conta-pagar"
+              type="file"
+              accept="image/*"
+              disabled={processandoFoto}
+              onChange={async (evento) => {
+                const arquivo = evento.target.files?.[0];
+
+                if (!arquivo) return;
+
+                setProcessandoFoto(true);
+
+                try {
+                  const fotoComprimida = await comprimirImagem(arquivo);
+                  setFoto(fotoComprimida);
+                  await lerFotoAutomaticamente(fotoComprimida);
+                } catch (erro) {
+                  console.error("Erro ao processar a foto:", erro);
+                  alert(
+                    erro.message ||
+                      "Não foi possível processar a foto selecionada."
+                  );
+                } finally {
+                  setProcessandoFoto(false);
+                  evento.target.value = "";
+                }
+              }}
+            />
+
+            <label
+              htmlFor="foto-conta-pagar"
+              className="foto-button"
+              style={
+                processandoFoto || lendoFoto
+                  ? { opacity: 0.6, pointerEvents: "none" }
+                  : undefined
+              }
+            >
+              {processandoFoto
+                ? "Processando foto..."
+                : lendoFoto
+                ? "🤖 Lendo automaticamente..."
+                : "📄🤖 Anexar e ler automaticamente"}
+            </label>
+
+            <small className="foto-ajuda">
+              Escolhe da câmera ou da galeria — tanto foto quanto arquivo de
+              imagem já salvo.
+            </small>
+          </div>
+
+          {foto && (
+            <div className="foto-preview">
+              <img src={foto} alt="Pré-visualização do boleto/nota" />
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => lerFotoAutomaticamente()}
+                disabled={lendoFoto}
+              >
+                {lendoFoto ? "Lendo..." : "🤖 Ler novamente"}
+              </button>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setFoto("")}
+              >
+                Remover foto
+              </button>
+            </div>
+          )}
+
           <div className="modal-actions">
             {editandoId && (
               <button
@@ -312,6 +469,16 @@ function ContasPagar({
                   </div>
 
                   <div className="transaction-actions">
+                    {conta.foto && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setFotoVisualizada(conta.foto)}
+                      >
+                        👁️ Ver foto
+                      </button>
+                    )}
+
                     {conta.status !== "pago" && (
                       <button
                         type="button"
@@ -344,6 +511,40 @@ function ContasPagar({
           </div>
         )}
       </article>
+
+      {fotoVisualizada && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setFotoVisualizada(null);
+            }
+          }}
+        >
+          <div className="modal modal-foto">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Conta a pagar</span>
+                <h2>Foto anexada</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setFotoVisualizada(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <img
+              src={fotoVisualizada}
+              alt="Foto do boleto/nota"
+              className="foto-modal-imagem"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }

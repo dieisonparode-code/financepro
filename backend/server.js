@@ -1403,6 +1403,7 @@ function prepararContaPagar(dados = {}) {
     valor: Number(dados.valor || 0),
     data_vencimento: dados.data_vencimento || null,
     observacao: (dados.observacao || "").trim(),
+    foto: dados.foto || "",
   };
 }
 
@@ -2804,6 +2805,58 @@ app.post(
 
       res.status(500).json({
         erro: "Não foi possível ler a nota fiscal.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/contas-pagar/ler-foto",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const { foto } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({
+          erro: "Envie a foto do boleto/nota.",
+        });
+      }
+
+      // Mesma cautela da leitura de despesas: não pede a data pra IA — se
+      // for boleto, a data de vencimento impressa nele é a que o usuário
+      // já digitou/confirma no formulário, evita risco de a IA ler errado
+      // e sobrescrever sem o usuário perceber.
+      const textoResposta = await lerImagemComIA(
+        foto,
+        'Essa é a foto de um boleto, nota fiscal ou comprovante de uma conta a pagar de uma hamburgueria. Extraia: o VALOR TOTAL a pagar (normalmente perto de "TOTAL" ou "VALOR DO DOCUMENTO"), e o nome do FORNECEDOR/emissor/beneficiário (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+        8192
+      );
+
+      let dadosLidos;
+
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(jsonEncontrado ? jsonEncontrado[0] : textoResposta);
+      } catch {
+        return res.json({
+          valor: null,
+          fornecedor: null,
+          erro_leitura:
+            "Não foi possível ler os dados dessa foto. Preencha manualmente.",
+        });
+      }
+
+      res.json({
+        valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
+        fornecedor: dadosLidos.fornecedor || null,
+      });
+    } catch (erro) {
+      console.error("Erro ao ler foto da conta a pagar:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível ler a foto.",
         detalhes: erro.message,
       });
     }

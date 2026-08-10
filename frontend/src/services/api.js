@@ -267,6 +267,14 @@ export async function excluirContaPagar(id) {
   });
 }
 
+export async function lerFotoContaPagar(foto) {
+  return requisicao("/contas-pagar/ler-foto", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto }),
+  });
+}
+
 export async function buscarClientes() {
   return requisicao("/clientes", { headers: await cabecalhoAutenticado() });
 }
