@@ -915,6 +915,31 @@ const lancamentosDashboard = useMemo(() => {
       .filter((item) => item.tipo === "receita")
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
+    // Saldo = só o dinheiro que já caiu de verdade. Uma receita com forma
+    // de pagamento a prazo (data_prevista_recebimento ainda no futuro e
+    // não conciliada) não entra aqui — ela já aparece separada no card
+    // "A Receber". Sem isso, o mesmo dinheiro contava duas vezes (uma no
+    // Saldo, outra no A Receber). Pra quem já "venceu" o prazo, conta o
+    // valor líquido esperado (depois da taxa), não o valor bruto da venda.
+    const hoje = hojeLocal();
+
+    const receitasRecebidas = lancamentosDashboard
+      .filter((item) => item.tipo === "receita")
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (aindaPendente) {
+          return total;
+        }
+
+        return (
+          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
+        );
+      }, 0);
+
     const despesas = lancamentosDashboard
       .filter((item) => item.tipo === "despesa")
       .reduce((total, item) => total + Number(item.valor || 0), 0);
@@ -927,7 +952,7 @@ const lancamentosDashboard = useMemo(() => {
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
-    const saldo = receitas - despesas;
+    const saldo = receitasRecebidas - despesas;
     const cmvPercentual =
       receitas > 0 ? (cmvValor / receitas) * 100 : 0;
     const margemPercentual =
@@ -1441,11 +1466,24 @@ const statusCmv =
     if (tipoLancamento === "receita" && formaPagamentoSelecionada) {
       const taxa = Number(formaPagamentoSelecionada.taxa_percentual || 0);
       const prazo = Number(formaPagamentoSelecionada.prazo_dias || 0);
+      const diaSemanaAlvo = formaPagamentoSelecionada.dia_semana_pagamento;
 
       valorLiquidoEsperado = valorNumerico - (valorNumerico * taxa) / 100;
 
       const dataBase = new Date(`${formulario.data}T12:00:00`);
-      dataBase.setDate(dataBase.getDate() + prazo);
+
+      if (diaSemanaAlvo != null) {
+        // Paga sempre num dia fixo da semana (ex.: iFood toda quarta) — em
+        // vez de "N dias depois", acha o próximo dia daquela semana que
+        // vier depois da venda (pelo menos 1 dia depois, nunca no mesmo
+        // dia da venda).
+        do {
+          dataBase.setDate(dataBase.getDate() + 1);
+        } while (dataBase.getDay() !== Number(diaSemanaAlvo));
+      } else {
+        dataBase.setDate(dataBase.getDate() + prazo);
+      }
+
       dataPrevistaRecebimento = dataBase.toISOString().slice(0, 10);
     }
 

@@ -5,6 +5,16 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
+const DIAS_SEMANA = [
+  "domingo",
+  "segunda-feira",
+  "terça-feira",
+  "quarta-feira",
+  "quinta-feira",
+  "sexta-feira",
+  "sábado",
+];
+
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -24,6 +34,7 @@ function ContasReceber({
   const [operadora, setOperadora] = useState("");
   const [prazoDias, setPrazoDias] = useState("0");
   const [taxaPercentual, setTaxaPercentual] = useState("0");
+  const [diaSemanaPagamento, setDiaSemanaPagamento] = useState("");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -32,6 +43,7 @@ function ContasReceber({
     setOperadora("");
     setPrazoDias("0");
     setTaxaPercentual("0");
+    setDiaSemanaPagamento("");
     setEditandoId(null);
   }
 
@@ -51,6 +63,7 @@ function ContasReceber({
         operadora,
         prazo_dias: prazoDias,
         taxa_percentual: taxaPercentual,
+        dia_semana_pagamento: diaSemanaPagamento,
       };
 
       if (editandoId) {
@@ -73,6 +86,11 @@ function ContasReceber({
     setOperadora(forma.operadora || "");
     setPrazoDias(String(forma.prazo_dias ?? 0));
     setTaxaPercentual(String(forma.taxa_percentual ?? 0));
+    setDiaSemanaPagamento(
+      forma.dia_semana_pagamento != null
+        ? String(forma.dia_semana_pagamento)
+        : ""
+    );
   }
 
   async function confirmarExclusao(forma) {
@@ -160,6 +178,7 @@ function ContasReceber({
                 min="0"
                 value={prazoDias}
                 onChange={(evento) => setPrazoDias(evento.target.value)}
+                disabled={diaSemanaPagamento !== ""}
               />
             </label>
 
@@ -176,6 +195,25 @@ function ContasReceber({
               />
             </label>
           </div>
+
+          <label>
+            Paga sempre num dia fixo da semana? (opcional)
+            <select
+              value={diaSemanaPagamento}
+              onChange={(evento) =>
+                setDiaSemanaPagamento(evento.target.value)
+              }
+            >
+              <option value="">Não — usa o prazo em dias acima</option>
+              <option value="0">Sim, todo domingo</option>
+              <option value="1">Sim, toda segunda-feira</option>
+              <option value="2">Sim, toda terça-feira</option>
+              <option value="3">Sim, toda quarta-feira</option>
+              <option value="4">Sim, toda quinta-feira</option>
+              <option value="5">Sim, toda sexta-feira</option>
+              <option value="6">Sim, todo sábado</option>
+            </select>
+          </label>
 
           <div className="modal-actions">
             {editandoId && (
@@ -217,7 +255,10 @@ function ContasReceber({
                   <div>
                     <strong>{forma.nome}</strong>
                     <div>
-                      D+{forma.prazo_dias} — {forma.taxa_percentual}% de taxa
+                      {forma.dia_semana_pagamento != null
+                        ? `Toda ${DIAS_SEMANA[forma.dia_semana_pagamento]}`
+                        : `D+${forma.prazo_dias}`}{" "}
+                      — {forma.taxa_percentual}% de taxa
                     </div>
                   </div>
                 </div>

@@ -1181,6 +1181,15 @@ function prepararFormaPagamento(dados = {}) {
     taxa_percentual: dados.taxa_percentual
       ? Number(dados.taxa_percentual)
       : 0,
+    // Pra quem paga sempre num dia fixo da semana (ex.: iFood paga toda
+    // quarta), em vez de "N dias depois da venda". 0=domingo...6=sábado,
+    // igual o Date.getDay() do JavaScript. null = usa só prazo_dias, como
+    // antes.
+    dia_semana_pagamento:
+      dados.dia_semana_pagamento !== "" &&
+      dados.dia_semana_pagamento != null
+        ? Number(dados.dia_semana_pagamento)
+        : null,
     ativo: dados.ativo !== false,
   };
 }
