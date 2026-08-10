@@ -258,12 +258,20 @@ export default function DashboardPremium({
   // lançadas como receita mas cujo dinheiro ainda não caiu de verdade —
   // olha TODOS os lançamentos aprovados, não só o mês selecionado no
   // filtro do Dashboard, porque uma venda de julho pode estar prevista
-  // pra cair em agosto.
+  // pra cair em agosto. Só conta o que ainda está no futuro (mesma regra
+  // usada pro Saldo) — o que já venceu (ex.: cartão antecipado, D+0) já
+  // conta como recebido, não aparece mais aqui.
   const receitasAReceber = useMemo(() => {
+    const hoje = new Date();
+    const hojeStr = `${hoje.getFullYear()}-${String(
+      hoje.getMonth() + 1
+    ).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+
     return todosLancamentos.filter(
       (item) =>
         item.tipo === "receita" &&
         item.data_prevista_recebimento &&
+        item.data_prevista_recebimento > hojeStr &&
         item.status_conciliacao !== "conciliado"
     );
   }, [todosLancamentos]);
