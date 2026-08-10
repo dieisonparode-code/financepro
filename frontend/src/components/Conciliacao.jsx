@@ -5,6 +5,7 @@ import {
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
   salvarDinheiroInformado,
+  buscarLojas,
 } from "../services/api";
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
@@ -146,19 +147,68 @@ function Conciliacao() {
   // foto dos totais nesse instante, pra poder testar/reconferir várias vezes
   // sem o número mudar debaixo do usuário.
   const [confrontoCongelado, setConfrontoCongelado] = useState(null);
+
+  // Widget "Dinheiro em caixa" — independente do confronto PagSeguro (que só
+  // existe pra Uberlândia). Funciona pra qualquer loja: escolhe a loja, lê a
+  // foto do fechamento (ou digita na mão) e confirma.
+  const [lojas, setLojas] = useState([]);
+  const [lojaIdDinheiro, setLojaIdDinheiro] = useState("");
+  const [emCaixaDinheiro, setEmCaixaDinheiro] = useState("");
+  const [aberturaCaixa, setAberturaCaixa] = useState("");
   const [salvandoDinheiro, setSalvandoDinheiro] = useState(false);
   const [dinheiroSalvoEm, setDinheiroSalvoEm] = useState(null);
-  // Abertura desse fechamento (seção "CAIXA:" do comprovante) — é dinheiro
-  // que já veio de fechamentos anteriores, não é novo. Só o que passar
-  // disso (Em caixa − Abertura) é que soma como dinheiro novo no Saldo.
-  const [aberturaCaixa, setAberturaCaixa] = useState("");
+  const [lendoFotoDinheiro, setLendoFotoDinheiro] = useState(false);
+  const [erroFotoDinheiro, setErroFotoDinheiro] = useState("");
+
+  useEffect(() => {
+    buscarLojas()
+      .then((dados) => setLojas(Array.isArray(dados) ? dados : []))
+      .catch(() => {});
+  }, []);
+
+  async function lerFotoDinheiro(arquivo) {
+    if (!arquivo) return;
+
+    setLendoFotoDinheiro(true);
+    setErroFotoDinheiro("");
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const resultado = await conferirFechamentoFoto(fotoComprimida);
+
+      const valorDinheiro = resultado.valores?.["Dinheiro"];
+
+      if (valorDinheiro != null) {
+        setEmCaixaDinheiro(Number(valorDinheiro).toFixed(2));
+      }
+
+      if (resultado.abertura_caixa != null) {
+        setAberturaCaixa(Number(resultado.abertura_caixa).toFixed(2));
+      }
+
+      if (valorDinheiro == null && resultado.abertura_caixa == null) {
+        setErroFotoDinheiro(
+          resultado.erro_leitura ||
+            "Não consegui ler Dinheiro/Abertura nessa foto. Preencha manualmente."
+        );
+      }
+    } catch (erro) {
+      setErroFotoDinheiro(erro.message || "Não foi possível ler a foto.");
+    } finally {
+      setLendoFotoDinheiro(false);
+    }
+  }
 
   async function confirmarDinheiroInformado() {
-    const valorTexto = valoresInformados["Dinheiro"] ?? "";
-    const emCaixa = Number(valorTexto.replace(",", "."));
+    const emCaixa = Number(String(emCaixaDinheiro).replace(",", "."));
     const abertura = Number(String(aberturaCaixa).replace(",", "."));
 
-    if (!valorTexto || !Number.isFinite(emCaixa) || emCaixa < 0) {
+    if (!lojaIdDinheiro) {
+      alert("Escolha a loja desse fechamento antes de confirmar.");
+      return;
+    }
+
+    if (emCaixaDinheiro === "" || !Number.isFinite(emCaixa) || emCaixa < 0) {
       alert("Digite o valor de Dinheiro (Em caixa) antes de confirmar.");
       return;
     }
@@ -171,8 +221,10 @@ function Conciliacao() {
     setSalvandoDinheiro(true);
 
     try {
-      await salvarDinheiroInformado(emCaixa, abertura);
+      await salvarDinheiroInformado(emCaixa, abertura, lojaIdDinheiro);
       setDinheiroSalvoEm(new Date());
+      setEmCaixaDinheiro("");
+      setAberturaCaixa("");
     } catch (erro) {
       alert(erro.message || "Não foi possível salvar o valor de Dinheiro.");
     } finally {
@@ -239,30 +291,9 @@ function Conciliacao() {
         return novo;
       });
 
-      const valorDinheiroLido = resultado.valores?.["Dinheiro"];
-
-      if (resultado.abertura_caixa != null) {
-        setAberturaCaixa(Number(resultado.abertura_caixa).toFixed(2));
-      }
-
       const formasNaoLidas = Object.entries(resultado.valores)
         .filter(([, valor]) => valor == null)
         .map(([forma]) => forma);
-
-      // Automatizado a pedido do usuário: se a foto trouxe Dinheiro (Em
-      // caixa) E Abertura, já salva sozinho — não precisa clicar em
-      // "Confirmar" separado.
-      if (valorDinheiroLido != null && resultado.abertura_caixa != null) {
-        try {
-          await salvarDinheiroInformado(
-            Number(valorDinheiroLido),
-            Number(resultado.abertura_caixa)
-          );
-          setDinheiroSalvoEm(new Date());
-        } catch (erroSalvar) {
-          console.error("Erro ao salvar dinheiro automaticamente:", erroSalvar);
-        }
-      }
 
       setResultadoFoto({
         sucesso: true,
@@ -470,6 +501,90 @@ function Conciliacao() {
         <ConciliacaoDespesas />
       ) : (
     <section className="conciliacao-layout">
+      <article className="panel" style={{ marginBottom: "20px" }}>
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">Qualquer loja</span>
+            <h2>💵 Dinheiro em caixa</h2>
+          </div>
+        </div>
+
+        <div className="form-row">
+          <label>
+            Loja
+            <select
+              value={lojaIdDinheiro}
+              onChange={(evento) => setLojaIdDinheiro(evento.target.value)}
+            >
+              <option value="">Selecione a loja</option>
+              {lojas.map((loja) => (
+                <option key={loja.id} value={loja.id}>
+                  {loja.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Foto do fechamento (opcional — lê Dinheiro e Abertura sozinho)
+          <input
+            type="file"
+            accept="image/*"
+            disabled={lendoFotoDinheiro}
+            onChange={(evento) => {
+              const arquivo = evento.target.files?.[0];
+              lerFotoDinheiro(arquivo);
+              evento.target.value = "";
+            }}
+          />
+        </label>
+
+        {lendoFotoDinheiro && <small className="foto-ajuda">Lendo foto...</small>}
+        {erroFotoDinheiro && (
+          <div className="empty-state">{erroFotoDinheiro}</div>
+        )}
+
+        <div className="form-row">
+          <label>
+            Em caixa (Dinheiro, contado no fechamento)
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={emCaixaDinheiro}
+              onChange={(evento) => setEmCaixaDinheiro(evento.target.value)}
+            />
+          </label>
+
+          <label>
+            Abertura (seção "CAIXA:" do comprovante)
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={aberturaCaixa}
+              onChange={(evento) => setAberturaCaixa(evento.target.value)}
+            />
+          </label>
+        </div>
+
+        <button
+          type="button"
+          className="primary-button"
+          onClick={confirmarDinheiroInformado}
+          disabled={salvandoDinheiro}
+        >
+          {salvandoDinheiro ? "Salvando..." : "💾 Confirmar (soma no Saldo)"}
+        </button>
+
+        {dinheiroSalvoEm && (
+          <small className="foto-ajuda">
+            Salvo às {dinheiroSalvoEm.toLocaleTimeString("pt-BR")}.
+          </small>
+        )}
+      </article>
+
       {temDiferencaNoConfronto && (
         <div
           className="fp-alerta-cmv fp-alerta-cmv-critico"
@@ -809,62 +924,19 @@ function Conciliacao() {
                                 {temSistema ? formatarMoeda(valorSistema) : "—"}
                               </td>
                               <td>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "6px",
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="0,00"
-                                    value={valoresInformados[forma] ?? ""}
-                                    onChange={(evento) =>
-                                      setValoresInformados((anterior) => ({
-                                        ...anterior,
-                                        [forma]: evento.target.value,
-                                      }))
-                                    }
-                                    style={{ maxWidth: "120px" }}
-                                  />
-
-                                  {forma === "Dinheiro" && (
-                                    <>
-                                      <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        placeholder="Abertura"
-                                        value={aberturaCaixa}
-                                        onChange={(evento) =>
-                                          setAberturaCaixa(evento.target.value)
-                                        }
-                                        title="Valor de 'Abertura (+)' da seção CAIXA do comprovante"
-                                        style={{ maxWidth: "100px" }}
-                                      />
-
-                                      <button
-                                        type="button"
-                                        className="secondary-button"
-                                        onClick={confirmarDinheiroInformado}
-                                        disabled={salvandoDinheiro}
-                                        title="Soma (Em caixa − Abertura) no Saldo do Dashboard"
-                                      >
-                                        {salvandoDinheiro ? "Salvando..." : "💾 Confirmar"}
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-
-                                {forma === "Dinheiro" && (
-                                  <small className="foto-ajuda">
-                                    Abertura = valor da seção "CAIXA:" do
-                                    comprovante (vem sozinho se ler a foto).
-                                    {dinheiroSalvoEm &&
-                                      ` Salvo às ${dinheiroSalvoEm.toLocaleTimeString("pt-BR")}.`}
-                                  </small>
-                                )}
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0,00"
+                                  value={valoresInformados[forma] ?? ""}
+                                  onChange={(evento) =>
+                                    setValoresInformados((anterior) => ({
+                                      ...anterior,
+                                      [forma]: evento.target.value,
+                                    }))
+                                  }
+                                  style={{ maxWidth: "120px" }}
+                                />
                               </td>
                               <td
                                 style={{
