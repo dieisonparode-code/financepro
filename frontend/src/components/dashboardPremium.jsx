@@ -613,7 +613,7 @@ export default function DashboardPremium({
               ? `${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`
               : null
           }
-          emDinheiro={dinheiroEmCaixa > 0 ? formatarMoeda(dinheiroEmCaixa) : null}
+          emDinheiro={dinheiroEmCaixa !== 0 ? formatarMoeda(dinheiroEmCaixa) : null}
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}

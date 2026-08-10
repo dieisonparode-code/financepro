@@ -1048,6 +1048,13 @@ const lancamentosDashboard = useMemo(() => {
       .filter((item) => item.tipo === "despesa")
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
+    // "Em dinheiro" (card Saldo) = soma dos fechamentos confirmados MENOS
+    // as despesas pagas em dinheiro — senão o dinheiro que já saiu do
+    // caixa pra pagar uma despesa ainda apareceria como se estivesse lá.
+    const despesasEmDinheiro = lancamentosDashboard
+      .filter((item) => item.tipo === "despesa" && item.pago_em_dinheiro)
+      .reduce((total, item) => total + Number(item.valor || 0), 0);
+
     const cmvValor = lancamentosDashboard
       .filter(
         (item) =>
@@ -1081,7 +1088,7 @@ const lancamentosDashboard = useMemo(() => {
       cmvValor,
       cmvPercentual,
       margemPercentual,
-      dinheiroEmCaixa,
+      dinheiroEmCaixa: dinheiroEmCaixa - despesasEmDinheiro,
     };
   }, [lancamentosDashboard, dinheiroEmCaixa]);
 
