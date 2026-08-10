@@ -2554,6 +2554,15 @@ const statusCmv =
                       {formatarMoeda(item.valor)}
                     </strong>
 
+                    {item.tipo === "receita" &&
+                      item.valor_liquido_esperado != null &&
+                      Number(item.valor_liquido_esperado) !==
+                        Number(item.valor) && (
+                        <small className="foto-ajuda">
+                          Líquido: {formatarMoeda(item.valor_liquido_esperado)}
+                        </small>
+                      )}
+
                     <div className="transaction-actions">
                       {mesLancamentoBloqueado(item) && (
                         <span
