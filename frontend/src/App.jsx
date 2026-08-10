@@ -1017,6 +1017,13 @@ const lancamentosDashboard = useMemo(() => {
     const saldo = receitasRecebidas - despesas;
     const saldoBruto = receitasRecebidasBruto - despesas;
     const totalTaxas = receitasRecebidasBruto - receitasRecebidas;
+    // Percentual médio de taxa sobre o que já caiu (mistura cartão, iFood,
+    // Brendi, etc. — cada um com sua própria taxa cadastrada) — usado só
+    // pra mostrar "Taxa X%" ao lado do valor no card de Saldo.
+    const percentualTaxas =
+      receitasRecebidasBruto > 0
+        ? (totalTaxas / receitasRecebidasBruto) * 100
+        : 0;
     const cmvPercentual =
       receitas > 0 ? (cmvValor / receitas) * 100 : 0;
     const margemPercentual =
@@ -1026,6 +1033,7 @@ const lancamentosDashboard = useMemo(() => {
       receitas,
       saldoBruto,
       totalTaxas,
+      percentualTaxas,
       despesas,
       saldo,
       cmvValor,
@@ -1246,12 +1254,18 @@ const statusCmv =
         0
       );
 
+    const totalTaxasFluxo = entradasRecebidasBruto - entradasRecebidasLiquido;
+
     return {
       entradas,
       saidas,
       saldo: entradasRecebidasLiquido - saidas,
       saldoBruto: entradasRecebidasBruto - saidas,
-      totalTaxas: entradasRecebidasBruto - entradasRecebidasLiquido,
+      totalTaxas: totalTaxasFluxo,
+      percentualTaxas:
+        entradasRecebidasBruto > 0
+          ? (totalTaxasFluxo / entradasRecebidasBruto) * 100
+          : 0,
     };
   }, [lancamentosFluxo]);
 
@@ -2676,7 +2690,15 @@ const statusCmv =
                       Number(item.valor_liquido_esperado) !==
                         Number(item.valor) && (
                         <small className="foto-ajuda">
-                          Líquido: {formatarMoeda(item.valor_liquido_esperado)}
+                          Líquido: {formatarMoeda(item.valor_liquido_esperado)}{" "}
+                          (taxa{" "}
+                          {(
+                            ((Number(item.valor) -
+                              Number(item.valor_liquido_esperado)) /
+                              Number(item.valor)) *
+                            100
+                          ).toFixed(2)}
+                          %)
                         </small>
                       )}
 
@@ -3106,8 +3128,9 @@ const statusCmv =
                 <span>Saldo do período</span>
                 {totaisFluxo.totalTaxas > 0 && (
                   <small style={{ display: "block", opacity: 0.75 }}>
-                    {formatarMoeda(totaisFluxo.saldoBruto)} — Taxa cartão{" "}
-                    {formatarMoeda(totaisFluxo.totalTaxas)}
+                    {formatarMoeda(totaisFluxo.saldoBruto)} — Taxas{" "}
+                    {formatarMoeda(totaisFluxo.totalTaxas)} (
+                    {totaisFluxo.percentualTaxas.toFixed(2)}%)
                   </small>
                 )}
                 <strong>
@@ -3193,7 +3216,15 @@ const statusCmv =
                                       Líq.{" "}
                                       {formatarMoeda(
                                         item.valor_liquido_esperado
-                                      )}
+                                      )}{" "}
+                                      (
+                                      {(
+                                        ((Number(item.valor) -
+                                          Number(item.valor_liquido_esperado)) /
+                                          Number(item.valor)) *
+                                        100
+                                      ).toFixed(2)}
+                                      %)
                                     </small>
                                   )}
                               </>

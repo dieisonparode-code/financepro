@@ -137,7 +137,7 @@ function CartaoPrincipal({
         <>
           <div className="fp-kpi-bruto-taxa">
             <span>{bruto}</span>
-            <span>Taxa cartão {taxa}</span>
+            <span>Taxas {taxa}</span>
           </div>
           <strong className="fp-kpi-liquido">{valor}</strong>
         </>
@@ -186,6 +186,7 @@ export default function DashboardPremium({
   const saldo = numero(totais.saldo);
   const saldoBruto = numero(totais.saldoBruto);
   const totalTaxas = numero(totais.totalTaxas);
+  const percentualTaxas = numero(totais.percentualTaxas);
   const cmv = numero(totais.cmvPercentual);
   const margem = numero(totais.margemPercentual);
 
@@ -586,7 +587,11 @@ export default function DashboardPremium({
           titulo="Saldo"
           valor={formatarMoeda(saldo)}
           bruto={totalTaxas > 0 ? formatarMoeda(saldoBruto) : null}
-          taxa={totalTaxas > 0 ? formatarMoeda(totalTaxas) : null}
+          taxa={
+            totalTaxas > 0
+              ? `${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`
+              : null
+          }
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
@@ -853,7 +858,15 @@ export default function DashboardPremium({
                           {formatarMoeda(
                             Number(item.valor) -
                               Number(item.valor_liquido_esperado)
-                          )}
+                          )}{" "}
+                          (
+                          {(
+                            ((Number(item.valor) -
+                              Number(item.valor_liquido_esperado)) /
+                              Number(item.valor)) *
+                            100
+                          ).toFixed(2)}
+                          %)
                         </small>
                       </div>
 
