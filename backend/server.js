@@ -1916,15 +1916,23 @@ function montarResumoSaipos(vendas, lancamentos) {
 
 // Formas de pagamento que a Saipos usa em vendas de balcão (sem
 // partner_sale) e o nome correspondente cadastrado em "formas_pagamento".
-// O que não está aqui (Dinheiro, Cortesia, Vale, A prazo funcionário) não
-// tem taxa/prazo de cartão pra calcular, então fica de fora da importação
-// automática por enquanto.
+// Pix não entra aqui — é tratado separado (ver ehPagamentoPix), porque cai
+// na hora independente de ser balcão, iFood ou Brendi. O que não está aqui
+// (Dinheiro, Cortesia, Vale, A prazo funcionário) não tem taxa/prazo de
+// cartão pra calcular, então fica de fora da importação automática por
+// enquanto.
 const MAPA_PAGAMENTO_BALCAO_SAIPOS = {
   Crédito: "Cartão de Crédito",
   Débito: "Cartão de Débito",
-  "Pix Conta Bancária": "PIX",
-  "Pago Online via Pix": "PIX",
 };
+
+// Confirmado com o usuário (10/08/2026): Pix cai direto na hora, separado do
+// repasse da plataforma, seja a venda de balcão, iFood, Brendi ou qualquer
+// outro canal — só as outras formas (cartão via app, etc.) seguem o prazo/
+// dia fixo do canal ou da forma de pagamento.
+function ehPagamentoPix(nomeFormaPagamentoSaipos) {
+  return (nomeFormaPagamentoSaipos || "").toLowerCase().includes("pix");
+}
 
 // Mesma conta que o frontend faz em salvarLancamento() (App.jsx) ao escolher
 // uma forma de pagamento — replicada aqui pra poder rodar sozinho no
@@ -1980,44 +1988,38 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
     pulados[motivo] = (pulados[motivo] || 0) + quantidade;
   }
 
+  // Agrupa por PAGAMENTO (não pela venda inteira) — uma mesma venda pode ter
+  // parte em Pix e parte em outra forma, e cada parte segue uma regra
+  // diferente de quando o dinheiro cai:
+  //   1. Pix (de qualquer canal: balcão, iFood, Brendi, ...) → cai na hora,
+  //      sempre vai pra forma de pagamento "PIX" cadastrada.
+  //   2. Não-Pix de venda com canal (iFood, Brendi, ...) → segue o prazo/dia
+  //      fixo cadastrado pra aquele canal.
+  //   3. Não-Pix de venda de balcão (sem canal) → segue o prazo cadastrado
+  //      pra aquela forma de pagamento específica (Crédito/Débito).
   vendasValidas.forEach((venda) => {
     const canal = venda.partner_sale?.desc_partner_sale || null;
-    const valorOficial = Number(
-      venda.total_amount ?? venda.totals?.total_amount ?? 0
-    );
-    const valorPorPagamentos = (venda.payments || []).reduce(
-      (soma, pagamento) => soma + Number(pagamento.payment_amount || 0),
-      0
-    );
-    const valorVenda = valorOficial > 0 ? valorOficial : valorPorPagamentos;
 
-    if (canal) {
-      const forma = (formasPagamento || []).find(
-        (item) => item.nome.toLowerCase() === canal.toLowerCase()
-      );
-      const chave = `canal:${canal}`;
+    (venda.payments || []).forEach((pagamento) => {
+      const nomeSaipos = pagamento.desc_store_payment_type || "Não informado";
+      const valorPagamento = Number(pagamento.payment_amount || 0);
 
-      if (!grupos[chave]) {
-        grupos[chave] = {
-          forma,
-          valorBruto: 0,
-          quantidade: 0,
-          rotulo: canal,
-          canalSlug: canal.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
-        };
-      }
+      let chave;
+      let rotulo;
+      let canalSlug;
+      let nomeParaCadastro;
 
-      grupos[chave].valorBruto += valorVenda;
-      grupos[chave].quantidade += 1;
-
-      if (!forma) {
-        registrarPulado(
-          `Canal "${canal}" ainda não tem forma de pagamento cadastrada com esse nome`
-        );
-      }
-    } else {
-      (venda.payments || []).forEach((pagamento) => {
-        const nomeSaipos = pagamento.desc_store_payment_type || "Não informado";
+      if (ehPagamentoPix(nomeSaipos)) {
+        chave = "pix_direto";
+        rotulo = "PIX";
+        canalSlug = "pix_direto";
+        nomeParaCadastro = "PIX";
+      } else if (canal) {
+        chave = `canal:${canal}`;
+        rotulo = canal;
+        canalSlug = canal.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+        nomeParaCadastro = canal;
+      } else {
         const nomeCadastro = MAPA_PAGAMENTO_BALCAO_SAIPOS[nomeSaipos];
 
         if (!nomeCadastro) {
@@ -2027,33 +2029,37 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
           return;
         }
 
-        const forma = (formasPagamento || []).find(
-          (item) => item.nome === nomeCadastro
+        chave = `balcao:${nomeSaipos}`;
+        rotulo = `${nomeSaipos} (balcão)`;
+        canalSlug = `balcao_${nomeSaipos
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")}`;
+        nomeParaCadastro = nomeCadastro;
+      }
+
+      const forma = (formasPagamento || []).find(
+        (item) => item.nome.toLowerCase() === nomeParaCadastro.toLowerCase()
+      );
+
+      if (!grupos[chave]) {
+        grupos[chave] = {
+          forma,
+          valorBruto: 0,
+          quantidade: 0,
+          rotulo,
+          canalSlug,
+        };
+      }
+
+      grupos[chave].valorBruto += valorPagamento;
+      grupos[chave].quantidade += 1;
+
+      if (!forma) {
+        registrarPulado(
+          `"${nomeParaCadastro}" ainda não tem forma de pagamento cadastrada com esse nome`
         );
-        const chave = `balcao:${nomeSaipos}`;
-
-        if (!grupos[chave]) {
-          grupos[chave] = {
-            forma,
-            valorBruto: 0,
-            quantidade: 0,
-            rotulo: `${nomeSaipos} (balcão)`,
-            canalSlug: `balcao_${nomeSaipos
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")}`,
-          };
-        }
-
-        grupos[chave].valorBruto += Number(pagamento.payment_amount || 0);
-        grupos[chave].quantidade += 1;
-
-        if (!forma) {
-          registrarPulado(
-            `Forma "${nomeCadastro}" não está cadastrada em Formas de Pagamento`
-          );
-        }
-      });
-    }
+      }
+    });
   });
 
   const resultado = { criados: [], atualizados: [], pulados };
@@ -3304,6 +3310,106 @@ app.use(function (erro, req, res, next) {
     erro: "Erro interno do servidor.",
   });
 });
+
+// Importação automática diária das vendas da Saipos como receita — pra
+// todas as lojas com saipos_id_store cadastrado, importa sempre o dia
+// ANTERIOR (ontem), já fechado, evitando pegar um dia ainda em andamento.
+// Confirmado com o usuário (10/08/2026) que quer isso automático, sem
+// precisar clicar no botão manual todo dia.
+function dataBrasilia(diasAtras = 0) {
+  const agora = new Date();
+  agora.setDate(agora.getDate() - diasAtras);
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(agora);
+}
+
+function horaBrasilia() {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+
+  return {
+    hora: Number(partes.find((parte) => parte.type === "hour").value),
+    minuto: Number(partes.find((parte) => parte.type === "minute").value),
+  };
+}
+
+let ultimaDataImportadaAutomaticamente = null;
+
+async function rodarImportacaoAutomaticaDiariaSaipos() {
+  const dataAlvo = dataBrasilia(1);
+
+  if (ultimaDataImportadaAutomaticamente === dataAlvo) {
+    return;
+  }
+
+  ultimaDataImportadaAutomaticamente = dataAlvo;
+
+  try {
+    const { data: lojasComSaipos, error } = await supabase
+      .from("lojas")
+      .select("id, nome, saipos_id_store")
+      .not("saipos_id_store", "is", null);
+
+    if (error) {
+      throw error;
+    }
+
+    for (const loja of lojasComSaipos || []) {
+      try {
+        const resultado = await importarVendasSaiposComoLancamentos(
+          loja,
+          dataAlvo
+        );
+
+        const resumoTexto = `Importação automática diária da Saipos (${loja.nome}, ${dataAlvo}): ${resultado.criados.length} criado(s), ${resultado.atualizados.length} atualizado(s), ${Object.keys(resultado.pulados).length} tipo(s) pulado(s).`;
+
+        console.log(resumoTexto);
+
+        await supabase.from("log_auditoria").insert([
+          {
+            usuario_id: null,
+            usuario_nome: "Automação (Saipos)",
+            acao: "importou",
+            tabela_afetada: "lancamentos",
+            registro_id: `${loja.id}:${dataAlvo}`,
+            detalhes: resumoTexto,
+          },
+        ]);
+      } catch (erroLoja) {
+        console.error(
+          `Erro na importação automática da Saipos pra loja "${loja.nome}":`,
+          erroLoja.message
+        );
+      }
+    }
+  } catch (erro) {
+    console.error(
+      "Erro na importação automática diária da Saipos:",
+      erro.message
+    );
+  }
+}
+
+// Confere a cada minuto se já é a hora certa (03:00–03:04, horário de
+// Brasília) de rodar a importação do dia anterior. A checagem por
+// "ultimaDataImportadaAutomaticamente" garante que só roda 1 vez por dia,
+// mesmo com esse intervalo de minuto em minuto.
+setInterval(function () {
+  const { hora, minuto } = horaBrasilia();
+
+  if (hora === 3 && minuto < 5) {
+    rodarImportacaoAutomaticaDiariaSaipos();
+  }
+}, 60 * 1000);
 
 app.listen(
   PORT,
