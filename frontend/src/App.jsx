@@ -1063,7 +1063,33 @@ const lancamentosDashboard = useMemo(() => {
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
-    const saldo = receitasRecebidas - despesas;
+    // Líquido do que ainda está pendente (Próximos Recebimentos) — usado
+    // pra tirar do Saldo, já que Fluxo de Caixa conta tudo (accrual) mas
+    // Saldo só deve contar o que já caiu de verdade.
+    const receitasPendentesLiquido = lancamentosDashboard
+      .filter((item) => item.tipo === "receita")
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (!aindaPendente) {
+          return total;
+        }
+
+        return (
+          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
+        );
+      }, 0);
+
+    // Fluxo de Caixa (card do Dashboard) = todas as receitas do período
+    // (accrual, igual o card "Receitas") menos despesas. Saldo = isso
+    // menos o que ainda está pendente (a receber) — pra confirmar com o
+    // usuário: Fluxo de Caixa é mais "otimista" (conta tudo que entrou),
+    // Saldo é mais conservador (só o que já é dinheiro de verdade agora).
+    const fluxoCaixa = receitas - despesas;
+    const saldo = fluxoCaixa - receitasPendentesLiquido;
     const saldoBruto = receitasRecebidasBruto - despesas;
     const totalTaxas = receitasRecebidasBruto - receitasRecebidas;
     // Percentual médio de taxa sobre o que já caiu (mistura cartão, iFood,
@@ -1084,6 +1110,7 @@ const lancamentosDashboard = useMemo(() => {
       totalTaxas,
       percentualTaxas,
       despesas,
+      fluxoCaixa,
       saldo,
       cmvValor,
       cmvPercentual,

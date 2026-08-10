@@ -191,6 +191,7 @@ export default function DashboardPremium({
 }) {
   const receitas = numero(totais.receitas);
   const despesas = numero(totais.despesas);
+  const fluxoCaixa = numero(totais.fluxoCaixa);
   const saldo = numero(totais.saldo);
   const saldoBruto = numero(totais.saldoBruto);
   const totalTaxas = numero(totais.totalTaxas);
@@ -590,8 +591,8 @@ export default function DashboardPremium({
         <CartaoPrincipal
           classe="roxo"
           titulo="Fluxo de caixa"
-          valor={formatarMoeda(saldo)}
-          legenda={saldo >= 0 ? "Positivo" : "Negativo"}
+          valor={formatarMoeda(fluxoCaixa)}
+          legenda={fluxoCaixa >= 0 ? "Positivo" : "Negativo"}
           icone="⌁"
           grafico={
             <MiniBarras
