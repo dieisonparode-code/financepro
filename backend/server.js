@@ -2543,8 +2543,19 @@ app.get("/usuarios", verificarAdmin, async function (req, res) {
 
 const PERMISSOES_VALIDAS = [
   "financeiro",
+  "saldo",
+  "receitas",
+  "despesas",
+  "categorias",
+  "fluxo_caixa",
+  "relatorios",
+  "proximos_recebimentos",
+  "contas_pagar",
+  "contas_receber",
   "estoque",
   "fechamento_caixa",
+  "vendas_saipos",
+  "conciliacao",
   "aprovar_despesas",
   "clientes",
 ];
