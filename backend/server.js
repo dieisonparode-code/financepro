@@ -2014,16 +2014,29 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
   // diferente de quando o dinheiro cai:
   //   1. Pix (de qualquer canal: balcão, iFood, Brendi, ...) → cai na hora,
   //      sempre vai pra forma de pagamento "PIX" cadastrada.
-  //   2. Não-Pix de venda com canal (iFood, Brendi, ...) → segue o prazo/dia
-  //      fixo cadastrado pra aquele canal.
-  //   3. Não-Pix de venda de balcão (sem canal) → segue o prazo cadastrado
-  //      pra aquela forma de pagamento específica (Crédito/Débito).
+  //   2. "Voucher Parceiro Desconto" (dentro de venda com canal) → NÃO é
+  //      dinheiro de verdade, é o desconto que o parceiro (iFood/Brendi)
+  //      cobre — não conta como receita nenhuma, só descartado.
+  //   3. "Pago Online" (dentro de venda com canal) → é o único pedaço que
+  //      passa pelo repasse semanal de verdade do canal (iFood/Brendi),
+  //      com a taxa e o prazo cadastrados pra esse canal.
+  //   4. Outras formas dentro de venda com canal (Débito/Crédito/Dinheiro)
+  //      → foi cobrado NA ENTREGA pelo motoboy, o dinheiro já está em mãos
+  //      na hora — NÃO espera o repasse do canal, segue a mesma regra de
+  //      uma venda de balcão normal (taxa/prazo da própria forma).
+  //   5. Venda de balcão (sem canal) → segue o prazo cadastrado pra aquela
+  //      forma de pagamento específica (Crédito/Débito).
+  // Confirmado com o usuário comparando com o extrato real do iFood
+  // (10/08/2026): sem essa separação, o valor pendente ficava inflado com
+  // dinheiro que já estava em mãos (cobrado na entrega) e com voucher que
+  // nunca foi dinheiro de verdade.
   vendasValidas.forEach((venda) => {
     const canal = venda.partner_sale?.desc_partner_sale || null;
 
     (venda.payments || []).forEach((pagamento) => {
       const nomeSaipos = pagamento.desc_store_payment_type || "Não informado";
       const valorPagamento = Number(pagamento.payment_amount || 0);
+      const nomeSaiposMinusculo = nomeSaipos.toLowerCase();
 
       let chave;
       let rotulo;
@@ -2035,26 +2048,38 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
         rotulo = "PIX";
         canalSlug = "pix_direto";
         nomeParaCadastro = "PIX";
-      } else if (canal) {
+      } else if (canal && nomeSaiposMinusculo.includes("voucher")) {
+        registrarPulado(
+          `"${nomeSaipos}" (venda ${canal}) é desconto, não é dinheiro recebido — não é importado`
+        );
+        return;
+      } else if (canal && nomeSaiposMinusculo.includes("pago online")) {
         chave = `canal:${canal}`;
         rotulo = canal;
         canalSlug = canal.toLowerCase().replace(/[^a-z0-9]+/g, "_");
         nomeParaCadastro = canal;
       } else {
+        // Ou é venda de balcão (sem canal), ou é uma forma cobrada na
+        // entrega dentro de uma venda de canal (Débito/Crédito/Dinheiro) —
+        // nos dois casos, cai pela regra da própria forma de pagamento, não
+        // pelo prazo do canal.
         const nomeCadastro = MAPA_PAGAMENTO_BALCAO_SAIPOS[nomeSaipos];
 
         if (!nomeCadastro) {
           registrarPulado(
-            `Forma "${nomeSaipos}" (venda de balcão) sem taxa/prazo pra calcular — não é importada`
+            `Forma "${nomeSaipos}"${canal ? ` (${canal}, cobrado na entrega)` : " (venda de balcão)"} sem taxa/prazo pra calcular — não é importada`
           );
           return;
         }
 
-        chave = `balcao:${nomeSaipos}`;
-        rotulo = `${nomeSaipos} (balcão)`;
-        canalSlug = `balcao_${nomeSaipos
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "_")}`;
+        const sufixo = canal ? `_cobrado_entrega_${canal}` : "_balcao";
+        chave = `${nomeSaipos}${sufixo}`;
+        rotulo = canal
+          ? `${nomeSaipos} (cobrado na entrega — ${canal})`
+          : `${nomeSaipos} (balcão)`;
+        canalSlug = `${nomeSaipos.toLowerCase().replace(/[^a-z0-9]+/g, "_")}${
+          canal ? `_entrega_${canal.toLowerCase().replace(/[^a-z0-9]+/g, "_")}` : "_balcao"
+        }`;
         nomeParaCadastro = nomeCadastro;
       }
 
