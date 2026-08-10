@@ -923,6 +923,24 @@ const lancamentosDashboard = useMemo(() => {
     // valor líquido esperado (depois da taxa), não o valor bruto da venda.
     const hoje = hojeLocal();
 
+    // Duas versões do que já caiu: bruta (valor cheio da venda) e líquida
+    // (depois da taxa da forma de pagamento) — a diferença entre as duas é
+    // o total de taxas, que o card de Saldo mostra separado.
+    const receitasRecebidasBruto = lancamentosDashboard
+      .filter((item) => item.tipo === "receita")
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (aindaPendente) {
+          return total;
+        }
+
+        return total + Number(item.valor || 0);
+      }, 0);
+
     const receitasRecebidas = lancamentosDashboard
       .filter((item) => item.tipo === "receita")
       .reduce((total, item) => {
@@ -953,6 +971,8 @@ const lancamentosDashboard = useMemo(() => {
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
     const saldo = receitasRecebidas - despesas;
+    const saldoBruto = receitasRecebidasBruto - despesas;
+    const totalTaxas = receitasRecebidasBruto - receitasRecebidas;
     const cmvPercentual =
       receitas > 0 ? (cmvValor / receitas) * 100 : 0;
     const margemPercentual =
@@ -960,6 +980,8 @@ const lancamentosDashboard = useMemo(() => {
 
     return {
       receitas,
+      saldoBruto,
+      totalTaxas,
       despesas,
       saldo,
       cmvValor,

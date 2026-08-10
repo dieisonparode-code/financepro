@@ -121,7 +121,11 @@ function CartaoPrincipal({
   legenda,
   icone,
   grafico,
+  bruto,
+  taxa,
 }) {
+  const temTaxa = bruto != null && taxa != null;
+
   return (
     <article className={`fp-kpi fp-kpi-${classe}`}>
       <div className="fp-kpi-cabecalho">
@@ -129,7 +133,18 @@ function CartaoPrincipal({
         <Icone className={classe}>{icone}</Icone>
       </div>
 
-      <strong>{valor}</strong>
+      {temTaxa ? (
+        <>
+          <div className="fp-kpi-bruto-taxa">
+            <span>{bruto}</span>
+            <span>Taxa cartão {taxa}</span>
+          </div>
+          <strong className="fp-kpi-liquido">{valor}</strong>
+        </>
+      ) : (
+        <strong>{valor}</strong>
+      )}
+
       <small>{legenda}</small>
 
       <div className="fp-kpi-grafico">{grafico}</div>
@@ -163,6 +178,8 @@ export default function DashboardPremium({
   const receitas = numero(totais.receitas);
   const despesas = numero(totais.despesas);
   const saldo = numero(totais.saldo);
+  const saldoBruto = numero(totais.saldoBruto);
+  const totalTaxas = numero(totais.totalTaxas);
   const cmv = numero(totais.cmvPercentual);
   const margem = numero(totais.margemPercentual);
 
@@ -315,6 +332,30 @@ export default function DashboardPremium({
         valor: numero(item.valor_liquido_esperado ?? item.valor),
       }));
   }, [receitasAReceber, formasPagamento]);
+
+  // Legenda do card "Próximos Recebimentos": mostra de qual forma de
+  // pagamento e o dia exato que a próxima entrada cai (ex.: "iFood —
+  // quarta-feira, 12/08"), em vez de um texto genérico.
+  const legendaProximosRecebimentos = useMemo(() => {
+    if (proximosRecebimentos.length === 0) {
+      return "Nenhuma venda a prazo pendente";
+    }
+
+    const primeiro = proximosRecebimentos[0];
+    const dataLocal = new Date(`${primeiro.data}T12:00:00`);
+    const diaSemana = dataLocal.toLocaleDateString("pt-BR", {
+      weekday: "long",
+    });
+    const diaMes = dataLocal.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+    const restante = proximosRecebimentos.length - 1;
+
+    return `${primeiro.descricao} — ${diaSemana}, ${diaMes}${
+      restante > 0 ? ` (+${restante})` : ""
+    }`;
+  }, [proximosRecebimentos]);
 
   function formatarDiaSemana(data) {
     if (!data) return { semana: "—", dia: "—" };
@@ -520,6 +561,8 @@ export default function DashboardPremium({
           classe="azul"
           titulo="Saldo"
           valor={formatarMoeda(saldo)}
+          bruto={totalTaxas > 0 ? formatarMoeda(saldoBruto) : null}
+          taxa={totalTaxas > 0 ? formatarMoeda(totalTaxas) : null}
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
@@ -529,7 +572,7 @@ export default function DashboardPremium({
           classe="ciano"
           titulo="Próximos Recebimentos"
           valor={formatarMoeda(aReceber)}
-          legenda="Vendas a prazo ainda não recebidas"
+          legenda={legendaProximosRecebimentos}
           icone="⏳"
           grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
         />
