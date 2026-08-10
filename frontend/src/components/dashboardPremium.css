@@ -361,8 +361,10 @@ body {
 
 .fp-kpi {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  height: 180px;
+  min-height: 180px;
   padding: 18px 20px;
   overflow: hidden;
   border: 1px solid var(--fp-borda);
@@ -494,10 +496,9 @@ body {
 }
 
 .fp-kpi-grafico {
-  position: absolute;
-  right: 18px;
-  bottom: 14px;
-  left: 18px;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 10px;
   height: 54px;
 }
 
