@@ -759,19 +759,43 @@ export default function DashboardPremium({
                     </small>
                   </div>
 
-                  <div>
-                    <strong
-                      className={
-                        item.tipo === "receita"
-                          ? "fp-sucesso"
-                          : "fp-erro"
-                      }
-                    >
-                      {item.tipo === "receita" ? "" : "- "}
-                      {formatarMoeda(item.valor)}
-                    </strong>
-                    <small>{formatarData(item.data)}</small>
-                  </div>
+                  {item.tipo === "receita" &&
+                  item.valor_liquido_esperado != null &&
+                  Number(item.valor_liquido_esperado) !==
+                    Number(item.valor) ? (
+                    <div className="fp-transacao-com-taxa">
+                      <div className="fp-transacao-com-taxa-topo">
+                        <small>{formatarMoeda(item.valor)}</small>
+                        <small>
+                          Taxa{" "}
+                          {formatarMoeda(
+                            Number(item.valor) -
+                              Number(item.valor_liquido_esperado)
+                          )}
+                        </small>
+                      </div>
+
+                      <strong className="fp-sucesso fp-transacao-liquido">
+                        {formatarMoeda(item.valor_liquido_esperado)}
+                      </strong>
+
+                      <small>{formatarData(item.data)}</small>
+                    </div>
+                  ) : (
+                    <div>
+                      <strong
+                        className={
+                          item.tipo === "receita"
+                            ? "fp-sucesso"
+                            : "fp-erro"
+                        }
+                      >
+                        {item.tipo === "receita" ? "" : "- "}
+                        {formatarMoeda(item.valor)}
+                      </strong>
+                      <small>{formatarData(item.data)}</small>
+                    </div>
+                  )}
                 </div>
               ))
             ) : (

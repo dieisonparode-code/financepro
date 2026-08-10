@@ -990,6 +990,23 @@ body {
   text-align: right;
 }
 
+.fp-transacao-com-taxa-topo {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fp-transacao-com-taxa-topo small {
+  color: #7389a3;
+  font-size: 9px;
+}
+
+.fp-transacao-liquido {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+}
+
 @media (max-width: 1250px) {
   .fp-kpis,
   .fp-metricas {
