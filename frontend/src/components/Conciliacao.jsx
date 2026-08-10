@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buscarVendasPagSeguro,
   conferirFechamentoFoto,
@@ -327,8 +327,79 @@ function Conciliacao() {
     resumo?.totais_por_forma_pagamento || {}
   );
 
+  // Confronto Sistema × Informado calculado aqui (não só dentro da tabela)
+  // pra poder mostrar um aviso no topo da tela quando tiver diferença,
+  // igual o aviso de CMV alto do Dashboard.
+  const confrontoCalculado = useMemo(() => {
+    const totaisBrutos = confrontoCongelado
+      ? confrontoCongelado.totaisBrutos
+      : resumo?.totais_brutos_por_forma_pagamento || {};
+
+    const linhas = Object.keys(valoresInformados).map((forma) => {
+      const temSistema = forma in totaisBrutos;
+      const valorSistema = totaisBrutos[forma] || 0;
+      const valorInformadoTexto = valoresInformados[forma] ?? "";
+      const temInformado = valorInformadoTexto !== "";
+      const valorInformado = temInformado
+        ? Number(valorInformadoTexto.replace(",", "."))
+        : null;
+      const diferenca =
+        temInformado && temSistema
+          ? Number((valorSistema - valorInformado).toFixed(2))
+          : null;
+      const bateu = diferenca != null && Math.abs(diferenca) < 0.01;
+
+      return {
+        forma,
+        valorSistema,
+        temSistema,
+        temInformado,
+        diferenca,
+        bateu,
+      };
+    });
+
+    const diferencaTotal = linhas
+      .filter((linha) => linha.temInformado && linha.temSistema)
+      .reduce((soma, linha) => soma + linha.diferenca, 0);
+    const algumInformado = linhas.some(
+      (linha) => linha.temInformado && linha.temSistema
+    );
+
+    return { linhas, diferencaTotal, algumInformado };
+  }, [confrontoCongelado, resumo, valoresInformados]);
+
+  const temDiferencaNoConfronto =
+    confrontoCalculado.algumInformado &&
+    Math.abs(confrontoCalculado.diferencaTotal) >= 0.01;
+
   return (
     <section className="conciliacao-layout">
+      {temDiferencaNoConfronto && (
+        <div
+          className="fp-alerta-cmv fp-alerta-cmv-critico"
+          style={{ marginBottom: "16px" }}
+        >
+          <span className="fp-alerta-cmv-icone">🚨</span>
+
+          <div>
+            <strong>
+              Diferença no confronto:{" "}
+              {confrontoCalculado.diferencaTotal > 0
+                ? `falta ${formatarMoeda(confrontoCalculado.diferencaTotal)}`
+                : `sobra ${formatarMoeda(
+                    Math.abs(confrontoCalculado.diferencaTotal)
+                  )}`}
+            </strong>
+            <span>
+              O que o sistema esperava não bateu com o que foi informado no
+              fechamento. Confira a tabela de confronto abaixo antes de
+              fechar o caixa.
+            </span>
+          </div>
+        </div>
+      )}
+
       <article className="panel">
         <div
           style={{
@@ -597,48 +668,8 @@ function Conciliacao() {
             )}
 
             {(() => {
-              const totaisBrutos = confrontoCongelado
-                ? confrontoCongelado.totaisBrutos
-                : resumo.totais_brutos_por_forma_pagamento || {};
-
-              const linhas = Object.keys(valoresInformados).map((forma) => {
-                // Bruto (antes da taxa da PagSeguro) — é isso que bate com
-                // o "Esperado" do comprovante de fechamento da Saipos.
-                // Só Crédito/Débito/PIX têm esse dado — as outras categorias
-                // (Dinheiro, Vale, Voucher, etc) não passam pela PagSeguro,
-                // então não têm "Sistema" pra comparar ainda.
-                const temSistema = forma in totaisBrutos;
-                const valorSistema = totaisBrutos[forma] || 0;
-                const valorInformadoTexto = valoresInformados[forma] ?? "";
-                const temInformado = valorInformadoTexto !== "";
-                const valorInformado = temInformado
-                  ? Number(valorInformadoTexto.replace(",", "."))
-                  : null;
-                // Positivo = faltou dinheiro (sistema esperava mais do que
-                // foi informado). Negativo = sobrou (veio mais do que
-                // o sistema esperava).
-                const diferenca =
-                  temInformado && temSistema
-                    ? Number((valorSistema - valorInformado).toFixed(2))
-                    : null;
-                const bateu = diferenca != null && Math.abs(diferenca) < 0.01;
-
-                return {
-                  forma,
-                  valorSistema,
-                  temSistema,
-                  temInformado,
-                  diferenca,
-                  bateu,
-                };
-              });
-
-              const diferencaTotal = linhas
-                .filter((linha) => linha.temInformado && linha.temSistema)
-                .reduce((soma, linha) => soma + linha.diferenca, 0);
-              const algumInformado = linhas.some(
-                (linha) => linha.temInformado && linha.temSistema
-              );
+              const { linhas, diferencaTotal, algumInformado } =
+                confrontoCalculado;
 
               return (
                 <>
