@@ -527,12 +527,18 @@ export default function DashboardPremium({
         />
       </section>
 
-      {proximosRecebimentos.length > 0 && (
-        <section className="fp-proximos-recebimentos">
-          <div className="fp-proximos-recebimentos-titulo">
-            Próximos recebimentos
-          </div>
+      <section className="fp-proximos-recebimentos">
+        <div className="fp-proximos-recebimentos-titulo">
+          Próximos recebimentos
+        </div>
 
+        {proximosRecebimentos.length === 0 ? (
+          <p className="empty-state">
+            Nenhum recebimento previsto ainda. Aparece aqui quando uma
+            receita é lançada com uma forma de pagamento a prazo (em
+            Contas a Receber).
+          </p>
+        ) : (
           <div className="fp-proximos-recebimentos-lista">
             {proximosRecebimentos.map((item) => {
               const { semana, dia } = formatarDiaSemana(item.data);
@@ -558,8 +564,8 @@ export default function DashboardPremium({
               );
             })}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <section className="fp-metricas">
         <article>
