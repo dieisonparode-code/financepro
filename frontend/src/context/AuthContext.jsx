@@ -62,19 +62,43 @@ export function AuthProvider({ children }) {
 
     let ativo = true;
 
-    supabase
-      .from("perfis")
-      .select("*")
-      .eq("user_id", sessao.user.id)
-      .single()
-      .then(({ data }) => {
-        if (ativo) {
-          setPerfil(data || null);
+    function buscarPerfil() {
+      return supabase
+        .from("perfis")
+        .select("*")
+        .eq("user_id", sessao.user.id)
+        .single()
+        .then(({ data }) => {
+          if (ativo) {
+            setPerfil(data || null);
+          }
+        });
+    }
+
+    buscarPerfil();
+
+    // Se o administrador mudar as permissões dessa pessoa enquanto ela
+    // está com o app aberto (num celular, por exemplo), o perfil atualiza
+    // sozinho na hora — sem precisar deslogar nem recarregar a página.
+    const canal = supabase
+      .channel(`perfil-mudou-${sessao.user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "perfis",
+          filter: `user_id=eq.${sessao.user.id}`,
+        },
+        () => {
+          buscarPerfil();
         }
-      });
+      )
+      .subscribe();
 
     return () => {
       ativo = false;
+      supabase.removeChannel(canal);
     };
   }, [sessao]);
 
