@@ -209,6 +209,26 @@ function hojeLocal() {
   return `${ano}-${mes}-${dia}`;
 }
 
+// Confirmado com o print real do portal do iFood (10/08/2026): o repasse é
+// por SEMANA fechada (segunda a domingo), pago sempre na quarta da semana
+// SEGUINTE — não é "a próxima quarta depois da venda". Uma venda de
+// segunda/terça ainda está dentro de uma semana que não fechou, então cai
+// na quarta da semana seguinte à essa, não na mais próxima.
+function proximaDataSemanalAposFechamento(dataBase, diaSemanaAlvo) {
+  const diaSemanaVenda = dataBase.getDay();
+  const diffParaSegunda = diaSemanaVenda === 0 ? -6 : 1 - diaSemanaVenda;
+
+  const segundaDaSemana = new Date(dataBase);
+  segundaDaSemana.setDate(segundaDaSemana.getDate() + diffParaSegunda);
+
+  const deslocamentoDoAlvo =
+    Number(diaSemanaAlvo) === 0 ? 6 : Number(diaSemanaAlvo) - 1;
+
+  segundaDaSemana.setDate(segundaDaSemana.getDate() + 7 + deslocamentoDoAlvo);
+
+  return segundaDaSemana;
+}
+
 // Mês fechado automaticamente: qualquer lançamento de um mês anterior ao
 // mês atual não pode mais ser editado/excluído. Sem botão de "fechar mês" —
 // assim que o mês vira, o mês anterior já fica travado sozinho.
@@ -1588,13 +1608,14 @@ const statusCmv =
       const dataBase = new Date(`${formulario.data}T12:00:00`);
 
       if (diaSemanaAlvo != null) {
-        // Paga sempre num dia fixo da semana (ex.: iFood toda quarta) — em
-        // vez de "N dias depois", acha o próximo dia daquela semana que
-        // vier depois da venda (pelo menos 1 dia depois, nunca no mesmo
-        // dia da venda).
-        do {
-          dataBase.setDate(dataBase.getDate() + 1);
-        } while (dataBase.getDay() !== Number(diaSemanaAlvo));
+        // Paga sempre na semana seguinte, num dia fixo (ex.: iFood: semana
+        // fecha segunda a domingo, paga na quarta da semana seguinte) —
+        // ver proximaDataSemanalAposFechamento().
+        const dataCalculada = proximaDataSemanalAposFechamento(
+          dataBase,
+          diaSemanaAlvo
+        );
+        dataBase.setTime(dataCalculada.getTime());
       } else {
         dataBase.setDate(dataBase.getDate() + prazo);
       }

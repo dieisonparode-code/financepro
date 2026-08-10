@@ -1937,18 +1937,39 @@ function ehPagamentoPix(nomeFormaPagamentoSaipos) {
 // Mesma conta que o frontend faz em salvarLancamento() (App.jsx) ao escolher
 // uma forma de pagamento — replicada aqui pra poder rodar sozinho no
 // backend, sem depender de alguém abrir a tela.
+// Confirmado com o print real do portal do iFood (10/08/2026): o repasse
+// NÃO é "a próxima quarta depois da venda" — é por SEMANA fechada (segunda
+// a domingo) e paga sempre na quarta da semana SEGUINTE. Ex.: vendas de
+// 03 a 09/08 (seg a dom) caem em 12/08; vendas de hoje (segunda 10/08) só
+// entram na semana 10-16/08, paga em 19/08 — não em 12/08. A conta antiga
+// ("próxima ocorrência daquele dia da semana") dava resultado errado pra
+// vendas de segunda/terça, porque a quarta mais próxima ainda cai DENTRO
+// da semana de apuração que ainda está em andamento.
+function proximaDataSemanalAposFechamento(dataBase, diaSemanaAlvo) {
+  const diaSemanaVenda = dataBase.getDay(); // 0=domingo...6=sábado
+  const diffParaSegunda = diaSemanaVenda === 0 ? -6 : 1 - diaSemanaVenda;
+
+  const segundaDaSemana = new Date(dataBase);
+  segundaDaSemana.setDate(segundaDaSemana.getDate() + diffParaSegunda);
+
+  const deslocamentoDoAlvo =
+    Number(diaSemanaAlvo) === 0 ? 6 : Number(diaSemanaAlvo) - 1;
+
+  segundaDaSemana.setDate(segundaDaSemana.getDate() + 7 + deslocamentoDoAlvo);
+
+  return segundaDaSemana;
+}
+
 function calcularRecebimento(valorBruto, formaPagamento, dataBaseStr) {
   const taxa = Number(formaPagamento?.taxa_percentual || 0);
   const prazo = Number(formaPagamento?.prazo_dias || 0);
   const diaSemanaAlvo = formaPagamento?.dia_semana_pagamento;
 
   const valorLiquidoEsperado = valorBruto - (valorBruto * taxa) / 100;
-  const dataBase = new Date(`${dataBaseStr}T12:00:00`);
+  let dataBase = new Date(`${dataBaseStr}T12:00:00`);
 
   if (diaSemanaAlvo != null) {
-    do {
-      dataBase.setDate(dataBase.getDate() + 1);
-    } while (dataBase.getDay() !== Number(diaSemanaAlvo));
+    dataBase = proximaDataSemanalAposFechamento(dataBase, diaSemanaAlvo);
   } else {
     dataBase.setDate(dataBase.getDate() + prazo);
   }
