@@ -1259,6 +1259,18 @@ app.post("/formas-pagamento", verificarPermissao("financeiro"), async function (
       throw error;
     }
 
+    registrarAuditoria(
+      req,
+      "criou",
+      "formas_pagamento",
+      data.id,
+      `${data.nome}: D+${data.prazo_dias}, taxa ${data.taxa_percentual}%${
+        data.dia_semana_pagamento != null
+          ? ` (dia fixo ${data.dia_semana_pagamento})`
+          : ""
+      }`
+    );
+
     res.status(201).json(data);
   } catch (erro) {
     console.error("Erro ao criar forma de pagamento:", erro.message);
@@ -1280,6 +1292,12 @@ app.put("/formas-pagamento/:id", verificarPermissao("financeiro"), async functio
       });
     }
 
+    const { data: antes } = await supabase
+      .from("formas_pagamento")
+      .select("prazo_dias, taxa_percentual, dia_semana_pagamento")
+      .eq("id", req.params.id)
+      .single();
+
     const { data, error } = await supabase
       .from("formas_pagamento")
       .update(dados)
@@ -1290,6 +1308,18 @@ app.put("/formas-pagamento/:id", verificarPermissao("financeiro"), async functio
     if (error) {
       throw error;
     }
+
+    registrarAuditoria(
+      req,
+      "editou",
+      "formas_pagamento",
+      data.id,
+      `${data.nome}: de (D+${antes?.prazo_dias}, taxa ${antes?.taxa_percentual}%) para (D+${data.prazo_dias}, taxa ${data.taxa_percentual}%)${
+        data.dia_semana_pagamento != null
+          ? `, dia fixo ${data.dia_semana_pagamento}`
+          : ""
+      }`
+    );
 
     res.json(data);
   } catch (erro) {
@@ -1304,6 +1334,12 @@ app.put("/formas-pagamento/:id", verificarPermissao("financeiro"), async functio
 
 app.delete("/formas-pagamento/:id", verificarPermissao("financeiro"), async function (req, res) {
   try {
+    const { data: existente } = await supabase
+      .from("formas_pagamento")
+      .select("nome")
+      .eq("id", req.params.id)
+      .single();
+
     const { error } = await supabase
       .from("formas_pagamento")
       .delete()
@@ -1312,6 +1348,14 @@ app.delete("/formas-pagamento/:id", verificarPermissao("financeiro"), async func
     if (error) {
       throw error;
     }
+
+    registrarAuditoria(
+      req,
+      "excluiu",
+      "formas_pagamento",
+      req.params.id,
+      existente?.nome || null
+    );
 
     res.status(204).send();
   } catch (erro) {

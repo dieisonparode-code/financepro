@@ -1162,6 +1162,39 @@ const statusCmv =
         0
       );
 
+    // Mesma regra do Dashboard: só conta como "caiu de verdade" quem já
+    // não está mais pendente (prazo vencido ou conciliado), e usa o valor
+    // líquido (depois da taxa da forma de pagamento) pra quem já caiu.
+    const hoje = hojeLocal();
+
+    const entradasRecebidasBruto = lancamentosFluxo
+      .filter((item) => item.tipo === "receita")
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (aindaPendente) return total;
+
+        return total + Number(item.valor || 0);
+      }, 0);
+
+    const entradasRecebidasLiquido = lancamentosFluxo
+      .filter((item) => item.tipo === "receita")
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (aindaPendente) return total;
+
+        return (
+          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
+        );
+      }, 0);
+
     const saidas = lancamentosFluxo
       .filter((item) => item.tipo === "despesa")
       .reduce(
@@ -1172,7 +1205,9 @@ const statusCmv =
     return {
       entradas,
       saidas,
-      saldo: entradas - saidas,
+      saldo: entradasRecebidasLiquido - saidas,
+      saldoBruto: entradasRecebidasBruto - saidas,
+      totalTaxas: entradasRecebidasBruto - entradasRecebidasLiquido,
     };
   }, [lancamentosFluxo]);
 
@@ -3009,6 +3044,12 @@ const statusCmv =
                 }`}
               >
                 <span>Saldo do período</span>
+                {totaisFluxo.totalTaxas > 0 && (
+                  <small style={{ display: "block", opacity: 0.75 }}>
+                    {formatarMoeda(totaisFluxo.saldoBruto)} — Taxa cartão{" "}
+                    {formatarMoeda(totaisFluxo.totalTaxas)}
+                  </small>
+                )}
                 <strong>
                   {formatarMoeda(totaisFluxo.saldo)}
                 </strong>
@@ -3077,9 +3118,28 @@ const statusCmv =
                             </span>
                           </td>
                           <td className="value-revenue">
-                            {item.tipo === "receita"
-                              ? formatarMoeda(item.valor)
-                              : "-"}
+                            {item.tipo === "receita" ? (
+                              <>
+                                {formatarMoeda(item.valor)}
+                                {item.valor_liquido_esperado != null &&
+                                  Number(item.valor_liquido_esperado) !==
+                                    Number(item.valor) && (
+                                    <small
+                                      style={{
+                                        display: "block",
+                                        opacity: 0.7,
+                                      }}
+                                    >
+                                      Líq.{" "}
+                                      {formatarMoeda(
+                                        item.valor_liquido_esperado
+                                      )}
+                                    </small>
+                                  )}
+                              </>
+                            ) : (
+                              "-"
+                            )}
                           </td>
                           <td className="value-expense">
                             {item.tipo === "despesa"
