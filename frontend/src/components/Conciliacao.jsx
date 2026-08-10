@@ -134,6 +134,8 @@ function Conciliacao() {
   const [fechamentosSalvos, setFechamentosSalvos] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(false);
   const [fechamentoSelecionado, setFechamentoSelecionado] = useState("");
+  const [fotoPreview, setFotoPreview] = useState(null);
+  const [carregandoPreview, setCarregandoPreview] = useState(false);
   // Enquanto a tela busca a PagSeguro "em tempo real" (a cada 30s, sempre
   // até "agora"), o valor do Sistema fica subindo à medida que novas vendas
   // entram — bom pra acompanhar ao vivo, mas ruim pra comparar com um
@@ -224,6 +226,21 @@ function Conciliacao() {
 
     const fotoComprimida = await comprimirImagem(arquivo);
     await conferirFotoDataUrl(fotoComprimida);
+  }
+
+  async function verFotoSelecionada(id) {
+    if (!id) return;
+
+    setCarregandoPreview(true);
+
+    try {
+      const resultado = await buscarFotoFechamentoCaixa(id);
+      setFotoPreview(resultado?.foto || null);
+    } catch (erroFoto) {
+      alert(erroFoto.message || "Não foi possível carregar a foto.");
+    } finally {
+      setCarregandoPreview(false);
+    }
   }
 
   async function conferirFechamentoSalvo(id) {
@@ -545,6 +562,17 @@ function Conciliacao() {
                     ))}
                   </select>
                 </label>
+              )}
+
+              {fechamentoSelecionado && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => verFotoSelecionada(fechamentoSelecionado)}
+                  disabled={carregandoPreview}
+                >
+                  {carregandoPreview ? "Carregando..." : "👁️ Ver foto"}
+                </button>
               )}
             </div>
 
@@ -870,6 +898,40 @@ function Conciliacao() {
           </div>
         )}
       </article>
+
+      {fotoPreview && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setFotoPreview(null);
+            }
+          }}
+        >
+          <div className="modal modal-foto">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Fechamento de caixa</span>
+                <h2>Foto enviada</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setFotoPreview(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <img
+              src={fotoPreview}
+              alt="Foto do fechamento de caixa"
+              className="foto-modal-imagem"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
