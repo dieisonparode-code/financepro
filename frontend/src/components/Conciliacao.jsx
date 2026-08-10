@@ -239,6 +239,8 @@ function Conciliacao() {
         return novo;
       });
 
+      const valorDinheiroLido = resultado.valores?.["Dinheiro"];
+
       if (resultado.abertura_caixa != null) {
         setAberturaCaixa(Number(resultado.abertura_caixa).toFixed(2));
       }
@@ -246,6 +248,21 @@ function Conciliacao() {
       const formasNaoLidas = Object.entries(resultado.valores)
         .filter(([, valor]) => valor == null)
         .map(([forma]) => forma);
+
+      // Automatizado a pedido do usuário: se a foto trouxe Dinheiro (Em
+      // caixa) E Abertura, já salva sozinho — não precisa clicar em
+      // "Confirmar" separado.
+      if (valorDinheiroLido != null && resultado.abertura_caixa != null) {
+        try {
+          await salvarDinheiroInformado(
+            Number(valorDinheiroLido),
+            Number(resultado.abertura_caixa)
+          );
+          setDinheiroSalvoEm(new Date());
+        } catch (erroSalvar) {
+          console.error("Erro ao salvar dinheiro automaticamente:", erroSalvar);
+        }
+      }
 
       setResultadoFoto({
         sucesso: true,
@@ -679,6 +696,8 @@ function Conciliacao() {
                 ✅ Valores lidos e preenchidos na tabela abaixo.
                 {resultadoFoto.formasNaoLidas?.length > 0 &&
                   ` Não consegui ler: ${resultadoFoto.formasNaoLidas.join(", ")} — preencha essa(s) manualmente.`}
+                {dinheiroSalvoEm &&
+                  " 💵 Dinheiro em caixa salvo automaticamente pro Saldo."}
               </>
             )}
           </div>
