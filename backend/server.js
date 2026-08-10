@@ -9,6 +9,25 @@ const Anthropic = require("@anthropic-ai/sdk");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Grupos de permissão granular. "financeiro" e "fechamento_caixa" ficam
+// sempre incluídos como chave "legado" — quem já tinha esses marcados antes
+// continua com acesso igual, mesmo sem re-selecionar as novas caixinhas
+// específicas.
+const PERM_LANCAMENTOS = [
+  "financeiro",
+  "receitas",
+  "despesas",
+  "fluxo_caixa",
+  "relatorios",
+];
+const PERM_DESPESAS = ["financeiro", "despesas"];
+const PERM_CATEGORIAS = ["financeiro", "categorias"];
+const PERM_CONTAS_PAGAR = ["financeiro", "contas_pagar"];
+const PERM_CONTAS_RECEBER = ["financeiro", "contas_receber"];
+const PERM_FECHAMENTO_CAIXA = ["fechamento_caixa"];
+const PERM_VENDAS_SAIPOS = ["fechamento_caixa", "vendas_saipos"];
+const PERM_CONCILIACAO = ["fechamento_caixa", "conciliacao"];
+
 app.use(cors());
 
 app.use(
@@ -83,7 +102,16 @@ async function verificarAdmin(req, res, next) {
   }
 }
 
-function verificarPermissao(chave) {
+// Aceita uma chave só ("estoque") ou uma lista de chaves aceitas
+// (["receitas", "despesas", ...]) — usado quando várias permissões
+// granulares diferentes dão acesso à mesma rota (ex.: a rota de
+// lançamentos serve Receitas, Despesas, Fluxo de Caixa e Relatórios ao
+// mesmo tempo, cada um com seu próprio checkbox de permissão).
+function verificarPermissao(chaveOuChaves) {
+  const chavesAceitas = Array.isArray(chaveOuChaves)
+    ? chaveOuChaves
+    : [chaveOuChaves];
+
   return async function (req, res, next) {
     try {
       const cabecalho = req.headers.authorization || "";
@@ -110,11 +138,15 @@ function verificarPermissao(chave) {
         .eq("user_id", dadosUsuario.user.id)
         .single();
 
+      const permissoesDoUsuario = perfil?.permissoes || [];
+
       const temAcesso =
         !erroPerfil &&
         perfil &&
         (perfil.perfil === "administrador" ||
-          (perfil.permissoes || []).includes(chave));
+          chavesAceitas.some((chave) =>
+            permissoesDoUsuario.includes(chave)
+          ));
 
       if (!temAcesso) {
         return res.status(403).json({
@@ -273,7 +305,7 @@ app.get("/", function (req, res) {
 const colunasListagem =
   "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
-app.get("/lancamentos", verificarPermissao("financeiro"), async function (req, res) {
+app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("lancamentos")
@@ -299,7 +331,7 @@ app.get("/lancamentos", verificarPermissao("financeiro"), async function (req, r
   }
 });
 
-app.get("/lancamentos/:id/foto", verificarPermissao("financeiro"), async function (req, res) {
+app.get("/lancamentos/:id/foto", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -333,7 +365,7 @@ app.get("/lancamentos/:id/foto", verificarPermissao("financeiro"), async functio
   }
 });
 
-app.get("/lancamentos/:id/foto-mercadoria", verificarPermissao("financeiro"), async function (req, res) {
+app.get("/lancamentos/:id/foto-mercadoria", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -367,7 +399,7 @@ app.get("/lancamentos/:id/foto-mercadoria", verificarPermissao("financeiro"), as
   }
 });
 
-app.post("/lancamentos", verificarPermissao("financeiro"), async function (req, res) {
+app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
     const { perfil } = await obterPerfilOpcional(req);
     const dadosPreparados = prepararLancamento(req.body);
@@ -429,7 +461,7 @@ app.post("/lancamentos", verificarPermissao("financeiro"), async function (req, 
   }
 });
 
-app.put("/lancamentos/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.put("/lancamentos/:id", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -522,7 +554,7 @@ app.put("/lancamentos/:id", verificarPermissao("financeiro"), async function (re
 
 app.delete(
   "/lancamentos/:id",
-  verificarPermissao("financeiro"),
+  verificarPermissao(PERM_LANCAMENTOS),
   async function (req, res) {
     try {
       const id = Number(req.params.id);
@@ -800,7 +832,7 @@ app.delete("/lojas/:id", verificarAdmin, async function (req, res) {
   }
 });
 
-app.get("/categorias", verificarPermissao("financeiro"), async function (req, res) {
+app.get("/categorias", verificarPermissao(PERM_CATEGORIAS), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("categorias")
@@ -822,7 +854,7 @@ app.get("/categorias", verificarPermissao("financeiro"), async function (req, re
   }
 });
 
-app.post("/categorias", verificarPermissao("financeiro"), async function (req, res) {
+app.post("/categorias", verificarPermissao(PERM_CATEGORIAS), async function (req, res) {
   try {
     const nome = (req.body.nome || "").trim();
 
@@ -859,7 +891,7 @@ app.post("/categorias", verificarPermissao("financeiro"), async function (req, r
   }
 });
 
-app.put("/categorias/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.put("/categorias/:id", verificarPermissao(PERM_CATEGORIAS), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -905,7 +937,7 @@ app.put("/categorias/:id", verificarPermissao("financeiro"), async function (req
   }
 });
 
-app.delete("/categorias/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.delete("/categorias/:id", verificarPermissao(PERM_CATEGORIAS), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1217,7 +1249,7 @@ app.get("/log-auditoria", verificarAdmin, async function (req, res) {
   }
 });
 
-app.get("/formas-pagamento", verificarPermissao("financeiro"), async function (req, res) {
+app.get("/formas-pagamento", verificarPermissao(PERM_CONTAS_RECEBER), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("formas_pagamento")
@@ -1239,7 +1271,7 @@ app.get("/formas-pagamento", verificarPermissao("financeiro"), async function (r
   }
 });
 
-app.post("/formas-pagamento", verificarPermissao("financeiro"), async function (req, res) {
+app.post("/formas-pagamento", verificarPermissao(PERM_CONTAS_RECEBER), async function (req, res) {
   try {
     const dados = prepararFormaPagamento(req.body);
 
@@ -1282,7 +1314,7 @@ app.post("/formas-pagamento", verificarPermissao("financeiro"), async function (
   }
 });
 
-app.put("/formas-pagamento/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.put("/formas-pagamento/:id", verificarPermissao(PERM_CONTAS_RECEBER), async function (req, res) {
   try {
     const dados = prepararFormaPagamento(req.body);
 
@@ -1332,7 +1364,7 @@ app.put("/formas-pagamento/:id", verificarPermissao("financeiro"), async functio
   }
 });
 
-app.delete("/formas-pagamento/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.delete("/formas-pagamento/:id", verificarPermissao(PERM_CONTAS_RECEBER), async function (req, res) {
   try {
     const { data: existente } = await supabase
       .from("formas_pagamento")
@@ -1379,7 +1411,7 @@ function prepararContaPagar(dados = {}) {
   };
 }
 
-app.get("/contas-pagar", verificarPermissao("financeiro"), async function (req, res) {
+app.get("/contas-pagar", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("contas_pagar")
@@ -1401,7 +1433,7 @@ app.get("/contas-pagar", verificarPermissao("financeiro"), async function (req, 
   }
 });
 
-app.post("/contas-pagar", verificarPermissao("financeiro"), async function (req, res) {
+app.post("/contas-pagar", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const dadosConta = prepararContaPagar(req.body);
 
@@ -1440,7 +1472,7 @@ app.post("/contas-pagar", verificarPermissao("financeiro"), async function (req,
   }
 });
 
-app.put("/contas-pagar/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.put("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1488,7 +1520,7 @@ app.put("/contas-pagar/:id", verificarPermissao("financeiro"), async function (r
   }
 });
 
-app.put("/contas-pagar/:id/pagar", verificarPermissao("financeiro"), async function (req, res) {
+app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1531,7 +1563,7 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao("financeiro"), async funct
   }
 });
 
-app.delete("/contas-pagar/:id", verificarPermissao("financeiro"), async function (req, res) {
+app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1566,7 +1598,7 @@ app.delete("/contas-pagar/:id", verificarPermissao("financeiro"), async function
 const colunasFechamentoListagem =
   "id, loja_id, tipo, nome_pessoa, valor, tem_foto, observacao, criado_em";
 
-app.get("/fechamentos-caixa", verificarPermissao("fechamento_caixa"), async function (req, res) {
+app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("fechamentos_caixa")
@@ -1588,7 +1620,7 @@ app.get("/fechamentos-caixa", verificarPermissao("fechamento_caixa"), async func
   }
 });
 
-app.get("/fechamentos-caixa/:id/foto", verificarPermissao("fechamento_caixa"), async function (req, res) {
+app.get("/fechamentos-caixa/:id/foto", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1619,7 +1651,7 @@ app.get("/fechamentos-caixa/:id/foto", verificarPermissao("fechamento_caixa"), a
   }
 });
 
-app.post("/fechamentos-caixa", verificarPermissao("fechamento_caixa"), async function (req, res) {
+app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
     const dados = prepararFechamentoCaixa(req.body);
 
@@ -1661,7 +1693,7 @@ app.post("/fechamentos-caixa", verificarPermissao("fechamento_caixa"), async fun
   }
 });
 
-app.delete("/fechamentos-caixa/:id", verificarPermissao("fechamento_caixa"), async function (req, res) {
+app.delete("/fechamentos-caixa/:id", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
     const id = Number(req.params.id);
 
@@ -1861,7 +1893,7 @@ function montarResumoSaipos(vendas, lancamentos) {
 
 app.get(
   "/fechamento-saipos/:lojaId",
-  verificarPermissao("fechamento_caixa"),
+  verificarPermissao(PERM_VENDAS_SAIPOS),
   async function (req, res) {
     try {
       const lojaId = Number(req.params.lojaId);
@@ -2147,7 +2179,7 @@ function montarResumoPagSeguro(transacoes) {
 
 app.get(
   "/pagseguro/vendas",
-  verificarPermissao("fechamento_caixa"),
+  verificarPermissao(PERM_CONCILIACAO),
   async function (req, res) {
     try {
       const dataInicio = req.query.dataInicio || req.query.data;
@@ -2211,7 +2243,7 @@ app.get(
 
 app.get(
   "/conciliacao-pagamentos/:lojaId",
-  verificarPermissao("fechamento_caixa"),
+  verificarPermissao(PERM_CONCILIACAO),
   async function (req, res) {
     try {
       const lojaId = Number(req.params.lojaId);
@@ -2342,7 +2374,7 @@ async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 8192) {
 
 app.post(
   "/lancamentos/ler-nota",
-  verificarPermissao("financeiro"),
+  verificarPermissao(PERM_DESPESAS),
   async function (req, res) {
     try {
       const { foto } = req.body;
@@ -2395,7 +2427,7 @@ app.post(
 
 app.post(
   "/pagseguro/conferir-fechamento",
-  verificarPermissao("fechamento_caixa"),
+  verificarPermissao(PERM_CONCILIACAO),
   async function (req, res) {
     try {
       const { foto } = req.body;

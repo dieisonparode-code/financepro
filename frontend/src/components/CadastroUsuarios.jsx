@@ -1,9 +1,17 @@
 import { useState } from "react";
 
 const permissoesDisponiveis = [
-  { valor: "financeiro", rotulo: "Financeiro (Receitas, Despesas, Fluxo, Relatórios)" },
+  { valor: "receitas", rotulo: "Receitas" },
+  { valor: "despesas", rotulo: "Despesas" },
+  { valor: "categorias", rotulo: "Categorias" },
+  { valor: "fluxo_caixa", rotulo: "Fluxo de Caixa" },
+  { valor: "relatorios", rotulo: "Relatórios" },
+  { valor: "contas_pagar", rotulo: "Contas a Pagar" },
+  { valor: "contas_receber", rotulo: "Contas a Receber" },
   { valor: "estoque", rotulo: "Estoque / Insumos" },
   { valor: "fechamento_caixa", rotulo: "Fechamento de Caixa" },
+  { valor: "vendas_saipos", rotulo: "Vendas (Saipos)" },
+  { valor: "conciliacao", rotulo: "Conciliação" },
   { valor: "aprovar_despesas", rotulo: "Aprovar Despesas" },
   { valor: "clientes", rotulo: "Clientes (CRM)" },
 ];

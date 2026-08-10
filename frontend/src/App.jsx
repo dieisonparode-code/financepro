@@ -273,6 +273,18 @@ function FinanceApp() {
   function temPermissao(chave) {
     return ehAdministrador || (perfil?.permissoes || []).includes(chave);
   }
+
+  // As permissões "financeiro" e "fechamento_caixa" eram grupos únicos que
+  // davam acesso a várias telas de uma vez; agora cada tela tem sua própria
+  // permissão específica. Quem já tinha o grupo antigo marcado continua com
+  // acesso a tudo que esse grupo cobria, sem precisar remarcar nada.
+  function temPermissaoFinanceira(chave) {
+    return temPermissao(chave) || temPermissao("financeiro");
+  }
+
+  function temPermissaoFechamento(chave) {
+    return temPermissao(chave) || temPermissao("fechamento_caixa");
+  }
   const navigate = useNavigate();
 
   async function sair() {
@@ -2228,57 +2240,67 @@ const statusCmv =
             Dashboard
           </button>
 
-          {temPermissao("financeiro") && (
-            <>
-              <button
-                className={pagina === "receitas" ? "active" : ""}
-                onClick={() => setPagina("receitas")}
-              >
-                Receitas
-              </button>
+          {temPermissaoFinanceira("receitas") && (
+            <button
+              className={pagina === "receitas" ? "active" : ""}
+              onClick={() => setPagina("receitas")}
+            >
+              Receitas
+            </button>
+          )}
 
-              <button
-                className={pagina === "despesas" ? "active" : ""}
-                onClick={() => setPagina("despesas")}
-              >
-                Despesas
-              </button>
+          {temPermissaoFinanceira("despesas") && (
+            <button
+              className={pagina === "despesas" ? "active" : ""}
+              onClick={() => setPagina("despesas")}
+            >
+              Despesas
+            </button>
+          )}
 
-              <button
-                className={pagina === "categorias" ? "active" : ""}
-                onClick={() => setPagina("categorias")}
-              >
-                Categorias
-              </button>
+          {temPermissaoFinanceira("categorias") && (
+            <button
+              className={pagina === "categorias" ? "active" : ""}
+              onClick={() => setPagina("categorias")}
+            >
+              Categorias
+            </button>
+          )}
 
-              <button
-                className={pagina === "fluxo" ? "active" : ""}
-                onClick={() => setPagina("fluxo")}
-              >
-                Fluxo de Caixa
-              </button>
+          {temPermissaoFinanceira("fluxo_caixa") && (
+            <button
+              className={pagina === "fluxo" ? "active" : ""}
+              onClick={() => setPagina("fluxo")}
+            >
+              Fluxo de Caixa
+            </button>
+          )}
 
-              <button
-                className={pagina === "relatorios" ? "active" : ""}
-                onClick={() => setPagina("relatorios")}
-              >
-                Relatórios
-              </button>
+          {temPermissaoFinanceira("relatorios") && (
+            <button
+              className={pagina === "relatorios" ? "active" : ""}
+              onClick={() => setPagina("relatorios")}
+            >
+              Relatórios
+            </button>
+          )}
 
-              <button
-                className={pagina === "contas-pagar" ? "active" : ""}
-                onClick={() => setPagina("contas-pagar")}
-              >
-                Contas a Pagar
-              </button>
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "contas-pagar" ? "active" : ""}
+              onClick={() => setPagina("contas-pagar")}
+            >
+              Contas a Pagar
+            </button>
+          )}
 
-              <button
-                className={pagina === "contas-receber" ? "active" : ""}
-                onClick={() => setPagina("contas-receber")}
-              >
-                Contas a Receber
-              </button>
-            </>
+          {temPermissaoFinanceira("contas_receber") && (
+            <button
+              className={pagina === "contas-receber" ? "active" : ""}
+              onClick={() => setPagina("contas-receber")}
+            >
+              Contas a Receber
+            </button>
           )}
 
           {temPermissao("clientes") && (
@@ -2308,7 +2330,7 @@ const statusCmv =
             </button>
           )}
 
-          {temPermissao("fechamento_caixa") && (
+          {temPermissaoFechamento("vendas_saipos") && (
             <button
               className={pagina === "vendas-saipos" ? "active" : ""}
               onClick={() => setPagina("vendas-saipos")}
@@ -2317,7 +2339,7 @@ const statusCmv =
             </button>
           )}
 
-          {temPermissao("fechamento_caixa") && (
+          {temPermissaoFechamento("conciliacao") && (
             <button
               className={pagina === "conciliacao" ? "active" : ""}
               onClick={() => setPagina("conciliacao")}
@@ -2373,7 +2395,7 @@ const statusCmv =
       </aside>
 
       <main className="main-content">
-  {temPermissao("financeiro") &&
+  {temPermissaoFinanceira("contas_pagar") &&
     (() => {
       const contasAlerta = contasPagar
         .filter((conta) => conta.status !== "pago")
@@ -2860,11 +2882,11 @@ const statusCmv =
 
         {pagina === "auditoria" && ehAdministrador && <LogAuditoria />}
 
-        {pagina === "vendas-saipos" && temPermissao("fechamento_caixa") && (
+        {pagina === "vendas-saipos" && temPermissaoFechamento("vendas_saipos") && (
           <VendasSaipos lojas={lojas} />
         )}
 
-        {pagina === "conciliacao" && temPermissao("fechamento_caixa") && (
+        {pagina === "conciliacao" && temPermissaoFechamento("conciliacao") && (
           <Conciliacao />
         )}
 
