@@ -267,6 +267,20 @@ export async function excluirContaPagar(id) {
   });
 }
 
+export async function salvarDinheiroInformado(emCaixa, abertura, lojaId = null) {
+  return requisicao("/caixa-dinheiro-informado", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ em_caixa: emCaixa, abertura, loja_id: lojaId }),
+  });
+}
+
+export async function buscarDinheiroInformado() {
+  return requisicao("/caixa-dinheiro-informado", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function lerFotoContaPagar(foto) {
   return requisicao("/contas-pagar/ler-foto", {
     method: "POST",

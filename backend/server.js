@@ -247,6 +247,7 @@ function prepararLancamento(dados = {}) {
     capturado_em: dados.capturado_em || null,
     loja_id: dados.loja_id || null,
     forma_pagamento_id: dados.forma_pagamento_id || null,
+    pago_em_dinheiro: Boolean(dados.pago_em_dinheiro),
     valor_bruto: dados.valor_bruto != null ? Number(dados.valor_bruto) : null,
     valor_liquido_esperado:
       dados.valor_liquido_esperado != null
@@ -298,7 +299,7 @@ app.get("/", function (req, res) {
 });
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
 app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
@@ -2878,7 +2879,7 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria (geralmente tem uma seção "CONFERÊNCIA" com colunas Forma de Pagamento / Esperado / Em caixa / Diferença). Liste TODAS as formas de pagamento/categorias que aparecerem nessa seção (pode ter várias: Dinheiro, A prazo, Crédito, Débito, Pago Online, Vale, Voucher, Cortesia, Funcionário, PIX, TEF-Débito, TEF-PIX, etc — exatamente como estão escritas no comprovante). Pra cada uma, use o valor da coluna "Em caixa" (se não tiver essa coluna, use o valor que aparecer). Se encontrar "Crédito" (ou "Cartão de Crédito"), chame de "Cartão de crédito". Se encontrar "Débito" (ou "Cartão de Débito"), chame de "Cartão de débito". Se encontrar QUALQUER PIX (linhas como "Pix", "TEF-PIX", "Pix na Entrega"), SOME todos os valores de PIX numa única categoria chamada "PIX". As demais categorias (Dinheiro, A prazo, Pago Online, Vale, Voucher, Cortesia, Funcionário, etc), mantenha o nome exatamente como está escrito no comprovante, sem inventar nem combinar. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "valor": 337.40}, {"nome": "Cartão de crédito", "valor": 4299.00}, ...]}.',
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria (geralmente tem uma seção "CONFERÊNCIA" com colunas Forma de Pagamento / Esperado / Em caixa / Diferença, e mais abaixo uma seção "CAIXA:" com linhas Abertura / Vendas / Retiradas / Reforços / Transferências / Dinheiro em caixa). Liste TODAS as formas de pagamento/categorias da seção CONFERÊNCIA (pode ter várias: Dinheiro, A prazo, Crédito, Débito, Pago Online, Vale, Voucher, Cortesia, Funcionário, PIX, TEF-Débito, TEF-PIX, etc — exatamente como estão escritas no comprovante). Pra cada uma, use o valor da coluna "Em caixa" (se não tiver essa coluna, use o valor que aparecer). Se encontrar "Crédito" (ou "Cartão de Crédito"), chame de "Cartão de crédito". Se encontrar "Débito" (ou "Cartão de Débito"), chame de "Cartão de débito". Se encontrar QUALQUER PIX (linhas como "Pix", "TEF-PIX", "Pix na Entrega"), SOME todos os valores de PIX numa única categoria chamada "PIX". As demais categorias (Dinheiro, A prazo, Pago Online, Vale, Voucher, Cortesia, Funcionário, etc), mantenha o nome exatamente como está escrito no comprovante, sem inventar nem combinar. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)". Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "valor": 337.40}, {"nome": "Cartão de crédito", "valor": 4299.00}, ...], "abertura_caixa": 410.25}. Se não achar abertura_caixa, use null nesse campo.',
         8192
       );
 
@@ -2927,12 +2928,109 @@ app.post(
         });
       }
 
-      res.json({ valores });
+      res.json({
+        valores,
+        abertura_caixa:
+          dadosLidos.abertura_caixa != null
+            ? Number(dadosLidos.abertura_caixa)
+            : null,
+      });
     } catch (erro) {
       console.error("Erro ao conferir fechamento por foto:", erro.message);
 
       res.status(500).json({
         erro: "Não foi possível ler a foto do fechamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Guarda quanto de dinheiro NOVO um fechamento de caixa trouxe pro Saldo —
+// confirmado com o usuário: não é o "Em caixa" (contado) inteiro, é só o
+// que passou da Abertura (Em caixa − Abertura). A Abertura já é dinheiro
+// de fechamentos anteriores (já contado antes), então repetir o valor
+// inteiro contaria a mesma grana duas vezes. Cada confirmação insere uma
+// linha (histórico); o Dashboard SOMA todas pra saber o total acumulado.
+app.post(
+  "/caixa-dinheiro-informado",
+  verificarPermissao(PERM_CONCILIACAO),
+  async function (req, res) {
+    try {
+      const emCaixa = Number(req.body?.em_caixa);
+      const abertura = Number(req.body?.abertura ?? 0);
+      const lojaId = req.body?.loja_id ? Number(req.body.loja_id) : null;
+
+      if (!Number.isFinite(emCaixa) || emCaixa < 0) {
+        return res.status(400).json({
+          erro: "Informe o valor de \"Em caixa\" (contado no fechamento).",
+        });
+      }
+
+      if (!Number.isFinite(abertura) || abertura < 0) {
+        return res.status(400).json({
+          erro: "Informe o valor de \"Abertura\" desse fechamento.",
+        });
+      }
+
+      const valor = emCaixa - abertura;
+
+      const { data, error } = await supabase
+        .from("caixa_dinheiro_informado")
+        .insert([{ loja_id: lojaId, valor, abertura, em_caixa: emCaixa }])
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "informou",
+        "caixa_dinheiro_informado",
+        data.id,
+        `Dinheiro novo no caixa: R$ ${valor.toFixed(2)} (em caixa ${emCaixa.toFixed(2)} − abertura ${abertura.toFixed(2)})`
+      );
+
+      res.status(201).json(data);
+    } catch (erro) {
+      console.error("Erro ao salvar dinheiro informado:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível salvar o valor informado.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/caixa-dinheiro-informado",
+  // Precisa estar acessível a quem vê o card de Saldo, não só a
+  // Conciliação — senão o Dashboard de quem não tem permissão de
+  // conciliação não consegue montar o "em dinheiro" do card.
+  verificarPermissao(["saldo", "conciliacao"]),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("caixa_dinheiro_informado")
+        .select("*")
+        .order("criado_em", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      const lista = data || [];
+      const soma = lista.reduce((total, item) => total + Number(item.valor || 0), 0);
+
+      res.json({ registros: lista, soma });
+    } catch (erro) {
+      console.error("Erro ao buscar dinheiro informado:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar os valores informados.",
         detalhes: erro.message,
       });
     }

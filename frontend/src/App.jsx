@@ -26,6 +26,7 @@ import {
   atualizarCategoria as atualizarCategoriaApi,
   excluirCategoria as excluirCategoriaApi,
   buscarFormasPagamento,
+  buscarDinheiroInformado,
   criarFormaPagamento,
   atualizarFormaPagamento,
   excluirFormaPagamento,
@@ -263,6 +264,7 @@ function criarFormularioInicial(tipo = "receita") {
     capturado_em: null,
     loja_id: "",
     forma_pagamento_id: "",
+    pago_em_dinheiro: false,
     data: hojeLocal(),
   };
 }
@@ -407,6 +409,9 @@ function FinanceApp() {
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [carregandoFormasPagamento, setCarregandoFormasPagamento] =
     useState(true);
+  // Último valor de "Dinheiro" confirmado na tela de Conciliação — usado
+  // pra mostrar "em dinheiro R$X" no card de Saldo do Dashboard.
+  const [dinheiroEmCaixa, setDinheiroEmCaixa] = useState(0);
 
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
@@ -501,6 +506,20 @@ function FinanceApp() {
     }
 
     carregarFormasPagamentoSalvas();
+
+    async function carregarDinheiroInformado() {
+      try {
+        const dados = await buscarDinheiroInformado();
+        // Soma de todos os fechamentos confirmados (cada um já é só o
+        // dinheiro NOVO daquele fechamento — Em caixa menos Abertura —
+        // então a soma acumulada é o total de dinheiro que já entrou.
+        setDinheiroEmCaixa(Number(dados?.soma || 0));
+      } catch (erro) {
+        console.error("Erro ao carregar dinheiro informado:", erro);
+      }
+    }
+
+    carregarDinheiroInformado();
 
     const canalFormasPagamento = supabase
       .channel("formas-pagamento-tempo-real")
@@ -1062,8 +1081,9 @@ const lancamentosDashboard = useMemo(() => {
       cmvValor,
       cmvPercentual,
       margemPercentual,
+      dinheiroEmCaixa,
     };
-  }, [lancamentosDashboard]);
+  }, [lancamentosDashboard, dinheiroEmCaixa]);
 
   const despesasPorCategoria = useMemo(() => {
   const agrupadas = lancamentosAprovados
@@ -1448,6 +1468,7 @@ const statusCmv =
       precisao_metros: lancamento.precisao_metros ?? null,
       capturado_em: lancamento.capturado_em || null,
       loja_id: lancamento.loja_id || "",
+      pago_em_dinheiro: Boolean(lancamento.pago_em_dinheiro),
       data: lancamento.data || hojeLocal(),
     });
 
@@ -1643,6 +1664,8 @@ const statusCmv =
       capturado_em: formulario.capturado_em,
       loja_id: formulario.loja_id ? Number(formulario.loja_id) : null,
       forma_pagamento_id: formulario.forma_pagamento_id || null,
+      pago_em_dinheiro:
+        tipoLancamento === "despesa" ? Boolean(formulario.pago_em_dinheiro) : false,
       valor_bruto:
         tipoLancamento === "receita" && formaPagamentoSelecionada
           ? valorNumerico
@@ -2643,6 +2666,11 @@ const statusCmv =
                       {item.status === "rejeitado" && (
                         <span className="badge-status badge-status-rejeitado">
                           ❌ Rejeitado
+                        </span>
+                      )}
+                      {item.tipo === "despesa" && item.pago_em_dinheiro && (
+                        <span className="badge-status badge-status-pendente">
+                          💵 Dinheiro
                         </span>
                       )}
                     </strong>
@@ -3811,6 +3839,19 @@ const statusCmv =
                 </label>
               </div>
 
+
+              {tipoLancamento === "despesa" && (
+                <label className="permissao-item">
+                  <input
+                    type="checkbox"
+                    checked={formulario.pago_em_dinheiro}
+                    onChange={(evento) =>
+                      alterarCampo("pago_em_dinheiro", evento.target.checked)
+                    }
+                  />
+                  💵 Pago em dinheiro (saiu do caixa)
+                </label>
+              )}
 
               {tipoLancamento === "receita" && (
                 <label>

@@ -4,6 +4,7 @@ import {
   conferirFechamentoFoto,
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
+  salvarDinheiroInformado,
 } from "../services/api";
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
@@ -145,6 +146,39 @@ function Conciliacao() {
   // foto dos totais nesse instante, pra poder testar/reconferir várias vezes
   // sem o número mudar debaixo do usuário.
   const [confrontoCongelado, setConfrontoCongelado] = useState(null);
+  const [salvandoDinheiro, setSalvandoDinheiro] = useState(false);
+  const [dinheiroSalvoEm, setDinheiroSalvoEm] = useState(null);
+  // Abertura desse fechamento (seção "CAIXA:" do comprovante) — é dinheiro
+  // que já veio de fechamentos anteriores, não é novo. Só o que passar
+  // disso (Em caixa − Abertura) é que soma como dinheiro novo no Saldo.
+  const [aberturaCaixa, setAberturaCaixa] = useState("");
+
+  async function confirmarDinheiroInformado() {
+    const valorTexto = valoresInformados["Dinheiro"] ?? "";
+    const emCaixa = Number(valorTexto.replace(",", "."));
+    const abertura = Number(String(aberturaCaixa).replace(",", "."));
+
+    if (!valorTexto || !Number.isFinite(emCaixa) || emCaixa < 0) {
+      alert("Digite o valor de Dinheiro (Em caixa) antes de confirmar.");
+      return;
+    }
+
+    if (aberturaCaixa === "" || !Number.isFinite(abertura) || abertura < 0) {
+      alert("Digite o valor de Abertura desse fechamento antes de confirmar.");
+      return;
+    }
+
+    setSalvandoDinheiro(true);
+
+    try {
+      await salvarDinheiroInformado(emCaixa, abertura);
+      setDinheiroSalvoEm(new Date());
+    } catch (erro) {
+      alert(erro.message || "Não foi possível salvar o valor de Dinheiro.");
+    } finally {
+      setSalvandoDinheiro(false);
+    }
+  }
 
   useEffect(() => {
     async function carregarFechamentosSalvos() {
@@ -204,6 +238,10 @@ function Conciliacao() {
 
         return novo;
       });
+
+      if (resultado.abertura_caixa != null) {
+        setAberturaCaixa(Number(resultado.abertura_caixa).toFixed(2));
+      }
 
       const formasNaoLidas = Object.entries(resultado.valores)
         .filter(([, valor]) => valor == null)
@@ -752,19 +790,62 @@ function Conciliacao() {
                                 {temSistema ? formatarMoeda(valorSistema) : "—"}
                               </td>
                               <td>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="0,00"
-                                  value={valoresInformados[forma] ?? ""}
-                                  onChange={(evento) =>
-                                    setValoresInformados((anterior) => ({
-                                      ...anterior,
-                                      [forma]: evento.target.value,
-                                    }))
-                                  }
-                                  style={{ maxWidth: "120px" }}
-                                />
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "6px",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0,00"
+                                    value={valoresInformados[forma] ?? ""}
+                                    onChange={(evento) =>
+                                      setValoresInformados((anterior) => ({
+                                        ...anterior,
+                                        [forma]: evento.target.value,
+                                      }))
+                                    }
+                                    style={{ maxWidth: "120px" }}
+                                  />
+
+                                  {forma === "Dinheiro" && (
+                                    <>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder="Abertura"
+                                        value={aberturaCaixa}
+                                        onChange={(evento) =>
+                                          setAberturaCaixa(evento.target.value)
+                                        }
+                                        title="Valor de 'Abertura (+)' da seção CAIXA do comprovante"
+                                        style={{ maxWidth: "100px" }}
+                                      />
+
+                                      <button
+                                        type="button"
+                                        className="secondary-button"
+                                        onClick={confirmarDinheiroInformado}
+                                        disabled={salvandoDinheiro}
+                                        title="Soma (Em caixa − Abertura) no Saldo do Dashboard"
+                                      >
+                                        {salvandoDinheiro ? "Salvando..." : "💾 Confirmar"}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+
+                                {forma === "Dinheiro" && (
+                                  <small className="foto-ajuda">
+                                    Abertura = valor da seção "CAIXA:" do
+                                    comprovante (vem sozinho se ler a foto).
+                                    {dinheiroSalvoEm &&
+                                      ` Salvo às ${dinheiroSalvoEm.toLocaleTimeString("pt-BR")}.`}
+                                  </small>
+                                )}
                               </td>
                               <td
                                 style={{

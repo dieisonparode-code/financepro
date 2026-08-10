@@ -123,6 +123,7 @@ function CartaoPrincipal({
   grafico,
   bruto,
   taxa,
+  emDinheiro,
 }) {
   const temTaxa = bruto != null && taxa != null;
 
@@ -133,14 +134,21 @@ function CartaoPrincipal({
         <Icone className={classe}>{icone}</Icone>
       </div>
 
-      {temTaxa ? (
-        <>
-          <div className="fp-kpi-bruto-taxa">
-            <span>{bruto}</span>
-            <span>Taxas {taxa}</span>
-          </div>
-          <strong className="fp-kpi-liquido">{valor}</strong>
-        </>
+      {temTaxa && (
+        <div className="fp-kpi-bruto-taxa">
+          <span>{bruto}</span>
+          <span>Taxas {taxa}</span>
+        </div>
+      )}
+
+      {emDinheiro != null && (
+        <div className="fp-kpi-bruto-taxa">
+          <span>💵 em dinheiro {emDinheiro}</span>
+        </div>
+      )}
+
+      {temTaxa || emDinheiro != null ? (
+        <strong className="fp-kpi-liquido">{valor}</strong>
       ) : (
         <strong>{valor}</strong>
       )}
@@ -187,6 +195,7 @@ export default function DashboardPremium({
   const saldoBruto = numero(totais.saldoBruto);
   const totalTaxas = numero(totais.totalTaxas);
   const percentualTaxas = numero(totais.percentualTaxas);
+  const dinheiroEmCaixa = numero(totais.dinheiroEmCaixa);
   const cmv = numero(totais.cmvPercentual);
   const margem = numero(totais.margemPercentual);
 
@@ -604,6 +613,7 @@ export default function DashboardPremium({
               ? `${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`
               : null
           }
+          emDinheiro={dinheiroEmCaixa > 0 ? formatarMoeda(dinheiroEmCaixa) : null}
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
