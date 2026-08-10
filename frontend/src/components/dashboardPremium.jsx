@@ -477,15 +477,6 @@ export default function DashboardPremium({
 
       <section className="fp-kpis">
         <CartaoPrincipal
-          classe="azul"
-          titulo="Saldo"
-          valor={formatarMoeda(saldo)}
-          legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
-          icone="▣"
-          grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
-        />
-
-        <CartaoPrincipal
           classe="verde"
           titulo="Receitas"
           valor={formatarMoeda(receitas)}
@@ -518,53 +509,22 @@ export default function DashboardPremium({
         />
 
         <CartaoPrincipal
+          classe="azul"
+          titulo="Saldo"
+          valor={formatarMoeda(saldo)}
+          legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
+          icone="▣"
+          grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
+        />
+
+        <CartaoPrincipal
           classe="ciano"
-          titulo="A Receber"
+          titulo="Próximos Recebimentos"
           valor={formatarMoeda(aReceber)}
           legenda="Vendas a prazo ainda não recebidas"
           icone="⏳"
           grafico={<MiniLinha valores={valoresAReceber} cor="#06b6d4" />}
         />
-      </section>
-
-      <section className="fp-proximos-recebimentos">
-        <div className="fp-proximos-recebimentos-titulo">
-          Próximos recebimentos
-        </div>
-
-        {proximosRecebimentos.length === 0 ? (
-          <p className="empty-state">
-            Nenhum recebimento previsto ainda. Aparece aqui quando uma
-            receita é lançada com uma forma de pagamento a prazo (em
-            Contas a Receber).
-          </p>
-        ) : (
-          <div className="fp-proximos-recebimentos-lista">
-            {proximosRecebimentos.map((item) => {
-              const { semana, dia } = formatarDiaSemana(item.data);
-
-              return (
-                <div
-                  className="fp-proximo-recebimento-item"
-                  key={item.id}
-                >
-                  <div className="fp-proximo-recebimento-data">
-                    <span>{semana}</span>
-                    <strong>{dia}</strong>
-                  </div>
-
-                  <span className="fp-proximo-recebimento-descricao">
-                    {item.descricao}
-                  </span>
-
-                  <strong className="fp-proximo-recebimento-valor">
-                    {formatarMoeda(item.valor)}
-                  </strong>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </section>
 
       <section className="fp-metricas">
