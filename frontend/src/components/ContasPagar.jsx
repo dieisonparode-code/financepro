@@ -124,6 +124,7 @@ function ContasPagar({
   const [selecionadas, setSelecionadas] = useState([]);
   const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
   const [busca, setBusca] = useState("");
+  const [buscaData, setBuscaData] = useState("");
 
   function limparFormulario() {
     setDescricao("");
@@ -327,10 +328,20 @@ function ContasPagar({
               ? `${conta.descricao} ${conta.fornecedor || ""}`
                   .toLowerCase()
                   .includes(buscaLimpa)
-              // Sem busca: só o histórico do mês atual — mês anterior só
-              // aparece pesquisando (senão a lista cresce pra sempre).
-              : (conta.data_pagamento || "") >= primeiroDiaMesAtual()
+              : true
           )
+          .filter((conta) => {
+            if (buscaData) {
+              return conta.data_pagamento === buscaData;
+            }
+
+            // Sem nenhum filtro de data escolhido: se já pesquisou por
+            // nome, mostra de qualquer época; senão, só o mês atual (mês
+            // anterior cresceria a lista pra sempre).
+            return buscaLimpa
+              ? true
+              : (conta.data_pagamento || "") >= primeiroDiaMesAtual();
+          })
           .sort((a, b) =>
             (b.data_pagamento || "").localeCompare(a.data_pagamento || "")
           )
@@ -349,20 +360,43 @@ function ContasPagar({
             </div>
           </div>
 
-          <label>
-            Pesquisar
-            <input
-              type="text"
-              value={busca}
-              onChange={(evento) => setBusca(evento.target.value)}
-              placeholder="Descrição ou fornecedor..."
-            />
-          </label>
+          <div className="form-row">
+            <label>
+              Pesquisar
+              <input
+                type="text"
+                value={busca}
+                onChange={(evento) => setBusca(evento.target.value)}
+                placeholder="Descrição ou fornecedor..."
+              />
+            </label>
+
+            <label>
+              Ou pesquisar por data
+              <input
+                type="date"
+                value={buscaData}
+                onChange={(evento) => setBuscaData(evento.target.value)}
+              />
+            </label>
+          </div>
+
+          {buscaData && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setBuscaData("")}
+            >
+              Limpar data
+            </button>
+          )}
 
           <small className="foto-ajuda">
-            {busca.trim()
+            {buscaData
+              ? "Mostrando só o dia escolhido."
+              : busca.trim()
               ? "Buscando em todo o histórico, sem limite de data."
-              : "Mostrando só as contas pagas neste mês. Pra ver meses anteriores, pesquise pelo nome."}
+              : "Mostrando só as contas pagas neste mês. Pra ver meses anteriores, pesquise pelo nome ou escolha uma data."}
           </small>
         </article>
       ) : (
@@ -571,7 +605,9 @@ function ContasPagar({
         ) : contasVisiveis.length === 0 ? (
           <div className="empty-state">
             {modo === "pagas"
-              ? busca.trim()
+              ? buscaData
+                ? "Nenhuma conta paga nesse dia."
+                : busca.trim()
                 ? "Nenhuma conta paga encontrada com essa busca."
                 : "Nenhuma conta paga neste mês ainda."
               : "Nenhuma conta a pagar."}
