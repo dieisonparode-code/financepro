@@ -1806,7 +1806,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -1907,6 +1907,63 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
     });
   }
 });
+
+// Salva a leitura por IA da foto de fechamento — uma vez lida, o valor
+// fica gravado nesse fechamento pra sempre; refazer a conciliação depois
+// usa esse valor salvo em vez de chamar a IA de novo (evita que o valor
+// mude sozinho entre uma conciliação e outra). Só um novo pedido explícito
+// de "ler de novo" sobrescreve.
+app.put(
+  "/fechamentos-caixa/:id/valores-informados",
+  verificarPermissao(["fechamento_caixa", "conciliacao"]),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do fechamento inválido.",
+        });
+      }
+
+      const valores =
+        req.body?.valores && typeof req.body.valores === "object"
+          ? req.body.valores
+          : null;
+
+      const { data, error } = await supabase
+        .from("fechamentos_caixa")
+        .update({ valores_informados: valores })
+        .eq("id", id)
+        .select("id, valores_informados")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "salvou leitura de foto",
+        "fechamentos_caixa",
+        id,
+        null
+      );
+
+      res.json(data);
+    } catch (erro) {
+      console.error(
+        "Erro ao salvar valores informados do fechamento:",
+        erro.message
+      );
+
+      res.status(500).json({
+        erro: "Não foi possível salvar a leitura da foto.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 app.delete("/fechamentos-caixa/:id", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {

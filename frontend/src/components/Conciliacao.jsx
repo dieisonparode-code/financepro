@@ -5,6 +5,7 @@ import {
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
   buscarFechamentoSaipos,
+  salvarValoresInformadosFechamento,
 } from "../services/api";
 
 // A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
@@ -186,21 +187,72 @@ function Conciliacao({ lojaId }) {
       .then((resultado) => setResumoSaipos(resultado))
       .catch(() => setResumoSaipos(null));
 
-    const buscaFoto = buscarFotoFechamentoCaixa(fechamentoEscolhido.id)
-      .then((fotoResultado) => conferirFotoDataUrl(fotoResultado?.foto))
-      .catch((erroFoto) => {
-        setResultadoFoto({
-          erro_leitura:
-            erroFoto.message ||
-            "Não foi possível buscar a foto desse fechamento.",
-        });
-      });
+    // Pedido do usuário: uma vez lida a foto, o valor fica salvo nesse
+    // fechamento — refazer a conciliação usa o valor salvo, sem chamar a
+    // IA de novo (evita o valor mudar sozinho entre uma tentativa e
+    // outra). Só o botão "Ler foto de novo" força uma releitura.
+    const buscaFoto = fechamentoEscolhido.valores_informados
+      ? Promise.resolve(
+          usarValoresSalvos(fechamentoEscolhido.valores_informados)
+        )
+      : buscarFotoFechamentoCaixa(fechamentoEscolhido.id)
+          .then((fotoResultado) =>
+            conferirFotoDataUrl(fotoResultado?.foto, {
+              salvarEm: fechamentoEscolhido.id,
+            })
+          )
+          .catch((erroFoto) => {
+            setResultadoFoto({
+              erro_leitura:
+                erroFoto.message ||
+                "Não foi possível buscar a foto desse fechamento.",
+            });
+          });
 
     await Promise.all([buscaVendas, buscaSaipos, buscaFoto]);
     setCarregando(false);
   }
 
-  async function conferirFotoDataUrl(fotoDataUrl) {
+  // Usa uma leitura já salva anteriormente, sem chamar a IA de novo.
+  function usarValoresSalvos(valoresSalvos) {
+    setValoresInformados((anterior) => {
+      const novo = { ...anterior };
+
+      Object.entries(valoresSalvos).forEach(([forma, valor]) => {
+        if (valor != null) {
+          novo[forma] = Number(valor).toFixed(2);
+        }
+      });
+
+      return novo;
+    });
+
+    setResultadoFoto({ sucesso: true, salvo: true, formasNaoLidas: [] });
+  }
+
+  async function relerFotoAgora() {
+    if (!fechamentoEscolhido) return;
+
+    setEnviandoFoto(true);
+    setResultadoFoto(null);
+
+    try {
+      const fotoResultado = await buscarFotoFechamentoCaixa(
+        fechamentoEscolhido.id
+      );
+      await conferirFotoDataUrl(fotoResultado?.foto, {
+        salvarEm: fechamentoEscolhido.id,
+      });
+    } catch (erroFoto) {
+      setResultadoFoto({
+        erro_leitura:
+          erroFoto.message || "Não foi possível buscar a foto desse fechamento.",
+      });
+      setEnviandoFoto(false);
+    }
+  }
+
+  async function conferirFotoDataUrl(fotoDataUrl, { salvarEm } = {}) {
     if (!fotoDataUrl) return;
 
     setEnviandoFoto(true);
@@ -242,6 +294,34 @@ function Conciliacao({ lojaId }) {
         sucesso: true,
         formasNaoLidas,
       });
+
+      // Salva a leitura no fechamento pra não precisar (nem poder) ler de
+      // novo por engano nas próximas vezes — só sobrescreve se o operador
+      // clicar em "Ler foto de novo" explicitamente.
+      if (salvarEm) {
+        try {
+          const salvo = await salvarValoresInformadosFechamento(
+            salvarEm,
+            resultado.valores
+          );
+
+          setFechamentosDisponiveis((anteriores) =>
+            anteriores.map((item) =>
+              item.id === salvarEm
+                ? { ...item, valores_informados: salvo.valores_informados }
+                : item
+            )
+          );
+
+          setFechamentoEscolhido((anterior) =>
+            anterior && anterior.id === salvarEm
+              ? { ...anterior, valores_informados: salvo.valores_informados }
+              : anterior
+          );
+        } catch (erroSalvar) {
+          console.error("Erro ao salvar leitura da foto:", erroSalvar);
+        }
+      }
     } catch (erroFoto) {
       setResultadoFoto({
         erro_leitura:
@@ -516,6 +596,18 @@ function Conciliacao({ lojaId }) {
                     >
                       {carregandoPreview ? "Carregando..." : "👁️ Ver foto"}
                     </button>
+
+                    {fechamentoEscolhido.valores_informados && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={relerFotoAgora}
+                        disabled={carregando || enviandoFoto}
+                        title="A leitura já está salva — só use isso se quiser tentar ler a foto de novo."
+                      >
+                        {enviandoFoto ? "Lendo..." : "🔄 Ler foto de novo"}
+                      </button>
+                    )}
                   </div>
                 )}
               </>
@@ -550,7 +642,9 @@ function Conciliacao({ lojaId }) {
               </>
             ) : (
               <>
-                ✅ Valores lidos e preenchidos na tabela abaixo.
+                {resultadoFoto.salvo
+                  ? "✅ Usando a leitura já salva desse fechamento (não chamou a IA de novo)."
+                  : "✅ Valores lidos e preenchidos na tabela abaixo — leitura salva pra próxima vez."}
                 {resultadoFoto.formasNaoLidas?.length > 0 &&
                   ` Não consegui ler: ${resultadoFoto.formasNaoLidas.join(", ")} — preencha essa(s) manualmente.`}
               </>
