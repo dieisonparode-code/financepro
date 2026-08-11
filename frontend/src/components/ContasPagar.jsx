@@ -106,6 +106,8 @@ function ContasPagar({
   const [lendoFoto, setLendoFoto] = useState(false);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [detalheVisualizado, setDetalheVisualizado] = useState(null);
+  const [selecionadas, setSelecionadas] = useState([]);
+  const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
 
   function limparFormulario() {
     setDescricao("");
@@ -204,20 +206,52 @@ function ContasPagar({
     setFoto(conta.foto || "");
   }
 
-  async function confirmarPagamento(conta) {
+  function alternarSelecao(id) {
+    setSelecionadas((anteriores) =>
+      anteriores.includes(id)
+        ? anteriores.filter((item) => item !== id)
+        : [...anteriores, id]
+    );
+  }
+
+  async function confirmarPagamentoSelecionadas() {
+    if (selecionadas.length === 0) return;
+
     const confirmar = window.confirm(
-      `Marcar "${conta.descricao}" como paga?`
+      selecionadas.length === 1
+        ? "Marcar a conta selecionada como paga?"
+        : `Marcar as ${selecionadas.length} contas selecionadas como pagas?`
     );
 
     if (!confirmar) return;
 
+    setConfirmandoPagamento(true);
+
     try {
-      await marcarComoPaga(conta.id);
+      const falhas = [];
+
+      for (const id of selecionadas) {
+        try {
+          await marcarComoPaga(id);
+        } catch (erro) {
+          falhas.push(erro.message || "erro desconhecido");
+        }
+      }
+
+      setSelecionadas([]);
       // Vai direto pra aba de Contas Pagas, já com acesso ao "Ver detalhes"
-      // dessa conta que acabou de ser paga.
+      // de tudo que acabou de ser pago.
       setAbaAtiva("pagas");
-    } catch (erro) {
-      alert(erro.message || "Não foi possível marcar como paga.");
+
+      if (falhas.length > 0) {
+        alert(
+          `Algumas contas não puderam ser marcadas como pagas: ${falhas.join(
+            ", "
+          )}`
+        );
+      }
+    } finally {
+      setConfirmandoPagamento(false);
     }
   }
 
@@ -448,6 +482,20 @@ function ContasPagar({
           </button>
         </div>
 
+        {abaAtiva === "pendentes" && selecionadas.length > 0 && (
+          <button
+            type="button"
+            className="approve-button"
+            onClick={confirmarPagamentoSelecionadas}
+            disabled={confirmandoPagamento}
+            style={{ marginBottom: 12 }}
+          >
+            {confirmandoPagamento
+              ? "Confirmando..."
+              : `✅ Confirmar pagamento (${selecionadas.length})`}
+          </button>
+        )}
+
         {carregando ? (
           <div className="empty-state">Carregando...</div>
         ) : contasVisiveis.length === 0 ? (
@@ -464,6 +512,15 @@ function ContasPagar({
               return (
                 <div className="categoria-item" key={conta.id}>
                   <div className="categoria-identificacao">
+                    {abaAtiva === "pendentes" && (
+                      <input
+                        type="checkbox"
+                        checked={selecionadas.includes(conta.id)}
+                        onChange={() => alternarSelecao(conta.id)}
+                        style={{ width: 20, height: 20, flexShrink: 0 }}
+                      />
+                    )}
+
                     <div className="categoria-icone">💸</div>
 
                     <div>
@@ -503,16 +560,6 @@ function ContasPagar({
                         onClick={() => setFotoVisualizada(conta.foto)}
                       >
                         👁️ Ver foto
-                      </button>
-                    )}
-
-                    {conta.status !== "pago" && (
-                      <button
-                        type="button"
-                        className="approve-button"
-                        onClick={() => confirmarPagamento(conta)}
-                      >
-                        ✅ Pagar
                       </button>
                     )}
 
