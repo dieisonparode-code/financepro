@@ -1532,11 +1532,59 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       });
     }
 
+    const { data: contaAtual, error: erroBusca } = await supabase
+      .from("contas_pagar")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (erroBusca) {
+      throw erroBusca;
+    }
+
+    // Guarda de idempotência: se já está paga (ex.: clique duplo, retry de
+    // rede), não paga de novo nem duplica a despesa — só devolve o registro.
+    if (contaAtual.status === "pago") {
+      return res.json(contaAtual);
+    }
+
+    const dataPagamento = new Date().toISOString().slice(0, 10);
+
+    // Pagar uma conta a pagar precisa dar baixa de verdade no saldo — cria
+    // a despesa correspondente, do jeito que o usuário pediu: "toda conta
+    // paga no contas a pagar confirmada tem que dar baixa no saldo".
+    const novaDespesa = {
+      id: Date.now(),
+      tipo: "despesa",
+      descricao: contaAtual.descricao,
+      valor: Number(contaAtual.valor || 0),
+      data: dataPagamento,
+      grupo: "",
+      categoria: "Outros",
+      subcategoria: "",
+      fornecedor: contaAtual.fornecedor || "",
+      observacao: `Gerado automaticamente ao pagar a conta a pagar #${contaAtual.id} (${contaAtual.descricao}).`,
+      foto: contaAtual.foto || "",
+      loja_id: contaAtual.loja_id,
+      status: "aprovado",
+    };
+
+    const { data: despesaCriada, error: erroDespesa } = await supabase
+      .from("lancamentos")
+      .insert([novaDespesa])
+      .select("*")
+      .single();
+
+    if (erroDespesa) {
+      throw erroDespesa;
+    }
+
     const { data, error } = await supabase
       .from("contas_pagar")
       .update({
         status: "pago",
-        data_pagamento: new Date().toISOString().slice(0, 10),
+        data_pagamento: dataPagamento,
+        lancamento_id: despesaCriada.id,
       })
       .eq("id", id)
       .select("*")
@@ -1551,7 +1599,7 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       "pagou",
       "contas_pagar",
       data.id,
-      `${data.descricao} (${data.valor})`
+      `${data.descricao} (${data.valor}) — despesa #${despesaCriada.id} lançada no saldo`
     );
 
     res.json(data);
@@ -1573,6 +1621,37 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
       return res.status(400).json({
         erro: "ID da conta inválido.",
       });
+    }
+
+    const { data: contaAtual, error: erroBusca } = await supabase
+      .from("contas_pagar")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (erroBusca) {
+      throw erroBusca;
+    }
+
+    // Excluir uma conta já paga tem que devolver o dinheiro pro saldo —
+    // remove a despesa que foi gerada automaticamente no pagamento.
+    if (contaAtual.status === "pago" && contaAtual.lancamento_id) {
+      const { error: erroExclusaoDespesa } = await supabase
+        .from("lancamentos")
+        .delete()
+        .eq("id", contaAtual.lancamento_id);
+
+      if (erroExclusaoDespesa) {
+        throw erroExclusaoDespesa;
+      }
+
+      registrarAuditoria(
+        req,
+        "excluiu",
+        "lancamentos",
+        contaAtual.lancamento_id,
+        `Despesa revertida ao excluir a conta a pagar: ${contaAtual.descricao} (${contaAtual.valor})`
+      );
     }
 
     const { error } = await supabase
