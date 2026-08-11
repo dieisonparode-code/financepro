@@ -1862,13 +1862,18 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
     const dados = prepararFechamentoCaixa(req.body);
 
     if (
-      !["caixa", "boy", "cozinha", "venda_prazo", "funcionario"].includes(
-        dados.tipo
-      )
+      ![
+        "caixa",
+        "boy",
+        "cozinha",
+        "venda_prazo",
+        "funcionario",
+        "pago_dinheiro_caixa",
+      ].includes(dados.tipo)
     ) {
       return res.status(400).json({
         erro:
-          "Tipo inválido. Use caixa, boy, cozinha, venda_prazo ou funcionario.",
+          "Tipo inválido. Use caixa, boy, cozinha, venda_prazo, funcionario ou pago_dinheiro_caixa.",
       });
     }
 
