@@ -7,15 +7,18 @@ import {
   buscarFechamentoSaipos,
 } from "../services/api";
 
-// A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro e A
-// prazo (funcionários) já são contabilizados automaticamente pela própria
-// Saipos — só Dinheiro não tem nenhum "Sistema" pra comparar (é físico,
-// só o que o operador informou na foto). Mapeia o nome exato que a Saipos
-// usa pro nome que essa tela já usa.
+// A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
+// prazo (funcionários), Vale e Cortesia já são contabilizados
+// automaticamente pela própria Saipos — só Dinheiro não tem nenhum
+// "Sistema" pra comparar (é físico, só o que o operador informou na
+// foto). Mapeia o nome exato que a Saipos usa pro nome que essa tela já
+// usa.
 const MAPA_SAIPOS_PARA_CONFRONTO = {
   "Pago Online": "Pago Online",
   "A prazo (funcionários)": "A prazo",
   "Voucher Parceiro Desconto": "Voucher Parceiro",
+  Vale: "Vale",
+  Cortesia: "Cortesia",
 };
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
