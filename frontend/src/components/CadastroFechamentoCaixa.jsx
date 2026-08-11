@@ -196,7 +196,13 @@ function CadastroFechamentoCaixa({
 
     // Mostra o rascunho já com a foto — a leitura do valor continua em
     // segundo plano, o operador não precisa esperar pra ver a foto.
-    setRascunhoDiaria({ tipo, foto: fotoComprimida, valor: "", lendo: true });
+    setRascunhoDiaria({
+      tipo,
+      foto: fotoComprimida,
+      valor: "",
+      lendo: true,
+      avisoLeitura: "",
+    });
     setEnviandoTipo(null);
 
     try {
@@ -208,6 +214,11 @@ function CadastroFechamentoCaixa({
               ...anterior,
               valor: resultado?.valor != null ? String(resultado.valor) : "",
               lendo: false,
+              avisoLeitura:
+                resultado?.valor == null
+                  ? resultado?.erro_leitura ||
+                    "Não consegui ler o valor dessa foto. Preencha manualmente."
+                  : "",
             }
           : anterior
       );
@@ -216,7 +227,13 @@ function CadastroFechamentoCaixa({
 
       setRascunhoDiaria((anterior) =>
         anterior && anterior.foto === fotoComprimida
-          ? { ...anterior, lendo: false }
+          ? {
+              ...anterior,
+              lendo: false,
+              avisoLeitura:
+                erroLeitura.message ||
+                "Não consegui ler o valor dessa foto. Preencha manualmente.",
+            }
           : anterior
       );
     }
@@ -520,6 +537,12 @@ function CadastroFechamentoCaixa({
               <small className="foto-ajuda">
                 🤖 Lendo o valor automaticamente...
               </small>
+            )}
+
+            {rascunhoDiaria.avisoLeitura && (
+              <div className="empty-state">
+                ⚠️ {rascunhoDiaria.avisoLeitura}
+              </div>
             )}
 
             <div className="modal-actions">
