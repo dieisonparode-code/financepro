@@ -106,9 +106,14 @@ function CadastroFechamentoCaixa({
   finalizacoes = [],
   finalizarFechamento,
   lojaId = null,
+  ehAdministrador = false,
+  trocarFoto,
 }) {
   const [enviandoTipo, setEnviandoTipo] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
+  const [registroFotoVisualizada, setRegistroFotoVisualizada] =
+    useState(null);
+  const [trocandoFoto, setTrocandoFoto] = useState(false);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
   const [finalizando, setFinalizando] = useState(false);
   const [rascunhoDiaria, setRascunhoDiaria] = useState(null);
@@ -356,10 +361,27 @@ function CadastroFechamentoCaixa({
     try {
       const resultado = await buscarFoto(registro.id);
       setFotoVisualizada(resultado?.foto || "");
+      setRegistroFotoVisualizada(registro);
     } catch (erro) {
       alert(erro.message || "Não foi possível carregar a foto.");
     } finally {
       setCarregandoFotoId(null);
+    }
+  }
+
+  async function trocarFotoDoRegistro(arquivo) {
+    if (!arquivo || !registroFotoVisualizada) return;
+
+    setTrocandoFoto(true);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      await trocarFoto(registroFotoVisualizada.id, fotoComprimida);
+      setFotoVisualizada(fotoComprimida);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível trocar a foto.");
+    } finally {
+      setTrocandoFoto(false);
     }
   }
 
@@ -677,6 +699,7 @@ function CadastroFechamentoCaixa({
           onMouseDown={(evento) => {
             if (evento.target === evento.currentTarget) {
               setFotoVisualizada(null);
+              setRegistroFotoVisualizada(null);
             }
           }}
         >
@@ -690,7 +713,10 @@ function CadastroFechamentoCaixa({
               <button
                 type="button"
                 className="close-button"
-                onClick={() => setFotoVisualizada(null)}
+                onClick={() => {
+                  setFotoVisualizada(null);
+                  setRegistroFotoVisualizada(null);
+                }}
               >
                 ×
               </button>
@@ -701,6 +727,35 @@ function CadastroFechamentoCaixa({
               alt="Foto arquivada"
               className="foto-modal-imagem"
             />
+
+            {ehAdministrador && (
+              <div className="modal-actions">
+                <input
+                  id="trocar-foto-fechamento"
+                  type="file"
+                  accept="image/*"
+                  disabled={trocandoFoto}
+                  style={{ display: "none" }}
+                  onChange={async (evento) => {
+                    const arquivo = evento.target.files?.[0];
+                    await trocarFotoDoRegistro(arquivo);
+                    evento.target.value = "";
+                  }}
+                />
+
+                <label
+                  htmlFor="trocar-foto-fechamento"
+                  className="secondary-button"
+                  style={
+                    trocandoFoto
+                      ? { opacity: 0.6, pointerEvents: "none" }
+                      : undefined
+                  }
+                >
+                  {trocandoFoto ? "Trocando..." : "✏️ Editar (trocar foto)"}
+                </label>
+              </div>
+            )}
           </div>
         </div>
       )}

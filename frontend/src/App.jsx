@@ -53,6 +53,7 @@ import {
   buscarFinalizacoesFechamentoCaixa,
   finalizarFechamentoCaixa,
   lerValorFechamentoCaixa,
+  trocarFotoFechamentoCaixa,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -2323,6 +2324,18 @@ const statusCmv =
     );
   }
 
+  async function trocarFotoFechamentoCaixaHandler(id, foto) {
+    await trocarFotoFechamentoCaixa(id, foto);
+
+    // A foto mudou — a leitura salva anteriormente não vale mais (mesma
+    // regra do backend), senão a conciliação usaria o valor da foto antiga.
+    setFechamentosCaixa((anteriores) =>
+      anteriores.map((item) =>
+        item.id === id ? { ...item, valores_informados: null } : item
+      )
+    );
+  }
+
   async function finalizarFechamentoCaixaHandler() {
     const salvo = await finalizarFechamentoCaixa();
 
@@ -3444,6 +3457,8 @@ const statusCmv =
             lerValorFoto={lerValorFechamentoCaixa}
             finalizacoes={finalizacoesFechamentoCaixa}
             finalizarFechamento={finalizarFechamentoCaixaHandler}
+            ehAdministrador={ehAdministrador}
+            trocarFoto={trocarFotoFechamentoCaixaHandler}
             lojaId={
               !vePermissaoTotal
                 ? perfil?.loja_id || null

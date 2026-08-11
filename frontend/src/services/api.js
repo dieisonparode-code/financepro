@@ -415,6 +415,14 @@ export async function buscarFotoFechamentoCaixa(id) {
   });
 }
 
+export async function trocarFotoFechamentoCaixa(id, foto) {
+  return requisicao(`/fechamentos-caixa/${id}/foto`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto }),
+  });
+}
+
 export async function salvarValoresInformadosFechamento(id, valores) {
   return requisicao(`/fechamentos-caixa/${id}/valores-informados`, {
     method: "PUT",

@@ -1965,6 +1965,60 @@ app.put(
   }
 );
 
+// Trocar a foto de um fechamento já registrado — pedido do usuário, só
+// pra administrador (sem passar pelo fluxo de autorização usado em
+// Despesas, porque aqui é o próprio admin fazendo a troca).
+app.put(
+  "/fechamentos-caixa/:id/foto",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do fechamento inválido.",
+        });
+      }
+
+      const novaFoto = req.body?.foto;
+
+      if (!novaFoto) {
+        return res.status(400).json({
+          erro: "Envie a nova foto.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("fechamentos_caixa")
+        .update({
+          foto: novaFoto,
+          // A foto mudou — a leitura salva anteriormente não vale mais,
+          // senão a conciliação ficaria usando o valor da foto antiga.
+          valores_informados: null,
+        })
+        .eq("id", id)
+        .select("id")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "trocou foto", "fechamentos_caixa", id, null);
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao trocar foto do fechamento:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível trocar a foto.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.delete("/fechamentos-caixa/:id", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
     const id = Number(req.params.id);
