@@ -430,6 +430,19 @@ export async function excluirFechamentoCaixa(id) {
   });
 }
 
+export async function buscarFinalizacoesFechamentoCaixa() {
+  return requisicao("/fechamento-caixa-finalizacoes", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function finalizarFechamentoCaixa() {
+  return requisicao("/fechamento-caixa-finalizacoes", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarLojas() {
   return requisicao("/lojas", { headers: await cabecalhoAutenticado() });
 }

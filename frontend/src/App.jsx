@@ -50,6 +50,8 @@ import {
   buscarFotoFechamentoCaixa,
   criarFechamentoCaixa,
   excluirFechamentoCaixa,
+  buscarFinalizacoesFechamentoCaixa,
+  finalizarFechamentoCaixa,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -433,6 +435,8 @@ function FinanceApp() {
 
   const [fechamentosCaixa, setFechamentosCaixa] = useState([]);
   const [carregandoFechamentos, setCarregandoFechamentos] = useState(true);
+  const [finalizacoesFechamentoCaixa, setFinalizacoesFechamentoCaixa] =
+    useState([]);
 
   const [notasFiscais, setNotasFiscais] = useState([]);
   const [carregandoNotasFiscais, setCarregandoNotasFiscais] = useState(true);
@@ -719,6 +723,17 @@ function FinanceApp() {
 
     carregarFechamentosSalvos();
 
+    async function carregarFinalizacoes() {
+      try {
+        const dados = await buscarFinalizacoesFechamentoCaixa();
+        setFinalizacoesFechamentoCaixa(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar finalizações de fechamento:", erro);
+      }
+    }
+
+    carregarFinalizacoes();
+
     const canalFechamentos = supabase
       .channel("fechamentos-caixa-tempo-real")
       .on(
@@ -748,8 +763,32 @@ function FinanceApp() {
       )
       .subscribe();
 
+    // Pra sumir a lista pra todo mundo assim que alguém finalizar o
+    // fechamento, mesmo em outro dispositivo/aba.
+    const canalFinalizacoes = supabase
+      .channel("fechamento-caixa-finalizacoes-tempo-real")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "fechamento_caixa_finalizacoes",
+        },
+        (payload) => {
+          setFinalizacoesFechamentoCaixa((anteriores) => {
+            if (anteriores.some((item) => item.id === payload.new.id)) {
+              return anteriores;
+            }
+
+            return [payload.new, ...anteriores];
+          });
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(canalFechamentos);
+      supabase.removeChannel(canalFinalizacoes);
     };
   }, []);
 
@@ -2253,6 +2292,12 @@ const statusCmv =
     );
   }
 
+  async function finalizarFechamentoCaixaHandler() {
+    const salvo = await finalizarFechamentoCaixa();
+
+    setFinalizacoesFechamentoCaixa((anteriores) => [salvo, ...anteriores]);
+  }
+
   function exportarRelatorioCSV() {
     const cabecalho = [
       "Data",
@@ -3280,6 +3325,8 @@ const statusCmv =
             adicionarFechamento={adicionarFechamentoCaixa}
             removerFechamento={removerFechamentoCaixa}
             buscarFoto={buscarFotoFechamentoCaixa}
+            finalizacoes={finalizacoesFechamentoCaixa}
+            finalizarFechamento={finalizarFechamentoCaixaHandler}
           />
         )}
 

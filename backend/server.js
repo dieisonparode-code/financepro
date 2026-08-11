@@ -1929,6 +1929,71 @@ app.delete("/fechamentos-caixa/:id", verificarPermissao(PERM_FECHAMENTO_CAIXA), 
   }
 });
 
+// Marca "esse fechamento de caixa (dia/turno) está encerrado" — pedido do
+// usuário: enquanto não clicar aqui, nenhum registro (foto de fechamento,
+// diária, etc.) pode desaparecer da lista, mesmo passando da meia-noite.
+app.get(
+  "/fechamento-caixa-finalizacoes",
+  verificarPermissao(PERM_FECHAMENTO_CAIXA),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("fechamento_caixa_finalizacoes")
+        .select("*")
+        .order("criado_em", { ascending: false })
+        .limit(30);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar finalizações de fechamento:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar as finalizações de fechamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/fechamento-caixa-finalizacoes",
+  verificarPermissao(PERM_FECHAMENTO_CAIXA),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("fechamento_caixa_finalizacoes")
+        .insert([{}])
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "finalizou fechamento de caixa",
+        "fechamento_caixa_finalizacoes",
+        data.id,
+        null
+      );
+
+      res.status(201).json(data);
+    } catch (erro) {
+      console.error("Erro ao finalizar fechamento de caixa:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível finalizar o fechamento de caixa.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 const SAIPOS_DATA_API_BASE = "https://data.saipos.io/v1";
 
 // A API de Dados da Saipos às vezes responde 502/503/504 (fila cheia,

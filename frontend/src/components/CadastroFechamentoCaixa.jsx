@@ -67,6 +67,9 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
+// Fallback só usado se NUNCA houve nenhuma finalização ainda (ex.: recém
+// publicado) — a partir da primeira finalização, o corte deixa de ser por
+// horas e passa a ser só "depois da última finalização".
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000;
 
 function CadastroFechamentoCaixa({
@@ -75,15 +78,51 @@ function CadastroFechamentoCaixa({
   adicionarFechamento,
   removerFechamento,
   buscarFoto,
+  finalizacoes = [],
+  finalizarFechamento,
 }) {
   const [enviandoTipo, setEnviandoTipo] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
+  const [finalizando, setFinalizando] = useState(false);
+
+  // Pedido do usuário: "caixa ainda não fechado não pode sumir" — enquanto
+  // ninguém clicar em "Finalizar Fechamento de Caixa", nada some da lista,
+  // mesmo passando da meia-noite.
+  const ultimaFinalizacao = finalizacoes.length
+    ? Math.max(
+        ...finalizacoes.map((item) => new Date(item.criado_em).getTime())
+      )
+    : null;
 
   const registrosRecentes = registros.filter((registro) => {
     const criadoEm = new Date(registro.criado_em).getTime();
+
+    if (ultimaFinalizacao != null) {
+      return criadoEm > ultimaFinalizacao;
+    }
+
     return Date.now() - criadoEm < OITO_HORAS_MS;
   });
+
+  async function finalizarHandler() {
+    const confirmar = window.confirm(
+      "Finalizar o fechamento de caixa? Os registros de agora vão parar de aparecer aqui (continuam salvos — dá pra ver em Relatórios → Caixa)."
+    );
+
+    if (!confirmar) return;
+
+    setFinalizando(true);
+
+    try {
+      await finalizarFechamento();
+    } catch (erro) {
+      console.error("Erro ao finalizar fechamento de caixa:", erro);
+      alert(erro.message || "Não foi possível finalizar o fechamento de caixa.");
+    } finally {
+      setFinalizando(false);
+    }
+  }
 
   async function capturarFoto(tipo, arquivo) {
     if (!arquivo) return;
@@ -179,13 +218,32 @@ function CadastroFechamentoCaixa({
               {item.ajuda && <small className="foto-ajuda">{item.ajuda}</small>}
             </div>
           ))}
+
+          <div className="foto-upload">
+            <button
+              type="button"
+              className="foto-button foto-button-vermelho"
+              disabled={finalizando || registrosRecentes.length === 0}
+              onClick={finalizarHandler}
+            >
+              {finalizando
+                ? "Finalizando..."
+                : "🔴 Finalizar Fechamento de Caixa"}
+            </button>
+
+            <small className="foto-ajuda">
+              Clique aqui só quando terminar de registrar tudo desse
+              fechamento — depois disso, esses registros somem da lista
+              abaixo (continuam salvos, dá pra ver em Relatórios → Caixa).
+            </small>
+          </div>
         </div>
       </article>
 
       <article className="panel categoria-lista-panel">
         <div className="panel-header">
           <div>
-            <span className="eyebrow">Arquivado nas últimas 8 horas</span>
+            <span className="eyebrow">Fechamento em aberto</span>
             <h2>Fechamento de Caixa</h2>
           </div>
 
@@ -193,16 +251,17 @@ function CadastroFechamentoCaixa({
         </div>
 
         <small className="foto-ajuda">
-          Registros com mais de 8 horas somem daqui pra não lotar a tela —
-          eles continuam salvos. Pra ver dias anteriores, use Relatórios →
-          Caixa e escolha a data.
+          Fica tudo aqui até você clicar em "Finalizar Fechamento de
+          Caixa" — não some com o tempo nem passando da meia-noite. Pra ver
+          fechamentos já finalizados, use Relatórios → Caixa e escolha a
+          data.
         </small>
 
         {carregando ? (
           <div className="empty-state">Carregando...</div>
         ) : registrosRecentes.length === 0 ? (
           <div className="empty-state">
-            Nenhum registro arquivado nas últimas 8 horas.
+            Nenhum registro em aberto no momento.
           </div>
         ) : (
           <div className="categorias-lista">
