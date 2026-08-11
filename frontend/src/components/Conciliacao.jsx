@@ -4,8 +4,6 @@ import {
   conferirFechamentoFoto,
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
-  salvarDinheiroInformado,
-  buscarLojas,
 } from "../services/api";
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
@@ -147,90 +145,6 @@ function Conciliacao() {
   // foto dos totais nesse instante, pra poder testar/reconferir várias vezes
   // sem o número mudar debaixo do usuário.
   const [confrontoCongelado, setConfrontoCongelado] = useState(null);
-
-  // Widget "Dinheiro em caixa" — independente do confronto PagSeguro (que só
-  // existe pra Uberlândia). Funciona pra qualquer loja: escolhe a loja, lê a
-  // foto do fechamento (ou digita na mão) e confirma.
-  const [lojas, setLojas] = useState([]);
-  const [lojaIdDinheiro, setLojaIdDinheiro] = useState("");
-  const [emCaixaDinheiro, setEmCaixaDinheiro] = useState("");
-  const [aberturaCaixa, setAberturaCaixa] = useState("");
-  const [salvandoDinheiro, setSalvandoDinheiro] = useState(false);
-  const [dinheiroSalvoEm, setDinheiroSalvoEm] = useState(null);
-  const [lendoFotoDinheiro, setLendoFotoDinheiro] = useState(false);
-  const [erroFotoDinheiro, setErroFotoDinheiro] = useState("");
-
-  useEffect(() => {
-    buscarLojas()
-      .then((dados) => setLojas(Array.isArray(dados) ? dados : []))
-      .catch(() => {});
-  }, []);
-
-  async function lerFotoDinheiro(arquivo) {
-    if (!arquivo) return;
-
-    setLendoFotoDinheiro(true);
-    setErroFotoDinheiro("");
-
-    try {
-      const fotoComprimida = await comprimirImagem(arquivo);
-      const resultado = await conferirFechamentoFoto(fotoComprimida);
-
-      const valorDinheiro = resultado.valores?.["Dinheiro"];
-
-      if (valorDinheiro != null) {
-        setEmCaixaDinheiro(Number(valorDinheiro).toFixed(2));
-      }
-
-      if (resultado.abertura_caixa != null) {
-        setAberturaCaixa(Number(resultado.abertura_caixa).toFixed(2));
-      }
-
-      if (valorDinheiro == null && resultado.abertura_caixa == null) {
-        setErroFotoDinheiro(
-          resultado.erro_leitura ||
-            "Não consegui ler Dinheiro/Abertura nessa foto. Preencha manualmente."
-        );
-      }
-    } catch (erro) {
-      setErroFotoDinheiro(erro.message || "Não foi possível ler a foto.");
-    } finally {
-      setLendoFotoDinheiro(false);
-    }
-  }
-
-  async function confirmarDinheiroInformado() {
-    const emCaixa = Number(String(emCaixaDinheiro).replace(",", "."));
-    const abertura = Number(String(aberturaCaixa).replace(",", "."));
-
-    if (!lojaIdDinheiro) {
-      alert("Escolha a loja desse fechamento antes de confirmar.");
-      return;
-    }
-
-    if (emCaixaDinheiro === "" || !Number.isFinite(emCaixa) || emCaixa < 0) {
-      alert("Digite o valor de Dinheiro (Em caixa) antes de confirmar.");
-      return;
-    }
-
-    if (aberturaCaixa === "" || !Number.isFinite(abertura) || abertura < 0) {
-      alert("Digite o valor de Abertura desse fechamento antes de confirmar.");
-      return;
-    }
-
-    setSalvandoDinheiro(true);
-
-    try {
-      await salvarDinheiroInformado(emCaixa, abertura, lojaIdDinheiro);
-      setDinheiroSalvoEm(new Date());
-      setEmCaixaDinheiro("");
-      setAberturaCaixa("");
-    } catch (erro) {
-      alert(erro.message || "Não foi possível salvar o valor de Dinheiro.");
-    } finally {
-      setSalvandoDinheiro(false);
-    }
-  }
 
   useEffect(() => {
     async function carregarFechamentosSalvos() {
@@ -501,90 +415,6 @@ function Conciliacao() {
         <ConciliacaoDespesas />
       ) : (
     <section className="conciliacao-layout">
-      <article className="panel" style={{ marginBottom: "20px" }}>
-        <div className="panel-header">
-          <div>
-            <span className="eyebrow">Qualquer loja</span>
-            <h2>💵 Dinheiro em caixa</h2>
-          </div>
-        </div>
-
-        <div className="form-row">
-          <label>
-            Loja
-            <select
-              value={lojaIdDinheiro}
-              onChange={(evento) => setLojaIdDinheiro(evento.target.value)}
-            >
-              <option value="">Selecione a loja</option>
-              {lojas.map((loja) => (
-                <option key={loja.id} value={loja.id}>
-                  {loja.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <label>
-          Foto do fechamento (opcional — lê Dinheiro e Abertura sozinho)
-          <input
-            type="file"
-            accept="image/*"
-            disabled={lendoFotoDinheiro}
-            onChange={(evento) => {
-              const arquivo = evento.target.files?.[0];
-              lerFotoDinheiro(arquivo);
-              evento.target.value = "";
-            }}
-          />
-        </label>
-
-        {lendoFotoDinheiro && <small className="foto-ajuda">Lendo foto...</small>}
-        {erroFotoDinheiro && (
-          <div className="empty-state">{erroFotoDinheiro}</div>
-        )}
-
-        <div className="form-row">
-          <label>
-            Em caixa (Dinheiro, contado no fechamento)
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="0,00"
-              value={emCaixaDinheiro}
-              onChange={(evento) => setEmCaixaDinheiro(evento.target.value)}
-            />
-          </label>
-
-          <label>
-            Abertura (seção "CAIXA:" do comprovante)
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="0,00"
-              value={aberturaCaixa}
-              onChange={(evento) => setAberturaCaixa(evento.target.value)}
-            />
-          </label>
-        </div>
-
-        <button
-          type="button"
-          className="primary-button"
-          onClick={confirmarDinheiroInformado}
-          disabled={salvandoDinheiro}
-        >
-          {salvandoDinheiro ? "Salvando..." : "💾 Confirmar (soma no Saldo)"}
-        </button>
-
-        {dinheiroSalvoEm && (
-          <small className="foto-ajuda">
-            Salvo às {dinheiroSalvoEm.toLocaleTimeString("pt-BR")}.
-          </small>
-        )}
-      </article>
-
       {temDiferencaNoConfronto && (
         <div
           className="fp-alerta-cmv fp-alerta-cmv-critico"
@@ -811,8 +641,6 @@ function Conciliacao() {
                 ✅ Valores lidos e preenchidos na tabela abaixo.
                 {resultadoFoto.formasNaoLidas?.length > 0 &&
                   ` Não consegui ler: ${resultadoFoto.formasNaoLidas.join(", ")} — preencha essa(s) manualmente.`}
-                {dinheiroSalvoEm &&
-                  " 💵 Dinheiro em caixa salvo automaticamente pro Saldo."}
               </>
             )}
           </div>
