@@ -3838,14 +3838,14 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
   }
 }
 
-// Confere a cada minuto se já é a hora certa (02:00–02:04, horário de
+// Confere a cada minuto se já é a hora certa (05:00–05:04, horário de
 // Brasília) de rodar a importação do dia anterior. A checagem por
 // "ultimaDataImportadaAutomaticamente" garante que só roda 1 vez por dia,
 // mesmo com esse intervalo de minuto em minuto.
 setInterval(function () {
   const { hora, minuto } = horaBrasilia();
 
-  if (hora === 2 && minuto < 5) {
+  if (hora === 5 && minuto < 5) {
     rodarImportacaoAutomaticaDiariaSaipos();
   }
 }, 60 * 1000);

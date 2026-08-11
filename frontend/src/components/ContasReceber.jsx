@@ -38,6 +38,7 @@ function ContasReceber({
   adicionarFormaPagamento,
   editarFormaPagamento,
   removerFormaPagamento,
+  buscarFoto,
 }) {
   const [nome, setNome] = useState("");
   const [operadora, setOperadora] = useState("");
@@ -49,6 +50,23 @@ function ContasReceber({
   const [mostrarCalculadora, setMostrarCalculadora] = useState(false);
   const [calcBruto, setCalcBruto] = useState("");
   const [calcRecebido, setCalcRecebido] = useState("");
+  const [fotoVisualizada, setFotoVisualizada] = useState(null);
+  const [carregandoFotoId, setCarregandoFotoId] = useState(null);
+
+  async function verFoto(item) {
+    if (!buscarFoto) return;
+
+    setCarregandoFotoId(item.id);
+
+    try {
+      const resultado = await buscarFoto(item.id);
+      setFotoVisualizada(resultado?.foto || "");
+    } catch (erro) {
+      alert(erro.message || "Não foi possível carregar a foto.");
+    } finally {
+      setCarregandoFotoId(null);
+    }
+  }
 
   function limparFormulario() {
     setNome("");
@@ -435,6 +453,21 @@ function ContasReceber({
                           </div>
                         </div>
                       </div>
+
+                      {item.tem_foto && (
+                        <div className="transaction-actions">
+                          <button
+                            type="button"
+                            className="edit-button"
+                            disabled={carregandoFotoId === item.id}
+                            onClick={() => verFoto(item)}
+                          >
+                            {carregandoFotoId === item.id
+                              ? "Carregando..."
+                              : "Ver foto"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -443,6 +476,40 @@ function ContasReceber({
           })
         )}
       </article>
+
+      {fotoVisualizada && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setFotoVisualizada(null);
+            }
+          }}
+        >
+          <div className="modal modal-foto">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Contas a Receber</span>
+                <h2>Foto anexada</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setFotoVisualizada(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <img
+              src={fotoVisualizada}
+              alt="Foto anexada"
+              className="foto-modal-imagem"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }

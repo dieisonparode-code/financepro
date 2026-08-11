@@ -3109,6 +3109,7 @@ const statusCmv =
             adicionarFormaPagamento={adicionarFormaPagamento}
             editarFormaPagamento={editarFormaPagamento}
             removerFormaPagamento={removerFormaPagamento}
+            buscarFoto={buscarFotoLancamento}
           />
         )}
 
