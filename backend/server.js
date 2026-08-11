@@ -3217,7 +3217,12 @@ app.get(
   }
 );
 
-async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 8192) {
+async function lerImagemComIA(
+  fotoDataUrl,
+  promptTexto,
+  maxTokens = 8192,
+  modelo = "claude-sonnet-5"
+) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
@@ -3237,7 +3242,7 @@ async function lerImagemComIA(fotoDataUrl, promptTexto, maxTokens = 8192) {
   const anthropic = new Anthropic({ apiKey });
 
   const resposta = await anthropic.messages.create({
-    model: "claude-sonnet-5",
+    model: modelo,
     max_tokens: maxTokens,
     messages: [
       {
@@ -3454,7 +3459,12 @@ app.post(
       const textoResposta = await lerImagemComIA(
         foto,
         'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria (geralmente tem uma seção "CONFERÊNCIA" com colunas Forma de Pagamento / Esperado / Em caixa / Diferença, e mais abaixo uma seção "CAIXA:" com linhas Abertura / Vendas / Retiradas / Reforços / Transferências / Dinheiro em caixa). Liste TODAS as formas de pagamento/categorias da seção CONFERÊNCIA (pode ter várias: Dinheiro, A prazo, Crédito, Débito, Pago Online, Vale, Voucher, Cortesia, Funcionário, PIX, TEF-Débito, TEF-PIX, etc — exatamente como estão escritas no comprovante). Pra cada uma, use o valor da coluna "Em caixa" (se não tiver essa coluna, use o valor que aparecer). Se encontrar "Crédito" (ou "Cartão de Crédito"), chame de "Cartão de crédito". Se encontrar "Débito" (ou "Cartão de Débito"), chame de "Cartão de débito". Se encontrar QUALQUER PIX (linhas como "Pix", "TEF-PIX", "Pix na Entrega"), SOME todos os valores de PIX numa única categoria chamada "PIX". As demais categorias (Dinheiro, A prazo, Pago Online, Vale, Voucher, Cortesia, Funcionário, etc), mantenha o nome exatamente como está escrito no comprovante, sem inventar nem combinar. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)". Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "valor": 337.40}, {"nome": "Cartão de crédito", "valor": 4299.00}, ...], "abertura_caixa": 410.25}. Se não achar abertura_caixa, use null nesse campo.',
-        8192
+        2048,
+        // Haiku lê essa foto em ~1-2s contra ~11-12s do Sonnet nesse mesmo
+        // tipo de tabela — usuário reportou lentidão na Conciliação, e essa
+        // leitura era o maior gargalo. Testado e comparável em precisão pra
+        // esse tipo de comprovante tabular simples.
+        "claude-haiku-4-5-20251001"
       );
 
       console.log(
