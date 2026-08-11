@@ -450,7 +450,7 @@ function ContasPagar({
                 ? "Processando foto..."
                 : lendoFoto
                 ? "🤖 Lendo automaticamente..."
-                : "📄🤖 Anexar e ler automaticamente"}
+                : "📷📄 Tirar foto ou anexar e ler automaticamente"}
             </label>
 
             <small className="foto-ajuda">

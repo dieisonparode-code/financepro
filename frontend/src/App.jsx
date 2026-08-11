@@ -4261,7 +4261,6 @@ const statusCmv =
                   id="foto-comprovante"
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   disabled={processandoFoto}
                   onChange={async (evento) => {
                     const arquivo = evento.target.files?.[0];
@@ -4300,11 +4299,12 @@ const statusCmv =
                     ? "Processando foto..."
                     : lendoNota
                     ? "🤖 Lendo nota automaticamente..."
-                    : "📄🤖 Anexar e ler nota automaticamente"}
+                    : "📷📄 Tirar foto ou anexar e ler nota automaticamente"}
                 </label>
 
                 <small className="foto-ajuda">
-                  Sem localização — pode anexar de qualquer lugar.
+                  Escolhe da câmera ou da galeria — sem localização, pode
+                  anexar de qualquer lugar.
                 </small>
               </div>
 

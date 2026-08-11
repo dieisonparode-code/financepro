@@ -137,27 +137,32 @@ function Conciliacao({ lojaId }) {
     setResultadoFoto(null);
     setResumo(null);
 
-    try {
-      const dataFechamento = hojeDoRegistro(fechamentoEscolhido.criado_em);
-      const resultadoVendas = await buscarVendasPagSeguro(
-        dataFechamento,
-        dataFechamento
+    const dataFechamento = hojeDoRegistro(fechamentoEscolhido.criado_em);
+
+    // As duas buscas não dependem uma da outra (vendas na PagSeguro × leitura
+    // da foto por IA) — rodando em paralelo em vez de uma esperar a outra,
+    // o tempo total fica perto do maior dos dois, não da soma.
+    const buscaVendas = buscarVendasPagSeguro(dataFechamento, dataFechamento)
+      .then((resultado) => setResumo(resultado))
+      .catch((erroBusca) =>
+        setErro(
+          erroBusca.message ||
+            "Não foi possível buscar as vendas na PagSeguro."
+        )
       );
 
-      setResumo(resultadoVendas);
+    const buscaFoto = buscarFotoFechamentoCaixa(fechamentoEscolhido.id)
+      .then((fotoResultado) => conferirFotoDataUrl(fotoResultado?.foto))
+      .catch((erroFoto) => {
+        setResultadoFoto({
+          erro_leitura:
+            erroFoto.message ||
+            "Não foi possível buscar a foto desse fechamento.",
+        });
+      });
 
-      const fotoResultado = await buscarFotoFechamentoCaixa(
-        fechamentoEscolhido.id
-      );
-      await conferirFotoDataUrl(fotoResultado?.foto);
-    } catch (erroBusca) {
-      setErro(
-        erroBusca.message ||
-          "Não foi possível buscar esse fechamento."
-      );
-    } finally {
-      setCarregando(false);
-    }
+    await Promise.all([buscaVendas, buscaFoto]);
+    setCarregando(false);
   }
 
   async function conferirFotoDataUrl(fotoDataUrl) {
