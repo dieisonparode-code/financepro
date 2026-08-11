@@ -125,6 +125,7 @@ function ContasPagar({
   const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
   const [busca, setBusca] = useState("");
   const [buscaData, setBuscaData] = useState("");
+  const [salvandoValorId, setSalvandoValorId] = useState(null);
 
   function limparFormulario() {
     setDescricao("");
@@ -221,6 +222,36 @@ function ContasPagar({
     setObservacao(conta.observacao || "");
     setLojaId(conta.loja_id ? String(conta.loja_id) : "");
     setFoto(conta.foto || "");
+  }
+
+  async function salvarValorEditado(conta, valorDigitado) {
+    const novoValor = Number(String(valorDigitado).replace(",", "."));
+
+    if (!Number.isFinite(novoValor) || novoValor <= 0) {
+      alert("Digite um valor válido maior que zero.");
+      return;
+    }
+
+    // Sem mudança de verdade — não precisa salvar de novo.
+    if (Number(conta.valor) === novoValor) return;
+
+    setSalvandoValorId(conta.id);
+
+    try {
+      await editarConta(conta.id, {
+        descricao: conta.descricao,
+        fornecedor: conta.fornecedor,
+        valor: novoValor,
+        data_vencimento: conta.data_vencimento,
+        observacao: conta.observacao,
+        loja_id: conta.loja_id,
+        foto: conta.foto,
+      });
+    } catch (erro) {
+      alert(erro.message || "Não foi possível atualizar o valor.");
+    } finally {
+      setSalvandoValorId(null);
+    }
   }
 
   function alternarSelecao(id) {
@@ -645,7 +676,26 @@ function ContasPagar({
                           </span>
                         )}
                         {conta.fornecedor ? `${conta.fornecedor} — ` : ""}
-                        {formatarMoeda(conta.valor)}
+                        {modo === "pendentes" && conta._origem !== "despesa" ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            defaultValue={conta.valor}
+                            disabled={salvandoValorId === conta.id}
+                            style={{ width: 100, display: "inline-block" }}
+                            onBlur={(evento) =>
+                              salvarValorEditado(conta, evento.target.value)
+                            }
+                            onKeyDown={(evento) => {
+                              if (evento.key === "Enter") {
+                                evento.target.blur();
+                              }
+                            }}
+                          />
+                        ) : (
+                          formatarMoeda(conta.valor)
+                        )}
                         {modo === "pagas" && conta.data_pagamento
                           ? ` — pago em ${formatarData(conta.data_pagamento)}`
                           : ` — vence em ${formatarData(
