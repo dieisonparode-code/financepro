@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { buscarFechamentoSaipos, importarReceitasSaipos } from "../services/api";
+import { buscarFechamentoSaipos } from "../services/api";
 
 // Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
 // bate com a expectativa de quem está usando a tela, seja qual for a loja.
@@ -32,9 +32,6 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [atualizadoEm, setAtualizadoEm] = useState(null);
-  const [importando, setImportando] = useState(false);
-  const [resultadoImportacao, setResultadoImportacao] = useState(null);
-  const [erroImportacao, setErroImportacao] = useState("");
 
   // Acompanha qual era "hoje" da última vez que checamos — serve pra saber
   // se a pessoa está vendo o dia atual (e por isso a data deve virar sozinha
@@ -61,36 +58,8 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
     }
   }
 
-  async function importarComoReceita() {
-    if (!lojaId) return;
-
-    const confirmar = window.confirm(
-      `Importar as vendas de ${data} como lançamento de receita? Isso cria/atualiza lançamentos reais no Fluxo de Caixa.`
-    );
-
-    if (!confirmar) return;
-
-    setImportando(true);
-    setErroImportacao("");
-    setResultadoImportacao(null);
-
-    try {
-      const resultado = await importarReceitasSaipos(lojaId, data);
-      setResultadoImportacao(resultado);
-    } catch (erroImportar) {
-      setErroImportacao(
-        erroImportar.message || "Não foi possível importar as vendas como receita."
-      );
-    } finally {
-      setImportando(false);
-    }
-  }
-
   useEffect(() => {
     if (!lojaId) return;
-
-    setResultadoImportacao(null);
-    setErroImportacao("");
 
     buscar();
 
@@ -176,28 +145,10 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
               )}
             </small>
 
-            {ehAdministrador && (
-              <>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={importarComoReceita}
-                  disabled={importando || !resumo}
-                  style={{ marginTop: 12 }}
-                >
-                  {importando
-                    ? "Importando..."
-                    : "📥 Lançar vendas deste dia como receita"}
-                </button>
-
-                <small className="foto-ajuda">
-                  Cria ou atualiza os lançamentos de receita a partir das
-                  vendas da Saipos nesse dia (por canal — iFood, Brendi — e
-                  por forma de pagamento no balcão). Pode clicar de novo no
-                  mesmo dia: atualiza em vez de duplicar.
-                </small>
-              </>
-            )}
+            <small className="foto-ajuda">
+              As vendas entram como receita automaticamente todo dia às
+              02h — não precisa clicar em nada.
+            </small>
           </>
         )}
       </article>
@@ -298,81 +249,6 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
           </div>
         )}
       </article>
-
-      {(resultadoImportacao || erroImportacao) && (
-        <article className="panel categoria-lista-panel">
-          <div className="panel-header">
-            <div>
-              <span className="eyebrow">Importação</span>
-              <h2>Resultado do lançamento automático</h2>
-            </div>
-          </div>
-
-          {erroImportacao ? (
-            <div className="empty-state">{erroImportacao}</div>
-          ) : (
-            <div className="categorias-lista">
-              {resultadoImportacao.criados.length === 0 &&
-                resultadoImportacao.atualizados.length === 0 && (
-                  <div className="empty-state">
-                    Nenhum lançamento criado ou atualizado — veja abaixo o que
-                    foi pulado.
-                  </div>
-                )}
-
-              {resultadoImportacao.criados.map((item, indice) => (
-                <div className="categoria-item" key={`criado-${indice}`}>
-                  <div className="categoria-identificacao">
-                    <div className="categoria-icone">✅</div>
-                    <div>
-                      <strong>{item.canal}</strong>
-                      <div>
-                        Criado — {formatarMoeda(item.valor)} ({item.quantidade}{" "}
-                        venda{item.quantidade === 1 ? "" : "s"})
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {resultadoImportacao.atualizados.map((item, indice) => (
-                <div className="categoria-item" key={`atualizado-${indice}`}>
-                  <div className="categoria-identificacao">
-                    <div className="categoria-icone">🔄</div>
-                    <div>
-                      <strong>{item.canal}</strong>
-                      <div>
-                        Atualizado — {formatarMoeda(item.valor)} (
-                        {item.quantidade} venda{item.quantidade === 1 ? "" : "s"})
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {Object.keys(resultadoImportacao.pulados || {}).length > 0 && (
-                <div className="categoria-item categoria-item-titulo">
-                  <strong>Não importado</strong>
-                </div>
-              )}
-
-              {Object.entries(resultadoImportacao.pulados || {}).map(
-                ([motivo, quantidade]) => (
-                  <div className="categoria-item" key={motivo}>
-                    <div className="categoria-identificacao">
-                      <div className="categoria-icone">⚠️</div>
-                      <div>
-                        <strong>{motivo}</strong>
-                        <div>{quantidade} venda{quantidade === 1 ? "" : "s"}</div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-          )}
-        </article>
-      )}
     </section>
   );
 }
