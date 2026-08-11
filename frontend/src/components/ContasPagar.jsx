@@ -105,6 +105,7 @@ function ContasPagar({
   const [processandoFoto, setProcessandoFoto] = useState(false);
   const [lendoFoto, setLendoFoto] = useState(false);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
+  const [detalheVisualizado, setDetalheVisualizado] = useState(null);
 
   function limparFormulario() {
     setDescricao("");
@@ -469,6 +470,14 @@ function ContasPagar({
                   </div>
 
                   <div className="transaction-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setDetalheVisualizado(conta)}
+                    >
+                      👁️ Ver detalhes
+                    </button>
+
                     {conta.foto && (
                       <button
                         type="button"
@@ -511,6 +520,135 @@ function ContasPagar({
           </div>
         )}
       </article>
+
+      {detalheVisualizado && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setDetalheVisualizado(null);
+            }
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Conta a pagar</span>
+                <h2>{detalheVisualizado.descricao}</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setDetalheVisualizado(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="categorias-lista">
+              <div className="categoria-item">
+                <div className="categoria-identificacao">
+                  <div className="categoria-icone">💸</div>
+                  <div>
+                    <strong>Valor</strong>
+                    <div>{formatarMoeda(detalheVisualizado.valor)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {detalheVisualizado.fornecedor && (
+                <div className="categoria-item">
+                  <div className="categoria-identificacao">
+                    <div className="categoria-icone">🏭</div>
+                    <div>
+                      <strong>Fornecedor</strong>
+                      <div>{detalheVisualizado.fornecedor}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="categoria-item">
+                <div className="categoria-identificacao">
+                  <div className="categoria-icone">📅</div>
+                  <div>
+                    <strong>Vencimento</strong>
+                    <div>
+                      {formatarData(detalheVisualizado.data_vencimento)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="categoria-item">
+                <div className="categoria-identificacao">
+                  <div className="categoria-icone">🏬</div>
+                  <div>
+                    <strong>Loja</strong>
+                    <div>
+                      {lojas.find(
+                        (loja) =>
+                          String(loja.id) ===
+                          String(detalheVisualizado.loja_id)
+                      )?.nome || "Sem loja"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="categoria-item">
+                <div className="categoria-identificacao">
+                  <div className="categoria-icone">
+                    {detalheVisualizado.status === "pago" ? "✅" : "⏳"}
+                  </div>
+                  <div>
+                    <strong>Situação</strong>
+                    <div>
+                      {situacaoConta(detalheVisualizado).rotulo}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {detalheVisualizado.observacao && (
+                <div className="categoria-item">
+                  <div className="categoria-identificacao">
+                    <div className="categoria-icone">📝</div>
+                    <div>
+                      <strong>Observação</strong>
+                      <div>{detalheVisualizado.observacao}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              {detalheVisualizado.foto && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setFotoVisualizada(detalheVisualizado.foto);
+                    setDetalheVisualizado(null);
+                  }}
+                >
+                  👁️ Ver foto
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => setDetalheVisualizado(null)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fotoVisualizada && (
         <div
