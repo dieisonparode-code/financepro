@@ -23,9 +23,18 @@ const MAPA_SAIPOS_PARA_CONFRONTO = {
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
 // Converte o horário de um registro (o momento em que um fechamento foi
-// salvo) pro formato de data que a PagSeguro espera.
+// salvo) pro dia do TURNO, não o dia do relógio — um caixa aberto às 20h
+// de um dia e fechado só depois da meia-noite ainda pertence ao turno do
+// dia anterior. Mesma regra de corte (5h da manhã) já usada na importação
+// automática da Saipos, pra não pegar o dia errado ao buscar PagSeguro/
+// Saipos pra conciliar.
 function hojeDoRegistro(dataIso) {
   const data = new Date(dataIso);
+
+  if (data.getHours() < 5) {
+    data.setDate(data.getDate() - 1);
+  }
+
   const ano = data.getFullYear();
   const mes = String(data.getMonth() + 1).padStart(2, "0");
   const dia = String(data.getDate()).padStart(2, "0");
