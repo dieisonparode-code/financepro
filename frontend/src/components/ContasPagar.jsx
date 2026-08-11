@@ -100,7 +100,7 @@ function ContasPagar({
   const [lojaId, setLojaId] = useState(lojaPadrao ? String(lojaPadrao) : "");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const [mostrarPagas, setMostrarPagas] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState("pendentes");
   const [foto, setFoto] = useState("");
   const [processandoFoto, setProcessandoFoto] = useState(false);
   const [lendoFoto, setLendoFoto] = useState(false);
@@ -213,6 +213,9 @@ function ContasPagar({
 
     try {
       await marcarComoPaga(conta.id);
+      // Vai direto pra aba de Contas Pagas, já com acesso ao "Ver detalhes"
+      // dessa conta que acabou de ser paga.
+      setAbaAtiva("pagas");
     } catch (erro) {
       alert(erro.message || "Não foi possível marcar como paga.");
     }
@@ -237,7 +240,9 @@ function ContasPagar({
   }
 
   const contasVisiveis = contas
-    .filter((conta) => mostrarPagas || conta.status !== "pago")
+    .filter((conta) =>
+      abaAtiva === "pagas" ? conta.status === "pago" : conta.status !== "pago"
+    )
     .sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento));
 
   return (
@@ -425,19 +430,32 @@ function ContasPagar({
           <strong>{contasVisiveis.length}</strong>
         </div>
 
-        <label className="permissao-item">
-          <input
-            type="checkbox"
-            checked={mostrarPagas}
-            onChange={(evento) => setMostrarPagas(evento.target.checked)}
-          />
-          Mostrar contas já pagas
-        </label>
+        <div className="conciliacao-abas">
+          <button
+            type="button"
+            className={abaAtiva === "pendentes" ? "aba-ativa" : ""}
+            onClick={() => setAbaAtiva("pendentes")}
+          >
+            A pagar
+          </button>
+
+          <button
+            type="button"
+            className={abaAtiva === "pagas" ? "aba-ativa" : ""}
+            onClick={() => setAbaAtiva("pagas")}
+          >
+            ✅ Contas pagas
+          </button>
+        </div>
 
         {carregando ? (
           <div className="empty-state">Carregando...</div>
         ) : contasVisiveis.length === 0 ? (
-          <div className="empty-state">Nenhuma conta a pagar.</div>
+          <div className="empty-state">
+            {abaAtiva === "pagas"
+              ? "Nenhuma conta paga ainda."
+              : "Nenhuma conta a pagar."}
+          </div>
         ) : (
           <div className="categorias-lista">
             {contasVisiveis.map((conta) => {
