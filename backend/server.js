@@ -278,6 +278,10 @@ function prepararFechamentoCaixa(dados = {}) {
     tipo: dados.tipo || "",
     nome_pessoa: (dados.nome_pessoa || "").trim(),
     valor: dados.valor !== "" && dados.valor != null ? Number(dados.valor) : null,
+    // Diária pode ser paga em duas partes (ex.: parte em dinheiro na hora,
+    // resto em Pix depois) — esse é só o pedaço que já saiu do caixa.
+    valor_pago_dinheiro:
+      dados.valor_pago_dinheiro != null ? Number(dados.valor_pago_dinheiro) : 0,
     foto: dados.foto || "",
     observacao: (dados.observacao || "").trim(),
   };
@@ -1802,7 +1806,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, tem_foto, observacao, criado_em";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -2012,14 +2016,18 @@ app.post(
       // A pedido do usuário: toda foto de Diária Boy/Cozinha desse
       // fechamento que está sendo finalizado agora vai direto pra Contas a
       // Pagar (com a foto anexada), já com o valor lido por IA no momento
-      // do registro (o operador confirma/corrige o valor antes de salvar
-      // a foto — cobre casos de pagamento dividido dinheiro+Pix).
+      // do registro. Se a diária foi paga em duas partes (parte em
+      // dinheiro na hora, resto em Pix depois), a parte em dinheiro dá
+      // baixa direto no saldo agora (mesma modalidade do "pago em dinheiro
+      // (saiu do caixa)" já usado em Despesas) e só o restante vira conta
+      // a pagar.
       let contasPagarCriadas = 0;
+      let despesasDinheiroCriadas = 0;
 
       try {
         let consultaDiarias = supabase
           .from("fechamentos_caixa")
-          .select("id, tipo, foto, valor, criado_em")
+          .select("id, tipo, foto, valor, valor_pago_dinheiro, criado_em")
           .in("tipo", Object.keys(NOMES_DIARIA_PARA_CONTA_PAGAR))
           .lte("criado_em", data.criado_em);
 
@@ -2037,13 +2045,73 @@ app.post(
         }
 
         for (const diaria of diarias || []) {
+          const nomeDiaria = NOMES_DIARIA_PARA_CONTA_PAGAR[diaria.tipo];
+          const valorTotal = diaria.valor != null ? Number(diaria.valor) : 0;
+          const pagoDinheiro =
+            diaria.valor_pago_dinheiro != null
+              ? Number(diaria.valor_pago_dinheiro)
+              : 0;
+          const valorAPagar = Math.max(0, valorTotal - pagoDinheiro);
+          const dataDiaria = dataBrasiliaDe(diaria.criado_em);
+
+          if (pagoDinheiro > 0) {
+            const novaDespesa = {
+              id: Date.now() + diaria.id,
+              tipo: "despesa",
+              descricao: nomeDiaria,
+              valor: pagoDinheiro,
+              data: dataDiaria,
+              grupo: "",
+              categoria: "Outros",
+              subcategoria: "",
+              fornecedor: "",
+              observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}) — parte paga em dinheiro na hora.`,
+              foto: diaria.foto || "",
+              loja_id: null,
+              forma_pagamento_id: null,
+              pago_em_dinheiro: true,
+              status: "aprovado",
+            };
+
+            const { data: despesaCriada, error: erroDespesa } = await supabase
+              .from("lancamentos")
+              .insert([novaDespesa])
+              .select("id")
+              .single();
+
+            if (erroDespesa) {
+              console.error(
+                "Erro ao criar despesa da diária (parte em dinheiro):",
+                erroDespesa.message
+              );
+            } else {
+              despesasDinheiroCriadas += 1;
+
+              registrarAuditoria(
+                req,
+                "criou",
+                "lancamentos",
+                despesaCriada.id,
+                `Despesa automática (parte em dinheiro) do fechamento de caixa #${diaria.id} (${diaria.tipo}): R$ ${pagoDinheiro.toFixed(2)}`
+              );
+            }
+          }
+
+          // Se o valor todo já saiu em dinheiro, não sobra nada a pagar —
+          // não cria conta a pagar de R$0.
+          if (valorAPagar <= 0) {
+            continue;
+          }
+
           const dadosConta = {
-            descricao: NOMES_DIARIA_PARA_CONTA_PAGAR[diaria.tipo],
+            descricao: nomeDiaria,
             fornecedor: "",
-            valor: diaria.valor != null ? Number(diaria.valor) : 0,
-            data_vencimento: dataBrasiliaDe(diaria.criado_em),
+            valor: valorAPagar,
+            data_vencimento: dataDiaria,
             observacao:
-              diaria.valor != null
+              pagoDinheiro > 0
+                ? `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). R$ ${pagoDinheiro.toFixed(2)} já foi pago em dinheiro na hora — esse valor aqui é só o restante.`
+                : diaria.valor != null
                 ? `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Valor lido da foto — confira antes de pagar.`
                 : `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Preencha o valor antes de pagar.`,
             foto: diaria.foto || "",
@@ -2071,7 +2139,7 @@ app.post(
             "criou",
             "contas_pagar",
             contaCriada.id,
-            `Gerado a partir do fechamento de caixa #${diaria.id} (${diaria.tipo}), aguardando valor.`
+            `Gerado a partir do fechamento de caixa #${diaria.id} (${diaria.tipo}), valor a pagar: R$ ${valorAPagar.toFixed(2)}`
           );
         }
       } catch (erroDiarias) {
@@ -2083,7 +2151,11 @@ app.post(
         );
       }
 
-      res.status(201).json({ ...data, contas_pagar_criadas: contasPagarCriadas });
+      res.status(201).json({
+        ...data,
+        contas_pagar_criadas: contasPagarCriadas,
+        despesas_dinheiro_criadas: despesasDinheiroCriadas,
+      });
     } catch (erro) {
       console.error("Erro ao finalizar fechamento de caixa:", erro.message);
 

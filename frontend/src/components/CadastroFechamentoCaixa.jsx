@@ -67,6 +67,13 @@ function formatarDataHora(dataIso) {
   return new Date(dataIso).toLocaleString("pt-BR");
 }
 
+function formatarMoeda(valor) {
+  return Number(valor || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
 // Fallback só usado se NUNCA houve nenhuma finalização ainda (ex.: recém
 // publicado) — a partir da primeira finalização, o corte deixa de ser por
 // horas e passa a ser só "depois da última finalização".
@@ -142,7 +149,7 @@ function CadastroFechamentoCaixa({
 
   async function finalizarHandler() {
     const confirmar = window.confirm(
-      "Finalizar o fechamento de caixa? Os registros de agora vão parar de aparecer aqui (continuam salvos — dá pra ver em Relatórios → Caixa). As fotos de Diária Boy/Cozinha vão direto pra Contas a Pagar, só faltando o valor."
+      "Finalizar o fechamento de caixa? Os registros de agora vão parar de aparecer aqui (continuam salvos — dá pra ver em Relatórios → Caixa). As diárias vão pra Contas a Pagar (só o valor que ainda falta) e a parte já paga em dinheiro já dá baixa direto no saldo."
     );
 
     if (!confirmar) return;
@@ -200,6 +207,9 @@ function CadastroFechamentoCaixa({
       tipo,
       foto: fotoComprimida,
       valor: "",
+      // Por padrão nada foi pago em dinheiro ainda — se foi dividido
+      // (parte em dinheiro, parte em Pix depois), o operador preenche.
+      pagoDinheiro: "",
       lendo: true,
       avisoLeitura: "",
     });
@@ -249,6 +259,10 @@ function CadastroFechamentoCaixa({
         tipo: rascunhoDiaria.tipo,
         foto: rascunhoDiaria.foto,
         valor: rascunhoDiaria.valor !== "" ? Number(rascunhoDiaria.valor) : null,
+        valor_pago_dinheiro:
+          rascunhoDiaria.pagoDinheiro !== ""
+            ? Number(rascunhoDiaria.pagoDinheiro)
+            : 0,
       });
 
       setRascunhoDiaria(null);
@@ -264,6 +278,20 @@ function CadastroFechamentoCaixa({
   function cancelarRascunhoDiaria() {
     setRascunhoDiaria(null);
   }
+
+  // Divide o valor total em "já pago em dinheiro agora" (dá baixa direto
+  // no saldo) e "a pagar" (o que ainda falta, ex.: no Pix do dia
+  // seguinte) — pedido do usuário pra diária paga em duas partes.
+  const valorDiariaNumerico = rascunhoDiaria
+    ? Number(rascunhoDiaria.valor || 0)
+    : 0;
+  const pagoDinheiroNumerico = rascunhoDiaria
+    ? Number(rascunhoDiaria.pagoDinheiro || 0)
+    : 0;
+  const aPagarNumerico = Math.max(
+    0,
+    valorDiariaNumerico - pagoDinheiroNumerico
+  );
 
   async function confirmarExclusao(registro) {
     const confirmar = window.confirm(
@@ -514,7 +542,7 @@ function CadastroFechamentoCaixa({
             />
 
             <label>
-              Valor pago (some dinheiro + Pix se foi dividido)
+              Valor total do recibo
               <input
                 type="number"
                 step="0.01"
@@ -544,6 +572,34 @@ function CadastroFechamentoCaixa({
                 ⚠️ {rascunhoDiaria.avisoLeitura}
               </div>
             )}
+
+            <label>
+              💵 Pago em dinheiro agora (deixe 0,00 se nada foi pago em
+              dinheiro — vai tudo pra "a pagar")
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0,00"
+                value={rascunhoDiaria.pagoDinheiro}
+                disabled={rascunhoDiaria.salvando}
+                onChange={(evento) =>
+                  setRascunhoDiaria((anterior) => ({
+                    ...anterior,
+                    pagoDinheiro: evento.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <div style={{ margin: "8px 0 16px" }}>
+              <div style={{ color: "#22c55e", fontWeight: 700 }}>
+                💰 {formatarMoeda(pagoDinheiroNumerico)} pago em dinheiro
+              </div>
+              <div style={{ color: "#ef4444", fontWeight: 700 }}>
+                🔴 A pagar: {formatarMoeda(aPagarNumerico)}
+              </div>
+            </div>
 
             <div className="modal-actions">
               <button

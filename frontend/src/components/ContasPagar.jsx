@@ -576,14 +576,18 @@ function ContasPagar({
                               conta.data_vencimento
                             )}`}
                       </div>
-                      {vePermissaoTotal && (
-                        <span>
-                          🏬{" "}
-                          {lojas.find(
-                            (loja) => String(loja.id) === String(conta.loja_id)
-                          )?.nome || "Sem loja"}
-                        </span>
-                      )}
+                      {vePermissaoTotal &&
+                        (() => {
+                          const nomeLoja = lojas.find(
+                            (loja) =>
+                              String(loja.id) === String(conta.loja_id)
+                          )?.nome;
+
+                          // Sem loja atribuída não mostra nada aqui — a
+                          // frase "Sem loja" só confundia quem já está
+                          // vendo tudo filtrado por uma loja específica.
+                          return nomeLoja ? <span>🏬 {nomeLoja}</span> : null;
+                        })()}
                       <span className={situacao.classe}>
                         {situacao.rotulo}
                       </span>
@@ -682,21 +686,28 @@ function ContasPagar({
                 </div>
               </div>
 
-              <div className="categoria-item">
-                <div className="categoria-identificacao">
-                  <div className="categoria-icone">🏬</div>
-                  <div>
-                    <strong>Loja</strong>
+              {lojas.find(
+                (loja) =>
+                  String(loja.id) === String(detalheVisualizado.loja_id)
+              )?.nome && (
+                <div className="categoria-item">
+                  <div className="categoria-identificacao">
+                    <div className="categoria-icone">🏬</div>
                     <div>
-                      {lojas.find(
-                        (loja) =>
-                          String(loja.id) ===
-                          String(detalheVisualizado.loja_id)
-                      )?.nome || "Sem loja"}
+                      <strong>Loja</strong>
+                      <div>
+                        {
+                          lojas.find(
+                            (loja) =>
+                              String(loja.id) ===
+                              String(detalheVisualizado.loja_id)
+                          )?.nome
+                        }
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="categoria-item">
                 <div className="categoria-identificacao">

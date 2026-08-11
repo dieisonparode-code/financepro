@@ -2311,16 +2311,41 @@ const statusCmv =
 
     setFinalizacoesFechamentoCaixa((anteriores) => [salvo, ...anteriores]);
 
-    if (salvo?.contas_pagar_criadas > 0) {
+    const contasCriadas = salvo?.contas_pagar_criadas || 0;
+    const despesasCriadas = salvo?.despesas_dinheiro_criadas || 0;
+
+    if (contasCriadas > 0) {
       const dadosContasPagar = await buscarContasPagar().catch(() => null);
 
       if (dadosContasPagar) {
         setContasPagar(dadosContasPagar);
       }
+    }
 
-      alert(
-        `${salvo.contas_pagar_criadas} conta(s) a pagar criada(s) automaticamente (Diária Boy/Cozinha) — falta só preencher o valor de cada uma antes de pagar.`
-      );
+    if (despesasCriadas > 0) {
+      const dadosLancamentos = await buscarLancamentos().catch(() => null);
+
+      if (dadosLancamentos) {
+        setLancamentos(dadosLancamentos);
+      }
+    }
+
+    if (contasCriadas > 0 || despesasCriadas > 0) {
+      const partes = [];
+
+      if (despesasCriadas > 0) {
+        partes.push(
+          `${despesasCriadas} despesa(s) lançada(s) já como paga (parte em dinheiro, deu baixa no saldo)`
+        );
+      }
+
+      if (contasCriadas > 0) {
+        partes.push(
+          `${contasCriadas} conta(s) a pagar criada(s) (o que ainda falta pagar)`
+        );
+      }
+
+      alert(`Diárias processadas: ${partes.join(" e ")}.`);
     }
   }
 
