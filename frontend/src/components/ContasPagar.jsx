@@ -94,6 +94,8 @@ function situacaoConta(conta) {
 
 function ContasPagar({
   contas = [],
+  despesas = [],
+  buscarFotoDespesa,
   carregando = false,
   adicionarConta,
   editarConta,
@@ -118,6 +120,7 @@ function ContasPagar({
   const [lendoFoto, setLendoFoto] = useState(false);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [detalheVisualizado, setDetalheVisualizado] = useState(null);
+  const [carregandoFotoDetalhe, setCarregandoFotoDetalhe] = useState(false);
   const [selecionadas, setSelecionadas] = useState([]);
   const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
   const [busca, setBusca] = useState("");
@@ -288,10 +291,37 @@ function ContasPagar({
 
   const buscaLimpa = busca.trim().toLowerCase();
 
+  // Despesas lançadas já são dinheiro pago — entram junto na aba "Contas
+  // Pagas" (só nessa aba, nunca em "A pagar"), sem duplicar nada no banco:
+  // é só uma junção pra visualização, cada uma mantém sua origem marcada
+  // (_origem) pra "Ver foto"/Editar/Excluir saberem de onde vieram.
+  const contasPagasNormalizadas =
+    modo === "pagas"
+      ? [
+          ...contas
+            .filter((conta) => conta.status === "pago")
+            .map((conta) => ({ ...conta, _origem: "contas_pagar" })),
+          ...despesas.map((despesa) => ({
+            id: `despesa-${despesa.id}`,
+            _origem: "despesa",
+            _idOriginal: despesa.id,
+            descricao: despesa.descricao,
+            fornecedor: despesa.fornecedor,
+            valor: despesa.valor,
+            data_vencimento: despesa.data,
+            data_pagamento: despesa.data,
+            status: "pago",
+            observacao: despesa.observacao,
+            loja_id: despesa.loja_id,
+            foto: null,
+            tem_foto: despesa.tem_foto,
+          })),
+        ]
+      : [];
+
   const contasVisiveis =
     modo === "pagas"
-      ? contas
-          .filter((conta) => conta.status === "pago")
+      ? contasPagasNormalizadas
           .filter((conta) =>
             buscaLimpa
               ? `${conta.descricao} ${conta.fornecedor || ""}`
@@ -563,11 +593,21 @@ function ContasPagar({
                       />
                     )}
 
-                    <div className="categoria-icone">💸</div>
+                    <div className="categoria-icone">
+                      {conta._origem === "despesa" ? "🧾" : "💸"}
+                    </div>
 
                     <div>
                       <strong>{conta.descricao}</strong>
                       <div>
+                        {conta._origem === "despesa" && (
+                          <span
+                            className="badge-status badge-status-pendente"
+                            title="Essa é uma despesa lançada em Despesas — aparece aqui só pra visualização."
+                          >
+                            Despesa
+                          </span>
+                        )}
                         {conta.fornecedor ? `${conta.fornecedor} — ` : ""}
                         {formatarMoeda(conta.valor)}
                         {modo === "pagas" && conta.data_pagamento
@@ -603,21 +643,25 @@ function ContasPagar({
                       👁️ Ver detalhes
                     </button>
 
-                    <button
-                      type="button"
-                      className="edit-button"
-                      onClick={() => iniciarEdicao(conta)}
-                    >
-                      Editar
-                    </button>
+                    {conta._origem !== "despesa" && (
+                      <>
+                        <button
+                          type="button"
+                          className="edit-button"
+                          onClick={() => iniciarEdicao(conta)}
+                        >
+                          Editar
+                        </button>
 
-                    <button
-                      type="button"
-                      className="delete-button"
-                      onClick={() => confirmarExclusao(conta)}
-                    >
-                      Excluir
-                    </button>
+                        <button
+                          type="button"
+                          className="delete-button"
+                          onClick={() => confirmarExclusao(conta)}
+                        >
+                          Excluir
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -737,16 +781,37 @@ function ContasPagar({
             </div>
 
             <div className="modal-actions">
-              {detalheVisualizado.foto && (
+              {(detalheVisualizado.foto || detalheVisualizado.tem_foto) && (
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() => {
+                  disabled={carregandoFotoDetalhe}
+                  onClick={async () => {
+                    if (detalheVisualizado._origem === "despesa") {
+                      setCarregandoFotoDetalhe(true);
+
+                      try {
+                        const resultado = await buscarFotoDespesa(
+                          detalheVisualizado._idOriginal
+                        );
+                        setFotoVisualizada(resultado?.foto || "");
+                        setDetalheVisualizado(null);
+                      } catch (erro) {
+                        alert(
+                          erro.message || "Não foi possível carregar a foto."
+                        );
+                      } finally {
+                        setCarregandoFotoDetalhe(false);
+                      }
+
+                      return;
+                    }
+
                     setFotoVisualizada(detalheVisualizado.foto);
                     setDetalheVisualizado(null);
                   }}
                 >
-                  👁️ Ver foto
+                  {carregandoFotoDetalhe ? "Carregando..." : "👁️ Ver foto"}
                 </button>
               )}
 

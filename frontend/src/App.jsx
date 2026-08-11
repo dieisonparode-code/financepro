@@ -1091,6 +1091,14 @@ const lancamentosAprovados = useMemo(() => {
   );
 }, [lancamentosVisiveis]);
 
+// Pedido do usuário: toda despesa lançada já é dinheiro que saiu (pago) —
+// aparece listada também em "Contas Pagas" (só nessa aba, nunca em "Contas
+// a Pagar"), sem duplicar nada no banco — é a mesma despesa, só mostrada
+// junto.
+const despesasParaContasPagas = useMemo(() => {
+  return lancamentosAprovados.filter((item) => item.tipo === "despesa");
+}, [lancamentosAprovados]);
+
 const lancamentosDashboard = useMemo(() => {
   return lancamentosAprovados.filter((item) => {
     if (!item.data) return false;
@@ -3394,6 +3402,8 @@ const statusCmv =
             modo={pagina === "contas-pagas" ? "pagas" : "pendentes"}
             aoConfirmarPagamento={() => setPagina("contas-pagas")}
             contas={contasPagarFiltradas}
+            despesas={despesasParaContasPagas}
+            buscarFotoDespesa={buscarFotoLancamento}
             carregando={carregandoContasPagar}
             adicionarConta={adicionarContaPagar}
             editarConta={editarContaPagar}
