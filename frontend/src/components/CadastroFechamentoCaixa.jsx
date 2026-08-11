@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const tiposFechamento = [
   {
@@ -104,6 +104,34 @@ function CadastroFechamentoCaixa({
 
     return Date.now() - criadoEm < OITO_HORAS_MS;
   });
+
+  // Pedido do usuário: assim que o operador tira a foto do Fechamento de
+  // Caixa, ela já aparece em miniatura no topo — sem precisar clicar em
+  // "Ver foto" (igual em tempo real ao que já acontece com a linha da
+  // Diária Boy/Cozinha na lista).
+  const [fotosCaixaAbertura, setFotosCaixaAbertura] = useState({});
+
+  const registrosCaixaAbertos = registrosRecentes.filter(
+    (registro) => registro.tipo === "caixa"
+  );
+
+  useEffect(() => {
+    registrosCaixaAbertos.forEach((registro) => {
+      if (fotosCaixaAbertura[registro.id] !== undefined) return;
+
+      buscarFoto(registro.id)
+        .then((resultado) => {
+          setFotosCaixaAbertura((anteriores) => ({
+            ...anteriores,
+            [registro.id]: resultado?.foto || "",
+          }));
+        })
+        .catch((erro) => {
+          console.error("Erro ao carregar miniatura do fechamento:", erro);
+        });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registrosCaixaAbertos.map((item) => item.id).join(",")]);
 
   async function finalizarHandler() {
     const confirmar = window.confirm(
@@ -256,6 +284,58 @@ function CadastroFechamentoCaixa({
           fechamentos já finalizados, use Relatórios → Caixa e escolha a
           data.
         </small>
+
+        {registrosCaixaAbertos.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              margin: "12px 0",
+            }}
+          >
+            {registrosCaixaAbertos.map((registro) => {
+              const foto = fotosCaixaAbertura[registro.id];
+
+              return (
+                <button
+                  key={registro.id}
+                  type="button"
+                  title={`Fechamento de Caixa — ${formatarDataHora(
+                    registro.criado_em
+                  )}`}
+                  onClick={() => foto && setFotoVisualizada(foto)}
+                  style={{
+                    width: 90,
+                    height: 90,
+                    borderRadius: 8,
+                    border: "none",
+                    padding: 0,
+                    overflow: "hidden",
+                    cursor: foto ? "pointer" : "default",
+                    background: "#0f172a",
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                >
+                  {foto ? (
+                    <img
+                      src={foto}
+                      alt="Foto do fechamento de caixa"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <small className="foto-ajuda">Carregando...</small>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {carregando ? (
           <div className="empty-state">Carregando...</div>
