@@ -93,6 +93,7 @@ function CadastroFechamentoCaixa({
   lerValorFoto,
   finalizacoes = [],
   finalizarFechamento,
+  lojaId = null,
 }) {
   const [enviandoTipo, setEnviandoTipo] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
@@ -109,7 +110,16 @@ function CadastroFechamentoCaixa({
       )
     : null;
 
-  const registrosRecentes = registros.filter((registro) => {
+  // Nunca mistura loja — só mostra o que é da loja selecionada no topo (ou
+  // registros antigos sem loja gravada, que aparecem pra todas).
+  const registrosDaLoja = lojaId
+    ? registros.filter(
+        (registro) =>
+          !registro.loja_id || String(registro.loja_id) === String(lojaId)
+      )
+    : registros;
+
+  const registrosRecentes = registrosDaLoja.filter((registro) => {
     const criadoEm = new Date(registro.criado_em).getTime();
 
     if (ultimaFinalizacao != null) {
@@ -169,6 +179,13 @@ function CadastroFechamentoCaixa({
   async function capturarFoto(tipo, arquivo) {
     if (!arquivo) return;
 
+    if (!lojaId) {
+      alert(
+        "Selecione uma loja no seletor do topo da tela antes de registrar."
+      );
+      return;
+    }
+
     if (TIPOS_COM_VALOR_CONFERIDO.includes(tipo)) {
       await capturarDiaria(tipo, arquivo);
       return;
@@ -178,7 +195,11 @@ function CadastroFechamentoCaixa({
 
     try {
       const fotoComprimida = await comprimirImagem(arquivo);
-      await adicionarFechamento({ tipo, foto: fotoComprimida });
+      await adicionarFechamento({
+        tipo,
+        foto: fotoComprimida,
+        loja_id: lojaId,
+      });
     } catch (erro) {
       console.error("Erro ao registrar foto:", erro);
       alert(erro.message || "Não foi possível registrar a foto.");
@@ -258,6 +279,7 @@ function CadastroFechamentoCaixa({
       await adicionarFechamento({
         tipo: rascunhoDiaria.tipo,
         foto: rascunhoDiaria.foto,
+        loja_id: lojaId,
         valor: rascunhoDiaria.valor !== "" ? Number(rascunhoDiaria.valor) : null,
         valor_pago_dinheiro:
           rascunhoDiaria.pagoDinheiro !== ""

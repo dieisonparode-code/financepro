@@ -2860,7 +2860,7 @@ const statusCmv =
       </div>
 
       <div className="topbar-actions">
-        {pagina !== "conciliacao" && pagina !== "vendas-saipos" && (
+        {pagina !== "vendas-saipos" && (
           vePermissaoTotal ? (
             <select
               className="topbar-loja-select no-print"
@@ -3318,7 +3318,15 @@ const statusCmv =
         )}
 
         {pagina === "conciliacao" && temPermissaoFechamento("conciliacao") && (
-          <Conciliacao />
+          <Conciliacao
+            lojaId={
+              !vePermissaoTotal
+                ? perfil?.loja_id || null
+                : lojaDashboard !== "todas"
+                ? lojaDashboard
+                : null
+            }
+          />
         )}
 
         {pagina === "contas-receber" && (
@@ -3379,6 +3387,13 @@ const statusCmv =
             lerValorFoto={lerValorFechamentoCaixa}
             finalizacoes={finalizacoesFechamentoCaixa}
             finalizarFechamento={finalizarFechamentoCaixaHandler}
+            lojaId={
+              !vePermissaoTotal
+                ? perfil?.loja_id || null
+                : lojaDashboard !== "todas"
+                ? lojaDashboard
+                : null
+            }
           />
         )}
 

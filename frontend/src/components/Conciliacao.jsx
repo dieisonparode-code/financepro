@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   buscarVendasPagSeguro,
   conferirFechamentoFoto,
@@ -7,51 +7,13 @@ import {
 } from "../services/api";
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
-function comprimirImagem(arquivo, larguraMaxima = 1400, qualidade = 0.85) {
-  return new Promise((resolve, reject) => {
-    const leitor = new FileReader();
-
-    leitor.onload = () => {
-      const imagem = new Image();
-
-      imagem.onload = () => {
-        const escala = Math.min(1, larguraMaxima / imagem.width);
-        const largura = Math.round(imagem.width * escala);
-        const altura = Math.round(imagem.height * escala);
-
-        const canvas = document.createElement("canvas");
-        canvas.width = largura;
-        canvas.height = altura;
-
-        const contexto = canvas.getContext("2d");
-        contexto.drawImage(imagem, 0, 0, largura, altura);
-
-        resolve(canvas.toDataURL("image/jpeg", qualidade));
-      };
-
-      imagem.onerror = () =>
-        reject(new Error("Não foi possível ler a imagem selecionada."));
-
-      imagem.src = leitor.result;
-    };
-
-    leitor.onerror = () =>
-      reject(new Error("Não foi possível abrir o arquivo selecionado."));
-
-    leitor.readAsDataURL(arquivo);
-  });
-}
-
-// Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
-// bate com a expectativa de quem está usando a tela, seja qual for a loja.
-// A proteção contra "pedir data no futuro pra PagSeguro" fica só no backend
-// (calcularPeriodoPagSeguro), que sempre usa o horário de Brasília por ser o
-// que a PagSeguro exige — não precisa ser replicado aqui.
-function hoje() {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, "0");
-  const dia = String(agora.getDate()).padStart(2, "0");
+// Converte o horário de um registro (o momento em que um fechamento foi
+// salvo) pro formato de data que a PagSeguro espera.
+function hojeDoRegistro(dataIso) {
+  const data = new Date(dataIso);
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
 
   return `${ano}-${mes}-${dia}`;
 }
@@ -110,17 +72,14 @@ function agruparVendasPorFormaPagamento(vendas) {
   }));
 }
 
-const INTERVALO_ATUALIZACAO_MS = 30 * 1000;
-
-function Conciliacao() {
+// Sem seletor de loja aqui de propósito — a pedido do usuário, essa tela
+// usa a loja em que a pessoa já está logada (ou a selecionada no topo,
+// pra administrador), não precisa escolher de novo.
+function Conciliacao({ lojaId }) {
   const [abaAtiva, setAbaAtiva] = useState("caixa");
-  const inputFotoRef = useRef(null);
-  const [dataInicio, setDataInicio] = useState(hoje());
-  const [dataFim, setDataFim] = useState(hoje());
   const [resumo, setResumo] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
-  const [atualizadoEm, setAtualizadoEm] = useState(null);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [resultadoFoto, setResultadoFoto] = useState(null);
   const [valoresInformados, setValoresInformados] = useState({
@@ -133,46 +92,69 @@ function Conciliacao() {
     Vale: "",
     "Voucher Parceiro": "",
   });
-  const [fechamentosSalvos, setFechamentosSalvos] = useState([]);
-  const [carregandoFechamentos, setCarregandoFechamentos] = useState(false);
   const [fechamentoSelecionado, setFechamentoSelecionado] = useState("");
   const [fotoPreview, setFotoPreview] = useState(null);
   const [carregandoPreview, setCarregandoPreview] = useState(false);
-  // Enquanto a tela busca a PagSeguro "em tempo real" (a cada 30s, sempre
-  // até "agora"), o valor do Sistema fica subindo à medida que novas vendas
-  // entram — bom pra acompanhar ao vivo, mas ruim pra comparar com um
-  // fechamento físico (que é um valor parado no tempo). Congelar guarda uma
-  // foto dos totais nesse instante, pra poder testar/reconferir várias vezes
-  // sem o número mudar debaixo do usuário.
-  const [confrontoCongelado, setConfrontoCongelado] = useState(null);
 
-  useEffect(() => {
-    async function carregarFechamentosSalvos() {
-      setCarregandoFechamentos(true);
-
-      try {
-        const dados = await buscarFechamentosCaixa();
-
-        setFechamentosSalvos(
-          (Array.isArray(dados) ? dados : [])
-            .filter((item) => item.tipo === "caixa")
-            .sort(
-              (a, b) => new Date(b.criado_em) - new Date(a.criado_em)
-            )
-            .slice(0, 15)
-        );
-      } catch {
-        // silencioso — o botão de anexar continua funcionando normal
-      } finally {
-        setCarregandoFechamentos(false);
-      }
+  // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
+  // conciliado o fechamento, não tem por que ficar rodando de novo. Um só
+  // botão acha o último Fechamento de Caixa daquela loja, busca a
+  // PagSeguro só daquele dia e já lê a foto sozinho.
+  async function usarUltimoFechamento() {
+    if (!lojaId) {
+      alert(
+        "Selecione uma loja no seletor do topo da tela antes de usar o último fechamento."
+      );
+      return;
     }
 
-    carregarFechamentosSalvos();
-  }, []);
+    setCarregando(true);
+    setErro("");
+    setResultadoFoto(null);
+    setResumo(null);
+    setFechamentoSelecionado("");
+
+    try {
+      const dados = await buscarFechamentosCaixa();
+
+      const ultimo = (Array.isArray(dados) ? dados : [])
+        .filter(
+          (item) =>
+            item.tipo === "caixa" && String(item.loja_id) === String(lojaId)
+        )
+        .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))[0];
+
+      if (!ultimo) {
+        setErro(
+          "Nenhum Fechamento de Caixa encontrado ainda pra essa loja."
+        );
+        return;
+      }
+
+      setFechamentoSelecionado(ultimo.id);
+
+      const dataFechamento = hojeDoRegistro(ultimo.criado_em);
+      const resultadoVendas = await buscarVendasPagSeguro(
+        dataFechamento,
+        dataFechamento
+      );
+
+      setResumo(resultadoVendas);
+
+      const fotoResultado = await buscarFotoFechamentoCaixa(ultimo.id);
+      await conferirFotoDataUrl(fotoResultado?.foto);
+    } catch (erroBusca) {
+      setErro(
+        erroBusca.message ||
+          "Não foi possível buscar o último fechamento dessa loja."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
 
   async function conferirFotoDataUrl(fotoDataUrl) {
-    if (!fotoDataUrl || !resumo) return;
+    if (!fotoDataUrl) return;
 
     setEnviandoFoto(true);
     setResultadoFoto(null);
@@ -223,13 +205,6 @@ function Conciliacao() {
     }
   }
 
-  async function conferirFoto(arquivo) {
-    if (!arquivo || !resumo) return;
-
-    const fotoComprimida = await comprimirImagem(arquivo);
-    await conferirFotoDataUrl(fotoComprimida);
-  }
-
   async function verFotoSelecionada(id) {
     if (!id) return;
 
@@ -245,103 +220,6 @@ function Conciliacao() {
     }
   }
 
-  async function conferirFechamentoSalvo(id) {
-    if (!id || !resumo) return;
-
-    setEnviandoFoto(true);
-    setResultadoFoto(null);
-
-    try {
-      const resultado = await buscarFotoFechamentoCaixa(id);
-      await conferirFotoDataUrl(resultado?.foto);
-    } catch (erroFoto) {
-      setResultadoFoto({
-        erro_leitura:
-          erroFoto.message || "Não foi possível buscar essa foto.",
-      });
-      setEnviandoFoto(false);
-    }
-  }
-
-  // Acompanha qual era "hoje" da última vez que checamos — serve pra saber
-  // se a pessoa está vendo o dia atual (e por isso a data final deve virar
-  // sozinha à meia-noite) ou se escolheu um período antigo de propósito (e
-  // nesse caso não deve mexer nas datas escolhidas por ela).
-  const diaSeguidoRef = useRef(hoje());
-
-  // Se a pessoa muda o período, um confronto congelado de antes não faz mais
-  // sentido (era de outro período) — descongela sozinho.
-  useEffect(() => {
-    setConfrontoCongelado(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataInicio, dataFim]);
-
-  async function buscar() {
-    // Enquanto a pessoa está digitando/trocando a data (o campo pode passar
-    // por um instante vazio), simplesmente não busca nada — sem mostrar erro.
-    if (!dataInicio || !dataFim) {
-      return;
-    }
-
-    setCarregando(true);
-    setErro("");
-
-    try {
-      const resultado = await buscarVendasPagSeguro(dataInicio, dataFim);
-      setResumo(resultado);
-      setAtualizadoEm(new Date());
-    } catch (erroBusca) {
-      setErro(
-        erroBusca.message || "Não foi possível buscar as vendas na PagSeguro."
-      );
-    } finally {
-      setCarregando(false);
-    }
-  }
-
-  function congelarConfronto() {
-    if (!resumo) return;
-
-    setConfrontoCongelado({
-      totaisBrutos: resumo.totais_brutos_por_forma_pagamento || {},
-      capturadoEm: new Date(),
-    });
-  }
-
-  function descongelarConfronto() {
-    setConfrontoCongelado(null);
-  }
-
-  useEffect(() => {
-    buscar();
-
-    const intervalo = setInterval(() => {
-      const hojeAgora = hoje();
-
-      if (hojeAgora !== diaSeguidoRef.current) {
-        const diaAnterior = diaSeguidoRef.current;
-        const estavaSeguindoFinal = dataFim === diaAnterior;
-        diaSeguidoRef.current = hojeAgora;
-
-        if (estavaSeguindoFinal) {
-          // Se a data inicial também era "hoje" (visualização de 1 dia só),
-          // ela acompanha junto pra continuar mostrando um único dia.
-          if (dataInicio === diaAnterior) {
-            setDataInicio(hojeAgora);
-          }
-
-          setDataFim(hojeAgora);
-          return; // o efeito reinicia sozinho por causa da dependência
-        }
-      }
-
-      buscar();
-    }, INTERVALO_ATUALIZACAO_MS);
-
-    return () => clearInterval(intervalo);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataInicio, dataFim]);
-
   const formasPagamento = Object.entries(
     resumo?.totais_por_forma_pagamento || {}
   );
@@ -350,9 +228,7 @@ function Conciliacao() {
   // pra poder mostrar um aviso no topo da tela quando tiver diferença,
   // igual o aviso de CMV alto do Dashboard.
   const confrontoCalculado = useMemo(() => {
-    const totaisBrutos = confrontoCongelado
-      ? confrontoCongelado.totaisBrutos
-      : resumo?.totais_brutos_por_forma_pagamento || {};
+    const totaisBrutos = resumo?.totais_brutos_por_forma_pagamento || {};
 
     const linhas = Object.keys(valoresInformados).map((forma) => {
       const temSistema = forma in totaisBrutos;
@@ -386,7 +262,7 @@ function Conciliacao() {
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [confrontoCongelado, resumo, valoresInformados]);
+  }, [resumo, valoresInformados]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
@@ -502,90 +378,21 @@ function Conciliacao() {
             <div
               style={{
                 display: "flex",
-                alignItems: "flex-end",
+                alignItems: "center",
                 gap: "1rem",
                 flexWrap: "wrap",
               }}
             >
-              <label style={{ margin: 0 }}>
-                Data inicial
-                <input
-                  type="date"
-                  value={dataInicio}
-                  onChange={(evento) => setDataInicio(evento.target.value)}
-                />
-              </label>
-
-              <label style={{ margin: 0 }}>
-                Data final
-                <input
-                  type="date"
-                  value={dataFim}
-                  onChange={(evento) => setDataFim(evento.target.value)}
-                />
-              </label>
-
               <button
                 type="button"
                 className="primary-button"
-                onClick={buscar}
-                disabled={carregando}
+                onClick={usarUltimoFechamento}
+                disabled={carregando || enviandoFoto}
               >
-                {carregando ? "Buscando..." : "🔄 Atualizar agora"}
+                {carregando || enviandoFoto
+                  ? "Buscando..."
+                  : "📁 Usar Último Fechamento"}
               </button>
-
-              <input
-                ref={inputFotoRef}
-                type="file"
-                accept="image/*"
-                disabled={enviandoFoto || !resumo}
-                onChange={async (evento) => {
-                  const arquivo = evento.target.files?.[0];
-                  await conferirFoto(arquivo);
-                  evento.target.value = "";
-                }}
-                style={{ display: "none" }}
-              />
-
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => inputFotoRef.current?.click()}
-                disabled={enviandoFoto || !resumo}
-              >
-                {enviandoFoto
-                  ? "Lendo foto..."
-                  : "📸 Conferir nova foto"}
-              </button>
-
-              {fechamentosSalvos.length > 0 && (
-                <label style={{ margin: 0 }}>
-                  Ou usar foto já enviada
-                  <select
-                    value={fechamentoSelecionado}
-                    disabled={enviandoFoto || !resumo}
-                    onChange={(evento) => {
-                      const id = evento.target.value;
-                      setFechamentoSelecionado(id);
-
-                      if (id) {
-                        conferirFechamentoSalvo(id);
-                      }
-                    }}
-                  >
-                    <option value="">
-                      {carregandoFechamentos
-                        ? "Carregando..."
-                        : "Selecione..."}
-                    </option>
-                    {fechamentosSalvos.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {new Date(item.criado_em).toLocaleString("pt-BR")}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
 
               {fechamentoSelecionado && (
                 <button
@@ -600,13 +407,9 @@ function Conciliacao() {
             </div>
 
             <small className="foto-ajuda">
-              Atualiza sozinho a cada 30s.{" "}
-              {atualizadoEm && (
-                <>
-                  Última atualização:{" "}
-                  {atualizadoEm.toLocaleTimeString("pt-BR")}.
-                </>
-              )}
+              Pega o último Fechamento de Caixa dessa loja, busca a
+              PagSeguro daquele dia e já lê o valor da foto sozinho — não
+              precisa fazer de novo depois de conciliado.
             </small>
           </div>
         </div>
@@ -662,61 +465,7 @@ function Conciliacao() {
                 <span className="eyebrow">Confronto</span>
                 <h2>Sistema × Informado, por forma de pagamento</h2>
               </div>
-
-              {confrontoCongelado ? (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span
-                    style={{
-                      color: "#f7b23b",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                    }}
-                  >
-                    🔒 Congelado às{" "}
-                    {confrontoCongelado.capturadoEm.toLocaleTimeString(
-                      "pt-BR"
-                    )}{" "}
-                    — os valores do Sistema não mudam mais, mesmo entrando
-                    venda nova.
-                  </span>
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={descongelarConfronto}
-                  >
-                    🔓 Descongelar (usar ao vivo)
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={congelarConfronto}
-                >
-                  🔒 Congelar este confronto
-                </button>
-              )}
             </div>
-
-            {!confrontoCongelado && (
-              <p
-                className="foto-ajuda"
-                style={{ marginTop: 0, marginBottom: "10px" }}
-              >
-                O Sistema busca as vendas em tempo real e continua entrando
-                venda nova até agora — se for fazer o fechamento e testar
-                mais de uma vez, congele o confronto primeiro pra comparar
-                sempre com o mesmo número.
-              </p>
-            )}
 
             {(() => {
               const { linhas, diferencaTotal, algumInformado } =
