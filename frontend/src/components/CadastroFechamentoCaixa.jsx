@@ -79,6 +79,11 @@ function formatarMoeda(valor) {
 // horas e passa a ser só "depois da última finalização".
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000;
 
+// Teto de segurança: mesmo sem finalizar, depois de 3 dias o registro sai
+// da lista "em aberto" sozinho (pedido do usuário) — pra não acumular pra
+// sempre se alguém esquecer de clicar em Finalizar.
+const TRES_DIAS_MS = 3 * 24 * 60 * 60 * 1000;
+
 // Diárias (Boy/Cozinha) não salvam a foto direto — abrem um rascunho pra
 // conferir/corrigir o valor lido por IA antes de confirmar (pedido do
 // usuário: "as vezes foi pago parte em dinheiro e parte pix").
@@ -119,15 +124,24 @@ function CadastroFechamentoCaixa({
       )
     : registros;
 
-  const registrosRecentes = registrosDaLoja.filter((registro) => {
-    const criadoEm = new Date(registro.criado_em).getTime();
+  const registrosRecentes = registrosDaLoja
+    .filter((registro) => {
+      const criadoEm = new Date(registro.criado_em).getTime();
 
-    if (ultimaFinalizacao != null) {
-      return criadoEm > ultimaFinalizacao;
-    }
+      // Teto de 3 dias sempre vale, finalizado ou não.
+      if (Date.now() - criadoEm >= TRES_DIAS_MS) {
+        return false;
+      }
 
-    return Date.now() - criadoEm < OITO_HORAS_MS;
-  });
+      if (ultimaFinalizacao != null) {
+        return criadoEm > ultimaFinalizacao;
+      }
+
+      return Date.now() - criadoEm < OITO_HORAS_MS;
+    })
+    // Ordem crescente por data — a mais antiga primeiro, descendo até a
+    // mais recente (pedido do usuário).
+    .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
 
   // Pedido do usuário: assim que o operador tira a foto do Fechamento de
   // Caixa, ela já aparece em miniatura no topo — sem precisar clicar em
@@ -426,10 +440,10 @@ function CadastroFechamentoCaixa({
         </div>
 
         <small className="foto-ajuda">
-          Fica tudo aqui até você clicar em "Finalizar Fechamento de
-          Caixa" — não some com o tempo nem passando da meia-noite. Pra ver
-          fechamentos já finalizados, use Relatórios → Caixa e escolha a
-          data.
+          Fica aqui até você clicar em "Finalizar Fechamento de Caixa" (não
+          some passando da meia-noite) — ou no máximo 3 dias, o que vier
+          primeiro. Pra ver fechamentos mais antigos, use Relatórios →
+          Caixa e escolha a data.
         </small>
 
         {registrosCaixaAbertos.length > 0 && (

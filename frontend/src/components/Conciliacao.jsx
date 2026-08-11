@@ -4,7 +4,19 @@ import {
   conferirFechamentoFoto,
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
+  buscarFechamentoSaipos,
 } from "../services/api";
+
+// A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro e A
+// prazo (funcionários) já são contabilizados automaticamente pela própria
+// Saipos — só Dinheiro não tem nenhum "Sistema" pra comparar (é físico,
+// só o que o operador informou na foto). Mapeia o nome exato que a Saipos
+// usa pro nome que essa tela já usa.
+const MAPA_SAIPOS_PARA_CONFRONTO = {
+  "Pago Online": "Pago Online",
+  "A prazo (funcionários)": "A prazo",
+  "Voucher Parceiro Desconto": "Voucher Parceiro",
+};
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
 // Converte o horário de um registro (o momento em que um fechamento foi
@@ -78,6 +90,7 @@ function agruparVendasPorFormaPagamento(vendas) {
 function Conciliacao({ lojaId }) {
   const [abaAtiva, setAbaAtiva] = useState("caixa");
   const [resumo, setResumo] = useState(null);
+  const [resumoSaipos, setResumoSaipos] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [enviandoFoto, setEnviandoFoto] = useState(false);
@@ -136,12 +149,14 @@ function Conciliacao({ lojaId }) {
     setErro("");
     setResultadoFoto(null);
     setResumo(null);
+    setResumoSaipos(null);
 
     const dataFechamento = hojeDoRegistro(fechamentoEscolhido.criado_em);
 
-    // As duas buscas não dependem uma da outra (vendas na PagSeguro × leitura
-    // da foto por IA) — rodando em paralelo em vez de uma esperar a outra,
-    // o tempo total fica perto do maior dos dois, não da soma.
+    // As três buscas não dependem uma da outra (vendas na PagSeguro ×
+    // vendas na Saipos × leitura da foto por IA) — rodando em paralelo em
+    // vez de uma esperar a outra, o tempo total fica perto da mais lenta
+    // das três, não da soma.
     const buscaVendas = buscarVendasPagSeguro(dataFechamento, dataFechamento)
       .then((resultado) => setResumo(resultado))
       .catch((erroBusca) =>
@@ -150,6 +165,14 @@ function Conciliacao({ lojaId }) {
             "Não foi possível buscar as vendas na PagSeguro."
         )
       );
+
+    // iFood/Brendi (Pago Online), Voucher Parceiro e A prazo (funcionários)
+    // já são contabilizados pela própria Saipos — não falha a conciliação
+    // se essa loja ainda não tiver o ID da Saipos cadastrado, só não
+    // preenche essas 3 linhas.
+    const buscaSaipos = buscarFechamentoSaipos(lojaId, dataFechamento)
+      .then((resultado) => setResumoSaipos(resultado))
+      .catch(() => setResumoSaipos(null));
 
     const buscaFoto = buscarFotoFechamentoCaixa(fechamentoEscolhido.id)
       .then((fotoResultado) => conferirFotoDataUrl(fotoResultado?.foto))
@@ -161,7 +184,7 @@ function Conciliacao({ lojaId }) {
         });
       });
 
-    await Promise.all([buscaVendas, buscaFoto]);
+    await Promise.all([buscaVendas, buscaSaipos, buscaFoto]);
     setCarregando(false);
   }
 
@@ -240,7 +263,19 @@ function Conciliacao({ lojaId }) {
   // pra poder mostrar um aviso no topo da tela quando tiver diferença,
   // igual o aviso de CMV alto do Dashboard.
   const confrontoCalculado = useMemo(() => {
-    const totaisBrutos = resumo?.totais_brutos_por_forma_pagamento || {};
+    const totaisBrutos = { ...(resumo?.totais_brutos_por_forma_pagamento || {}) };
+
+    // iFood/Brendi (Pago Online), Voucher Parceiro e A prazo (funcionários)
+    // vêm da própria Saipos, que já contabiliza automático — só Dinheiro
+    // fica sem "Sistema" (é físico, só o que o operador informar mesmo).
+    if (resumoSaipos?.totais_por_forma_pagamento) {
+      Object.entries(MAPA_SAIPOS_PARA_CONFRONTO).forEach(
+        ([nomeSaipos, nomeConfronto]) => {
+          totaisBrutos[nomeConfronto] =
+            resumoSaipos.totais_por_forma_pagamento[nomeSaipos] || 0;
+        }
+      );
+    }
 
     const linhas = Object.keys(valoresInformados).map((forma) => {
       const temSistema = forma in totaisBrutos;
@@ -274,7 +309,7 @@ function Conciliacao({ lojaId }) {
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [resumo, valoresInformados]);
+  }, [resumo, resumoSaipos, valoresInformados]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
