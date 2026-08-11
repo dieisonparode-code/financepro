@@ -301,7 +301,7 @@ app.get("/", function (req, res) {
 });
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
 app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
@@ -341,7 +341,7 @@ app.get("/lancamentos/:id/foto", verificarPermissao(PERM_LANCAMENTOS), async fun
 
     const { data, error } = await supabase
       .from("lancamentos")
-      .select("foto, fotos_extra")
+      .select("foto, fotos_extra, foto_pendente, foto_pendente_em")
       .eq("id", id)
       .single();
 
@@ -352,6 +352,7 @@ app.get("/lancamentos/:id/foto", verificarPermissao(PERM_LANCAMENTOS), async fun
     res.json({
       foto: data?.foto || "",
       fotos_extra: Array.isArray(data?.fotos_extra) ? data.fotos_extra : [],
+      foto_pendente: data?.foto_pendente_em ? data.foto_pendente || "" : null,
     });
   } catch (erro) {
     console.error(
@@ -486,12 +487,30 @@ app.put("/lancamentos/:id", verificarPermissao(PERM_LANCAMENTOS), async function
 
     const { data: lancamentoExistente, error: erroBusca } = await supabase
       .from("lancamentos")
-      .select("data")
+      .select("data, foto")
       .eq("id", id)
       .single();
 
     if (erroBusca) {
       throw erroBusca;
+    }
+
+    // Trocar (ou remover) uma foto que já estava anexada precisa de
+    // autorização do administrador — só o primeiro anexo (lançamento sem
+    // foto ainda) segue direto. O administrador não passa por essa
+    // trava, já que é ele mesmo quem autoriza.
+    const ehAdminEditando = req.perfilLogado?.perfil === "administrador";
+    const fotoAtual = lancamentoExistente?.foto || "";
+    const fotoSolicitada = lancamentoAtualizado.foto || "";
+    const estaAlterandoFotoJaExistente =
+      fotoAtual && fotoSolicitada !== fotoAtual;
+    let aguardandoAprovacaoFoto = false;
+
+    if (estaAlterandoFotoJaExistente && !ehAdminEditando) {
+      aguardandoAprovacaoFoto = true;
+      lancamentoAtualizado.foto = fotoAtual;
+      lancamentoAtualizado.foto_pendente = fotoSolicitada;
+      lancamentoAtualizado.foto_pendente_em = new Date().toISOString();
     }
 
     if (mesBloqueado(lancamentoExistente?.data)) {
@@ -533,13 +552,13 @@ app.put("/lancamentos/:id", verificarPermissao(PERM_LANCAMENTOS), async function
 
     registrarAuditoria(
       req,
-      "editou",
+      aguardandoAprovacaoFoto ? "solicitou troca de foto" : "editou",
       "lancamentos",
       data.id,
       `${data.tipo}: ${data.descricao} (${data.valor})`
     );
 
-    res.json(data);
+    res.json({ ...data, aguardando_aprovacao_foto: aguardandoAprovacaoFoto });
   } catch (erro) {
     console.error(
       "Erro ao atualizar lançamento:",
@@ -698,6 +717,112 @@ app.put(
 
       res.status(500).json({
         erro: "Não foi possível rejeitar o lançamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Aprova/rejeita uma troca (ou remoção) de foto que um usuário sem
+// permissão de administrador pediu num lançamento que já tinha foto —
+// pedido do usuário: "só alterar a foto de despesas depois de um aviso
+// para eu autorizar". A foto antiga só é substituída na aprovação.
+app.put(
+  "/lancamentos/:id/aprovar-foto",
+  verificarPermissao("aprovar_despesas"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do lançamento inválido.",
+        });
+      }
+
+      const { data: atual, error: erroBusca } = await supabase
+        .from("lancamentos")
+        .select("foto_pendente, foto_pendente_em, descricao, valor")
+        .eq("id", id)
+        .single();
+
+      if (erroBusca) {
+        throw erroBusca;
+      }
+
+      if (!atual?.foto_pendente_em) {
+        return res.status(400).json({
+          erro: "Esse lançamento não tem nenhuma troca de foto pendente.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("lancamentos")
+        .update({
+          foto: atual.foto_pendente || "",
+          foto_pendente: null,
+          foto_pendente_em: null,
+        })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "aprovou troca de foto",
+        "lancamentos",
+        id,
+        `${atual.descricao} (${atual.valor})`
+      );
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao aprovar troca de foto:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível aprovar a troca de foto.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/lancamentos/:id/rejeitar-foto",
+  verificarPermissao("aprovar_despesas"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do lançamento inválido.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("lancamentos")
+        .update({ foto_pendente: null, foto_pendente_em: null })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "rejeitou troca de foto", "lancamentos", id, null);
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao rejeitar troca de foto:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível rejeitar a troca de foto.",
         detalhes: erro.message,
       });
     }

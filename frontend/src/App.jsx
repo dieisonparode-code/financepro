@@ -60,6 +60,8 @@ import {
   excluirUsuario,
   aprovarLancamento,
   rejeitarLancamento,
+  aprovarTrocaFoto,
+  rejeitarTrocaFoto,
   atualizarConfiguracaoAprovacao,
   buscarInsumos,
   criarInsumo,
@@ -413,6 +415,9 @@ function FinanceApp() {
     useState(null);
   const [fotoMercadoriaVisualizada, setFotoMercadoriaVisualizada] =
     useState(null);
+  const [trocaFotoVisualizada, setTrocaFotoVisualizada] = useState(null);
+  const [carregandoTrocaFotoId, setCarregandoTrocaFotoId] = useState(null);
+  const [processandoTrocaFotoId, setProcessandoTrocaFotoId] = useState(null);
   const editandoIdRef = useRef(null);
 
   const [lojas, setLojas] = useState([]);
@@ -1825,6 +1830,12 @@ const statusCmv =
       );
 
       fecharModal();
+
+      if (salvo?.aguardando_aprovacao_foto) {
+        alert(
+          "Essa nota já tinha uma foto anexada, então a troca precisa ser autorizada pelo administrador. A foto antiga continua valendo até lá."
+        );
+      }
     } catch (erro) {
       console.error("Erro ao salvar lançamento:", erro);
       alert(
@@ -1899,6 +1910,62 @@ const statusCmv =
       alert(erro.message || "Não foi possível rejeitar o lançamento.");
     } finally {
       setProcessandoAprovacaoId(null);
+    }
+  }
+
+  async function verTrocaFoto(item) {
+    setCarregandoTrocaFotoId(item.id);
+
+    try {
+      const resultado = await buscarFotoLancamento(item.id);
+
+      setTrocaFotoVisualizada({
+        id: item.id,
+        descricao: item.descricao,
+        fotoAtual: resultado?.foto || "",
+        fotoPendente: resultado?.foto_pendente || "",
+      });
+    } catch (erro) {
+      console.error("Erro ao buscar troca de foto:", erro);
+      alert(erro.message || "Não foi possível carregar a troca de foto.");
+    } finally {
+      setCarregandoTrocaFotoId(null);
+    }
+  }
+
+  async function aprovarTrocaFotoHandler(id) {
+    setProcessandoTrocaFotoId(id);
+
+    try {
+      const atualizado = await aprovarTrocaFoto(id);
+
+      setLancamentos((anteriores) =>
+        anteriores.map((item) => (item.id === id ? atualizado : item))
+      );
+      setTrocaFotoVisualizada(null);
+    } catch (erro) {
+      console.error("Erro ao aprovar troca de foto:", erro);
+      alert(erro.message || "Não foi possível aprovar a troca de foto.");
+    } finally {
+      setProcessandoTrocaFotoId(null);
+    }
+  }
+
+  async function rejeitarTrocaFotoHandler(id) {
+    setProcessandoTrocaFotoId(id);
+
+    try {
+      const atualizado = await rejeitarTrocaFoto(id);
+
+      setLancamentos((anteriores) =>
+        anteriores.map((item) => (item.id === id ? atualizado : item))
+      );
+      setTrocaFotoVisualizada(null);
+    } catch (erro) {
+      console.error("Erro ao rejeitar troca de foto:", erro);
+      alert(erro.message || "Não foi possível rejeitar a troca de foto.");
+    } finally {
+      setProcessandoTrocaFotoId(null);
     }
   }
 
@@ -2944,6 +3011,28 @@ const statusCmv =
                             : "📄 Ver nota"}
                         </button>
                       )}
+
+                      {pagina === "despesas" &&
+                        item.foto_pendente_em &&
+                        (temPermissao("aprovar_despesas") ? (
+                          <button
+                            type="button"
+                            className="view-receipt-button"
+                            disabled={carregandoTrocaFotoId === item.id}
+                            onClick={() => verTrocaFoto(item)}
+                          >
+                            {carregandoTrocaFotoId === item.id
+                              ? "Carregando..."
+                              : "🕓 Ver troca de foto"}
+                          </button>
+                        ) : (
+                          <span
+                            className="badge-status badge-status-pendente"
+                            title="A foto nova só substitui a atual depois que o administrador autorizar."
+                          >
+                            🕓 Foto aguardando aprovação
+                          </span>
+                        ))}
 
                       {pagina === "despesas" &&
                         item.tem_foto_mercadoria && (
@@ -4512,6 +4601,97 @@ const statusCmv =
             >
               ⬇ Baixar foto
             </button>
+          </div>
+        </div>
+      )}
+
+      {trocaFotoVisualizada && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (evento.target === evento.currentTarget) {
+              setTrocaFotoVisualizada(null);
+            }
+          }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">Autorização necessária</span>
+                <h2>Troca de foto: {trocaFotoVisualizada.descricao}</h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setTrocaFotoVisualizada(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ flex: "1 1 200px" }}>
+                <strong>Foto atual</strong>
+                {trocaFotoVisualizada.fotoAtual ? (
+                  <img
+                    src={trocaFotoVisualizada.fotoAtual}
+                    alt="Foto atual"
+                    className="foto-modal-imagem"
+                  />
+                ) : (
+                  <p>Sem foto.</p>
+                )}
+              </div>
+
+              <div style={{ flex: "1 1 200px" }}>
+                <strong>Foto nova (pedida)</strong>
+                {trocaFotoVisualizada.fotoPendente ? (
+                  <img
+                    src={trocaFotoVisualizada.fotoPendente}
+                    alt="Foto nova pedida"
+                    className="foto-modal-imagem"
+                  />
+                ) : (
+                  <p>Pedido é remover a foto (deixar sem foto).</p>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="reject-button"
+                disabled={
+                  processandoTrocaFotoId === trocaFotoVisualizada.id
+                }
+                onClick={() =>
+                  rejeitarTrocaFotoHandler(trocaFotoVisualizada.id)
+                }
+              >
+                ❌ Rejeitar (mantém a foto atual)
+              </button>
+
+              <button
+                type="button"
+                className="approve-button"
+                disabled={
+                  processandoTrocaFotoId === trocaFotoVisualizada.id
+                }
+                onClick={() =>
+                  aprovarTrocaFotoHandler(trocaFotoVisualizada.id)
+                }
+              >
+                ✅ Autorizar troca
+              </button>
+            </div>
           </div>
         </div>
       )}

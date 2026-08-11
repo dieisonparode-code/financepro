@@ -117,6 +117,20 @@ export async function rejeitarLancamento(id) {
   });
 }
 
+export async function aprovarTrocaFoto(id) {
+  return requisicao(`/lancamentos/${id}/aprovar-foto`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function rejeitarTrocaFoto(id) {
+  return requisicao(`/lancamentos/${id}/rejeitar-foto`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function atualizarConfiguracaoAprovacao(ativa) {
   return requisicao("/configuracoes/aprovacao-despesas", {
     method: "PUT",
