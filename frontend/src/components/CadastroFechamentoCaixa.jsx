@@ -135,7 +135,7 @@ function CadastroFechamentoCaixa({
 
   async function finalizarHandler() {
     const confirmar = window.confirm(
-      "Finalizar o fechamento de caixa? Os registros de agora vão parar de aparecer aqui (continuam salvos — dá pra ver em Relatórios → Caixa)."
+      "Finalizar o fechamento de caixa? Os registros de agora vão parar de aparecer aqui (continuam salvos — dá pra ver em Relatórios → Caixa). As fotos de Diária Boy/Cozinha vão direto pra Contas a Pagar, só faltando o valor."
     );
 
     if (!confirmar) return;

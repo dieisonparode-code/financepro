@@ -1964,11 +1964,33 @@ app.get(
   }
 );
 
+// Nomes legíveis pros tipos de fechamento que geram conta a pagar
+// automaticamente — hoje só Diária Boy/Cozinha (pedido do usuário).
+const NOMES_DIARIA_PARA_CONTA_PAGAR = {
+  boy: "Diária Boy",
+  cozinha: "Diária Cozinha",
+};
+
 app.post(
   "/fechamento-caixa-finalizacoes",
   verificarPermissao(PERM_FECHAMENTO_CAIXA),
   async function (req, res) {
     try {
+      // Pega a finalização anterior ANTES de inserir a nova — define a
+      // "janela" desse fechamento (tudo que ficou pendurado desde a última
+      // vez que alguém finalizou, ou desde sempre, se for a primeira vez).
+      const { data: finalizacaoAnterior, error: erroAnterior } =
+        await supabase
+          .from("fechamento_caixa_finalizacoes")
+          .select("criado_em")
+          .order("criado_em", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+      if (erroAnterior) {
+        throw erroAnterior;
+      }
+
       const { data, error } = await supabase
         .from("fechamento_caixa_finalizacoes")
         .insert([{}])
@@ -1987,7 +2009,78 @@ app.post(
         null
       );
 
-      res.status(201).json(data);
+      // A pedido do usuário: toda foto de Diária Boy/Cozinha desse
+      // fechamento que está sendo finalizado agora vai direto pra Contas a
+      // Pagar (com a foto anexada) — sem valor pré-definido, porque essas
+      // fotos não têm nenhum valor pra ler; o administrador completa antes
+      // de pagar.
+      let contasPagarCriadas = 0;
+
+      try {
+        let consultaDiarias = supabase
+          .from("fechamentos_caixa")
+          .select("id, tipo, foto, criado_em")
+          .in("tipo", Object.keys(NOMES_DIARIA_PARA_CONTA_PAGAR))
+          .lte("criado_em", data.criado_em);
+
+        if (finalizacaoAnterior?.criado_em) {
+          consultaDiarias = consultaDiarias.gt(
+            "criado_em",
+            finalizacaoAnterior.criado_em
+          );
+        }
+
+        const { data: diarias, error: erroDiarias } = await consultaDiarias;
+
+        if (erroDiarias) {
+          throw erroDiarias;
+        }
+
+        for (const diaria of diarias || []) {
+          const dadosConta = {
+            descricao: NOMES_DIARIA_PARA_CONTA_PAGAR[diaria.tipo],
+            fornecedor: "",
+            valor: 0,
+            data_vencimento: dataBrasiliaDe(diaria.criado_em),
+            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Preencha o valor correto antes de pagar.`,
+            foto: diaria.foto || "",
+            loja_id: null,
+          };
+
+          const { data: contaCriada, error: erroConta } = await supabase
+            .from("contas_pagar")
+            .insert([dadosConta])
+            .select("id")
+            .single();
+
+          if (erroConta) {
+            console.error(
+              "Erro ao criar conta a pagar a partir da diária:",
+              erroConta.message
+            );
+            continue;
+          }
+
+          contasPagarCriadas += 1;
+
+          registrarAuditoria(
+            req,
+            "criou",
+            "contas_pagar",
+            contaCriada.id,
+            `Gerado a partir do fechamento de caixa #${diaria.id} (${diaria.tipo}), aguardando valor.`
+          );
+        }
+      } catch (erroDiarias) {
+        // Não deixa a finalização falhar por causa disso — o fechamento em
+        // si já foi salvo; só loga pra investigar depois.
+        console.error(
+          "Erro ao gerar contas a pagar das diárias:",
+          erroDiarias.message
+        );
+      }
+
+      res.status(201).json({ ...data, contas_pagar_criadas: contasPagarCriadas });
     } catch (erro) {
       console.error("Erro ao finalizar fechamento de caixa:", erro.message);
 
@@ -4043,6 +4136,18 @@ function dataBrasilia(diasAtras = 0) {
     month: "2-digit",
     day: "2-digit",
   }).format(agora);
+}
+
+// Igual dataBrasilia(), mas convertendo um horário específico (não "agora")
+// pro fuso de Brasília — usado pra saber em qual dia (local) uma foto de
+// fechamento foi tirada, mesmo se o servidor estiver em UTC.
+function dataBrasiliaDe(dataIso) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(dataIso));
 }
 
 function horaBrasilia() {

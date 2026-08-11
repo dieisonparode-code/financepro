@@ -599,16 +599,6 @@ function ContasPagar({
                       👁️ Ver detalhes
                     </button>
 
-                    {conta.foto && (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => setFotoVisualizada(conta.foto)}
-                      >
-                        👁️ Ver foto
-                      </button>
-                    )}
-
                     <button
                       type="button"
                       className="edit-button"

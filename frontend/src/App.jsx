@@ -2296,6 +2296,18 @@ const statusCmv =
     const salvo = await finalizarFechamentoCaixa();
 
     setFinalizacoesFechamentoCaixa((anteriores) => [salvo, ...anteriores]);
+
+    if (salvo?.contas_pagar_criadas > 0) {
+      const dadosContasPagar = await buscarContasPagar().catch(() => null);
+
+      if (dadosContasPagar) {
+        setContasPagar(dadosContasPagar);
+      }
+
+      alert(
+        `${salvo.contas_pagar_criadas} conta(s) a pagar criada(s) automaticamente (Diária Boy/Cozinha) — falta só preencher o valor de cada uma antes de pagar.`
+      );
+    }
   }
 
   function exportarRelatorioCSV() {
