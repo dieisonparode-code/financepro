@@ -752,6 +752,13 @@ td {
 
 .foto-button:active {
   transform: scale(0.98);
+}
+
+/* Variante verde — usada no botão "Pago com dinheiro do caixa", pra
+   diferenciar visualmente de saída de dinheiro dos demais registros. */
+.foto-button-verde {
+  background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+  box-shadow: 0 8px 20px rgba(22, 163, 74, 0.3) !important;
 }.foto-button {
   display: inline-flex;
   align-items: center;

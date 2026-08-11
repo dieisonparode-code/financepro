@@ -14,6 +14,13 @@ const tiposFechamento = [
     rotulo: "Venda a Prazo Funcionário",
     icone: "🧾",
   },
+  {
+    valor: "pago_dinheiro_caixa",
+    rotulo: "Pago com dinheiro do caixa",
+    icone: "💵",
+    corVerde: true,
+    semCapture: true,
+  },
 ];
 
 function rotuloTipo(tipo) {
@@ -142,7 +149,7 @@ function CadastroFechamentoCaixa({
                 id={`foto-fechamento-${item.valor}`}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                {...(item.semCapture ? {} : { capture: "environment" })}
                 disabled={enviandoTipo === item.valor}
                 onChange={async (evento) => {
                   const arquivo = evento.target.files?.[0];
@@ -153,7 +160,9 @@ function CadastroFechamentoCaixa({
 
               <label
                 htmlFor={`foto-fechamento-${item.valor}`}
-                className="foto-button"
+                className={
+                  item.corVerde ? "foto-button foto-button-verde" : "foto-button"
+                }
                 style={
                   enviandoTipo === item.valor
                     ? { opacity: 0.6, pointerEvents: "none" }
@@ -162,6 +171,8 @@ function CadastroFechamentoCaixa({
               >
                 {enviandoTipo === item.valor
                   ? "Salvando..."
+                  : item.semCapture
+                  ? `📷📎 Tirar foto ou adicionar arquivo — ${item.rotulo}`
                   : `📸 Tirar foto — ${item.rotulo}`}
               </label>
 
