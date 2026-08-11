@@ -2,10 +2,17 @@ import { useEffect, useState } from "react";
 
 const tiposFechamento = [
   {
+    chave: "caixa-1",
     valor: "caixa",
-    rotulo: "Fechamento de Caixa",
+    rotulo: "Fechamento de Caixa — Foto 1",
     icone: "📷",
-    ajuda: "Se o comprovante for grande e precisar dobrar, tire quantas fotos precisar — cada foto é registrada separadamente.",
+  },
+  {
+    chave: "caixa-2",
+    valor: "caixa",
+    rotulo: "Fechamento de Caixa — Foto 2",
+    icone: "📷",
+    ajuda: "Se o comprovante tiver mais partes (dobrou o papel, mais de 2 fotos), tire quantas precisar — cada foto é registrada separadamente.",
   },
   { valor: "boy", rotulo: "Diária Boy", icone: "🏍️" },
   { valor: "cozinha", rotulo: "Diária Cozinha", icone: "👨‍🍳" },
@@ -190,7 +197,7 @@ function CadastroFechamentoCaixa({
     }
   }
 
-  async function capturarFoto(tipo, arquivo) {
+  async function capturarFoto(tipo, arquivo, chave = tipo) {
     if (!arquivo) return;
 
     if (!lojaId) {
@@ -205,7 +212,7 @@ function CadastroFechamentoCaixa({
       return;
     }
 
-    setEnviandoTipo(tipo);
+    setEnviandoTipo(chave);
 
     try {
       const fotoComprimida = await comprimirImagem(arquivo);
@@ -367,37 +374,40 @@ function CadastroFechamentoCaixa({
         </div>
 
         <div className="fechamento-botoes">
-          {tiposFechamento.map((item) => (
-            <div key={item.valor} className="foto-upload">
+          {tiposFechamento.map((item) => {
+            const chave = item.chave || item.valor;
+
+            return (
+            <div key={chave} className="foto-upload">
               <span className="foto-upload-title">
                 {item.icone} {item.rotulo}
               </span>
 
               <input
-                id={`foto-fechamento-${item.valor}`}
+                id={`foto-fechamento-${chave}`}
                 type="file"
                 accept="image/*"
                 {...(item.semCapture ? {} : { capture: "environment" })}
-                disabled={enviandoTipo === item.valor}
+                disabled={enviandoTipo === chave}
                 onChange={async (evento) => {
                   const arquivo = evento.target.files?.[0];
-                  await capturarFoto(item.valor, arquivo);
+                  await capturarFoto(item.valor, arquivo, chave);
                   evento.target.value = "";
                 }}
               />
 
               <label
-                htmlFor={`foto-fechamento-${item.valor}`}
+                htmlFor={`foto-fechamento-${chave}`}
                 className={
                   item.corVerde ? "foto-button foto-button-verde" : "foto-button"
                 }
                 style={
-                  enviandoTipo === item.valor
+                  enviandoTipo === chave
                     ? { opacity: 0.6, pointerEvents: "none" }
                     : undefined
                 }
               >
-                {enviandoTipo === item.valor
+                {enviandoTipo === chave
                   ? "Salvando..."
                   : item.semCapture
                   ? `📷📎 Tirar foto ou adicionar arquivo — ${item.rotulo}`
@@ -406,7 +416,8 @@ function CadastroFechamentoCaixa({
 
               {item.ajuda && <small className="foto-ajuda">{item.ajuda}</small>}
             </div>
-          ))}
+            );
+          })}
 
           <div className="foto-upload">
             <button
