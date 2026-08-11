@@ -59,6 +59,17 @@ function diasAte(data) {
   return Math.round((alvo - hoje) / (1000 * 60 * 60 * 24));
 }
 
+// Primeiro dia do mês atual, no formato YYYY-MM-DD — usado pra limitar o
+// histórico de Contas Pagas ao mês corrente por padrão (mês anterior só
+// aparece se a pessoa pesquisar por ele).
+function primeiroDiaMesAtual() {
+  const agora = new Date();
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-01`;
+}
+
 function situacaoConta(conta) {
   if (conta.status === "pago") {
     return { rotulo: "Pago", classe: "status-saudavel" };
@@ -91,7 +102,8 @@ function ContasPagar({
   lojas = [],
   vePermissaoTotal = true,
   lojaPadrao = null,
-  abaInicial = "pendentes",
+  modo = "pendentes",
+  aoConfirmarPagamento,
 }) {
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
@@ -101,7 +113,6 @@ function ContasPagar({
   const [lojaId, setLojaId] = useState(lojaPadrao ? String(lojaPadrao) : "");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState(abaInicial);
   const [foto, setFoto] = useState("");
   const [processandoFoto, setProcessandoFoto] = useState(false);
   const [lendoFoto, setLendoFoto] = useState(false);
@@ -109,6 +120,7 @@ function ContasPagar({
   const [detalheVisualizado, setDetalheVisualizado] = useState(null);
   const [selecionadas, setSelecionadas] = useState([]);
   const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
+  const [busca, setBusca] = useState("");
 
   function limparFormulario() {
     setDescricao("");
@@ -240,9 +252,9 @@ function ContasPagar({
       }
 
       setSelecionadas([]);
-      // Vai direto pra aba de Contas Pagas, já com acesso ao "Ver detalhes"
-      // de tudo que acabou de ser pago.
-      setAbaAtiva("pagas");
+      // Vai direto pra página de Contas Pagas, já com acesso ao "Ver
+      // detalhes" de tudo que acabou de ser pago.
+      aoConfirmarPagamento?.();
 
       if (falhas.length > 0) {
         alert(
@@ -274,14 +286,56 @@ function ContasPagar({
     }
   }
 
-  const contasVisiveis = contas
-    .filter((conta) =>
-      abaAtiva === "pagas" ? conta.status === "pago" : conta.status !== "pago"
-    )
-    .sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento));
+  const buscaLimpa = busca.trim().toLowerCase();
+
+  const contasVisiveis =
+    modo === "pagas"
+      ? contas
+          .filter((conta) => conta.status === "pago")
+          .filter((conta) =>
+            buscaLimpa
+              ? `${conta.descricao} ${conta.fornecedor || ""}`
+                  .toLowerCase()
+                  .includes(buscaLimpa)
+              // Sem busca: só o histórico do mês atual — mês anterior só
+              // aparece pesquisando (senão a lista cresce pra sempre).
+              : (conta.data_pagamento || "") >= primeiroDiaMesAtual()
+          )
+          .sort((a, b) =>
+            (b.data_pagamento || "").localeCompare(a.data_pagamento || "")
+          )
+      : contas
+          .filter((conta) => conta.status !== "pago")
+          .sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento));
 
   return (
     <section className="categorias-layout">
+      {modo === "pagas" ? (
+        <article className="panel categoria-form-panel">
+          <div className="panel-header">
+            <div>
+              <span className="eyebrow">Contas Pagas</span>
+              <h2>Buscar no histórico</h2>
+            </div>
+          </div>
+
+          <label>
+            Pesquisar
+            <input
+              type="text"
+              value={busca}
+              onChange={(evento) => setBusca(evento.target.value)}
+              placeholder="Descrição ou fornecedor..."
+            />
+          </label>
+
+          <small className="foto-ajuda">
+            {busca.trim()
+              ? "Buscando em todo o histórico, sem limite de data."
+              : "Mostrando só as contas pagas neste mês. Pra ver meses anteriores, pesquise pelo nome."}
+          </small>
+        </article>
+      ) : (
       <article className="panel categoria-form-panel">
         <div className="panel-header">
           <div>
@@ -454,36 +508,21 @@ function ContasPagar({
           </div>
         </form>
       </article>
+      )}
 
       <article className="panel categoria-lista-panel">
         <div className="panel-header">
           <div>
-            <span className="eyebrow">Contas a Pagar</span>
-            <h2>Vencimentos</h2>
+            <span className="eyebrow">
+              {modo === "pagas" ? "Contas Pagas" : "Contas a Pagar"}
+            </span>
+            <h2>{modo === "pagas" ? "Histórico" : "Vencimentos"}</h2>
           </div>
 
           <strong>{contasVisiveis.length}</strong>
         </div>
 
-        <div className="conciliacao-abas">
-          <button
-            type="button"
-            className={abaAtiva === "pendentes" ? "aba-ativa" : ""}
-            onClick={() => setAbaAtiva("pendentes")}
-          >
-            A pagar
-          </button>
-
-          <button
-            type="button"
-            className={abaAtiva === "pagas" ? "aba-ativa" : ""}
-            onClick={() => setAbaAtiva("pagas")}
-          >
-            ✅ Contas pagas
-          </button>
-        </div>
-
-        {abaAtiva === "pendentes" && selecionadas.length > 0 && (
+        {modo === "pendentes" && selecionadas.length > 0 && (
           <button
             type="button"
             className="approve-button"
@@ -501,8 +540,10 @@ function ContasPagar({
           <div className="empty-state">Carregando...</div>
         ) : contasVisiveis.length === 0 ? (
           <div className="empty-state">
-            {abaAtiva === "pagas"
-              ? "Nenhuma conta paga ainda."
+            {modo === "pagas"
+              ? busca.trim()
+                ? "Nenhuma conta paga encontrada com essa busca."
+                : "Nenhuma conta paga neste mês ainda."
               : "Nenhuma conta a pagar."}
           </div>
         ) : (
@@ -513,7 +554,7 @@ function ContasPagar({
               return (
                 <div className="categoria-item" key={conta.id}>
                   <div className="categoria-identificacao">
-                    {abaAtiva === "pendentes" && (
+                    {modo === "pendentes" && (
                       <input
                         type="checkbox"
                         checked={selecionadas.includes(conta.id)}
@@ -528,8 +569,12 @@ function ContasPagar({
                       <strong>{conta.descricao}</strong>
                       <div>
                         {conta.fornecedor ? `${conta.fornecedor} — ` : ""}
-                        {formatarMoeda(conta.valor)} — vence em{" "}
-                        {formatarData(conta.data_vencimento)}
+                        {formatarMoeda(conta.valor)}
+                        {modo === "pagas" && conta.data_pagamento
+                          ? ` — pago em ${formatarData(conta.data_pagamento)}`
+                          : ` — vence em ${formatarData(
+                              conta.data_vencimento
+                            )}`}
                       </div>
                       {vePermissaoTotal && (
                         <span>

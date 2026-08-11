@@ -3132,7 +3132,8 @@ const statusCmv =
         {(pagina === "contas-pagar" || pagina === "contas-pagas") && (
           <ContasPagar
             key={pagina}
-            abaInicial={pagina === "contas-pagas" ? "pagas" : "pendentes"}
+            modo={pagina === "contas-pagas" ? "pagas" : "pendentes"}
+            aoConfirmarPagamento={() => setPagina("contas-pagas")}
             contas={contasPagarFiltradas}
             carregando={carregandoContasPagar}
             adicionarConta={adicionarContaPagar}
