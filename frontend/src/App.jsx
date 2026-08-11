@@ -285,6 +285,7 @@ function criarFormularioInicial(tipo = "receita") {
     observacao: "",
     foto: "",
     foto_mercadoria: "",
+    fotos_extra: [],
     latitude: null,
     longitude: null,
     precisao_metros: null,
@@ -403,6 +404,7 @@ function FinanceApp() {
   const [processandoFotoMercadoria, setProcessandoFotoMercadoria] =
     useState(false);
   const [lendoNota, setLendoNota] = useState(false);
+  const [adicionandoFotoExtra, setAdicionandoFotoExtra] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
   const [senhaExclusaoMesEncerrado, setSenhaExclusaoMesEncerrado] =
     useState("");
@@ -1553,6 +1555,7 @@ const statusCmv =
       observacao: lancamento.observacao || "",
       foto: "",
       foto_mercadoria: "",
+      fotos_extra: [],
       latitude: lancamento.latitude ?? null,
       longitude: lancamento.longitude ?? null,
       precisao_metros: lancamento.precisao_metros ?? null,
@@ -1564,23 +1567,26 @@ const statusCmv =
 
     setModalAberto(true);
 
-    if (lancamento.tem_foto) {
-      try {
-        const resultado = await buscarFotoLancamento(lancamento.id);
+    // Busca sempre (não só quando tem_foto) porque um lançamento pode ter
+    // fotos extras anexadas mesmo sem ter a foto principal da nota.
+    try {
+      const resultado = await buscarFotoLancamento(lancamento.id);
 
-        setFormulario((anterior) => {
-          if (editandoIdRef.current !== lancamento.id) {
-            return anterior;
-          }
+      setFormulario((anterior) => {
+        if (editandoIdRef.current !== lancamento.id) {
+          return anterior;
+        }
 
-          return {
-            ...anterior,
-            foto: resultado?.foto || "",
-          };
-        });
-      } catch (erro) {
-        console.error("Erro ao buscar foto do lançamento:", erro);
-      }
+        return {
+          ...anterior,
+          foto: resultado?.foto || "",
+          fotos_extra: Array.isArray(resultado?.fotos_extra)
+            ? resultado.fotos_extra
+            : [],
+        };
+      });
+    } catch (erro) {
+      console.error("Erro ao buscar foto do lançamento:", erro);
     }
 
     if (lancamento.tem_foto_mercadoria) {
@@ -1748,6 +1754,7 @@ const statusCmv =
       observacao: formulario.observacao.trim(),
       foto: formulario.foto || "",
       foto_mercadoria: formulario.foto_mercadoria || "",
+      fotos_extra: formulario.fotos_extra || [],
       latitude: formulario.latitude,
       longitude: formulario.longitude,
       precisao_metros: formulario.precisao_metros,
@@ -4090,6 +4097,105 @@ const statusCmv =
                   >
                     Remover foto
                   </button>
+                </div>
+              )}
+
+              <div className="foto-upload">
+                <input
+                  id="anexar-mais-fotos"
+                  type="file"
+                  accept="image/*"
+                  disabled={adicionandoFotoExtra}
+                  onChange={async (evento) => {
+                    const arquivo = evento.target.files?.[0];
+
+                    if (!arquivo) return;
+
+                    setAdicionandoFotoExtra(true);
+
+                    try {
+                      const fotoComprimida = await comprimirImagem(arquivo);
+
+                      setFormulario((anterior) => ({
+                        ...anterior,
+                        fotos_extra: [
+                          ...(anterior.fotos_extra || []),
+                          fotoComprimida,
+                        ],
+                      }));
+                    } catch (erro) {
+                      console.error("Erro ao anexar foto extra:", erro);
+                      alert(
+                        erro.message || "Não foi possível anexar essa foto."
+                      );
+                    } finally {
+                      setAdicionandoFotoExtra(false);
+                      evento.target.value = "";
+                    }
+                  }}
+                />
+
+                <label
+                  htmlFor="anexar-mais-fotos"
+                  className="primary-button"
+                  style={
+                    adicionandoFotoExtra
+                      ? { opacity: 0.6, pointerEvents: "none" }
+                      : { display: "inline-block", textAlign: "center" }
+                  }
+                >
+                  {adicionandoFotoExtra
+                    ? "Anexando..."
+                    : "📎 Anexar mais foto"}
+                </label>
+
+                <small className="foto-ajuda">
+                  Tira uma foto ou escolhe da galeria — pode clicar de novo
+                  pra anexar quantas quiser.
+                </small>
+              </div>
+
+              {formulario.fotos_extra?.length > 0 && (
+                <div
+                  className="foto-preview"
+                  style={{ display: "flex", flexWrap: "wrap", gap: 10 }}
+                >
+                  {formulario.fotos_extra.map((fotoExtra, indice) => (
+                    <div key={indice} style={{ position: "relative" }}>
+                      <img
+                        src={fotoExtra}
+                        alt={`Foto extra ${indice + 1}`}
+                        style={{
+                          width: 90,
+                          height: 90,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        className="delete-button"
+                        style={{
+                          position: "absolute",
+                          top: -6,
+                          right: -6,
+                          padding: "2px 6px",
+                          fontSize: 12,
+                        }}
+                        onClick={() =>
+                          setFormulario((anterior) => ({
+                            ...anterior,
+                            fotos_extra: anterior.fotos_extra.filter(
+                              (_, i) => i !== indice
+                            ),
+                          }))
+                        }
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
 

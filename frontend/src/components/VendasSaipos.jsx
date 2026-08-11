@@ -147,7 +147,7 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
 
             <small className="foto-ajuda">
               As vendas entram como receita automaticamente todo dia às
-              02h — não precisa clicar em nada.
+              05h — não precisa clicar em nada.
             </small>
           </>
         )}

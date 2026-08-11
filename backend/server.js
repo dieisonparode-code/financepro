@@ -242,6 +242,7 @@ function prepararLancamento(dados = {}) {
     observacao: dados.observacao || "",
     foto: dados.foto || "",
     foto_mercadoria: dados.foto_mercadoria || "",
+    fotos_extra: Array.isArray(dados.fotos_extra) ? dados.fotos_extra : [],
     latitude: dados.latitude ?? null,
     longitude: dados.longitude ?? null,
     precisao_metros: dados.precisao_metros ?? null,
@@ -340,7 +341,7 @@ app.get("/lancamentos/:id/foto", verificarPermissao(PERM_LANCAMENTOS), async fun
 
     const { data, error } = await supabase
       .from("lancamentos")
-      .select("foto")
+      .select("foto, fotos_extra")
       .eq("id", id)
       .single();
 
@@ -348,7 +349,10 @@ app.get("/lancamentos/:id/foto", verificarPermissao(PERM_LANCAMENTOS), async fun
       throw error;
     }
 
-    res.json({ foto: data?.foto || "" });
+    res.json({
+      foto: data?.foto || "",
+      fotos_extra: Array.isArray(data?.fotos_extra) ? data.fotos_extra : [],
+    });
   } catch (erro) {
     console.error(
       "Erro ao buscar foto do lançamento:",
