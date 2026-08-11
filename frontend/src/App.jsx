@@ -441,9 +441,12 @@ function FinanceApp() {
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [carregandoFormasPagamento, setCarregandoFormasPagamento] =
     useState(true);
-  // Último valor de "Dinheiro" confirmado na tela de Conciliação — usado
-  // pra mostrar "em dinheiro R$X" no card de Saldo do Dashboard.
-  const [dinheiroEmCaixa, setDinheiroEmCaixa] = useState(0);
+  // Cada fechamento confirmado na Conciliação vira uma linha aqui (com sua
+  // loja) — guardamos a lista inteira, e não já a soma pronta, porque a
+  // soma tem que ser filtrada por loja no Dashboard (senão o dinheiro de
+  // uma loja aparece misturado com o das outras).
+  const [registrosDinheiroInformado, setRegistrosDinheiroInformado] =
+    useState([]);
 
   const [formulario, setFormulario] = useState(
     criarFormularioInicial("receita")
@@ -542,10 +545,12 @@ function FinanceApp() {
     async function carregarDinheiroInformado() {
       try {
         const dados = await buscarDinheiroInformado();
-        // Soma de todos os fechamentos confirmados (cada um já é só o
-        // dinheiro NOVO daquele fechamento — Em caixa menos Abertura —
-        // então a soma acumulada é o total de dinheiro que já entrou.
-        setDinheiroEmCaixa(Number(dados?.soma || 0));
+        // Cada registro já é só o dinheiro NOVO daquele fechamento (Em
+        // caixa menos Abertura) — a soma por loja é feita depois, no
+        // useMemo de totais, pra não misturar uma loja com a outra.
+        setRegistrosDinheiroInformado(
+          Array.isArray(dados?.registros) ? dados.registros : []
+        );
       } catch (erro) {
         console.error("Erro ao carregar dinheiro informado:", erro);
       }
@@ -1054,6 +1059,20 @@ const lancamentosDashboard = useMemo(() => {
     return noMes && naLoja;
   });
 }, [lancamentosAprovados, mesDashboard, lojaDashboard]);
+
+// Soma só os fechamentos de dinheiro DAQUELA loja — nunca de todas
+// juntas, senão o dinheiro físico de uma loja aparece misturado com o
+// das outras (é um total acumulado "desde sempre", não filtra por mês).
+const dinheiroEmCaixaFiltrado = useMemo(() => {
+  return registrosDinheiroInformado
+    .filter(
+      (registro) =>
+        lojaDashboard === "todas" ||
+        String(registro.loja_id || "") === String(lojaDashboard)
+    )
+    .reduce((total, registro) => total + Number(registro.valor || 0), 0);
+}, [registrosDinheiroInformado, lojaDashboard]);
+
   const totais = useMemo(() => {
    const receitas = lancamentosDashboard
       .filter((item) => item.tipo === "receita")
@@ -1173,9 +1192,9 @@ const lancamentosDashboard = useMemo(() => {
       cmvValor,
       cmvPercentual,
       margemPercentual,
-      dinheiroEmCaixa: dinheiroEmCaixa - despesasEmDinheiro,
+      dinheiroEmCaixa: dinheiroEmCaixaFiltrado - despesasEmDinheiro,
     };
-  }, [lancamentosDashboard, dinheiroEmCaixa]);
+  }, [lancamentosDashboard, dinheiroEmCaixaFiltrado]);
 
   const despesasPorCategoria = useMemo(() => {
   const agrupadas = lancamentosAprovados
