@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   buscarVendasPagSeguro,
   conferirFechamentoFoto,
@@ -92,48 +92,53 @@ function Conciliacao({ lojaId }) {
     Vale: "",
     "Voucher Parceiro": "",
   });
-  const [fechamentoSelecionado, setFechamentoSelecionado] = useState("");
   const [fotoPreview, setFotoPreview] = useState(null);
   const [carregandoPreview, setCarregandoPreview] = useState(false);
+  const [fechamentosDisponiveis, setFechamentosDisponiveis] = useState([]);
+  const [carregandoLista, setCarregandoLista] = useState(false);
+  const [fechamentoEscolhido, setFechamentoEscolhido] = useState(null);
 
-  // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
-  // conciliado o fechamento, não tem por que ficar rodando de novo. Um só
-  // botão acha o último Fechamento de Caixa daquela loja, busca a
-  // PagSeguro só daquele dia e já lê a foto sozinho.
-  async function usarUltimoFechamento() {
+  // Pedido do usuário: mostra a lista de Fechamentos de Caixa dessa loja
+  // pra ele escolher qual conciliar — não é mais só "o último" sozinho.
+  useEffect(() => {
     if (!lojaId) {
-      alert(
-        "Selecione uma loja no seletor do topo da tela antes de usar o último fechamento."
-      );
+      setFechamentosDisponiveis([]);
       return;
     }
+
+    setCarregandoLista(true);
+
+    buscarFechamentosCaixa()
+      .then((dados) => {
+        const daLoja = (Array.isArray(dados) ? dados : [])
+          .filter(
+            (item) =>
+              item.tipo === "caixa" &&
+              String(item.loja_id) === String(lojaId)
+          )
+          .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))
+          .slice(0, 20);
+
+        setFechamentosDisponiveis(daLoja);
+      })
+      .catch(() => setFechamentosDisponiveis([]))
+      .finally(() => setCarregandoLista(false));
+  }, [lojaId]);
+
+  // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
+  // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
+  // de escolher qual Fechamento de Caixa usar, um botão busca a PagSeguro
+  // só daquele dia e já lê a foto sozinho.
+  async function conciliarAgora() {
+    if (!fechamentoEscolhido) return;
 
     setCarregando(true);
     setErro("");
     setResultadoFoto(null);
     setResumo(null);
-    setFechamentoSelecionado("");
 
     try {
-      const dados = await buscarFechamentosCaixa();
-
-      const ultimo = (Array.isArray(dados) ? dados : [])
-        .filter(
-          (item) =>
-            item.tipo === "caixa" && String(item.loja_id) === String(lojaId)
-        )
-        .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))[0];
-
-      if (!ultimo) {
-        setErro(
-          "Nenhum Fechamento de Caixa encontrado ainda pra essa loja."
-        );
-        return;
-      }
-
-      setFechamentoSelecionado(ultimo.id);
-
-      const dataFechamento = hojeDoRegistro(ultimo.criado_em);
+      const dataFechamento = hojeDoRegistro(fechamentoEscolhido.criado_em);
       const resultadoVendas = await buscarVendasPagSeguro(
         dataFechamento,
         dataFechamento
@@ -141,12 +146,14 @@ function Conciliacao({ lojaId }) {
 
       setResumo(resultadoVendas);
 
-      const fotoResultado = await buscarFotoFechamentoCaixa(ultimo.id);
+      const fotoResultado = await buscarFotoFechamentoCaixa(
+        fechamentoEscolhido.id
+      );
       await conferirFotoDataUrl(fotoResultado?.foto);
     } catch (erroBusca) {
       setErro(
         erroBusca.message ||
-          "Não foi possível buscar o último fechamento dessa loja."
+          "Não foi possível buscar esse fechamento."
       );
     } finally {
       setCarregando(false);
@@ -373,44 +380,94 @@ function Conciliacao({ lojaId }) {
           )}
 
           <div
-            style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+            style={{ display: "flex", flexDirection: "column", gap: "10px" }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                className="primary-button"
-                onClick={usarUltimoFechamento}
-                disabled={carregando || enviandoFoto}
-              >
-                {carregando || enviandoFoto
-                  ? "Buscando..."
-                  : "📁 Usar Último Fechamento"}
-              </button>
+            {!lojaId ? (
+              <small className="foto-ajuda">
+                Selecione uma loja no seletor do topo da tela.
+              </small>
+            ) : (
+              <>
+                <strong style={{ fontSize: "13px" }}>
+                  1. Escolha o fechamento
+                </strong>
 
-              {fechamentoSelecionado && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => verFotoSelecionada(fechamentoSelecionado)}
-                  disabled={carregandoPreview}
-                >
-                  {carregandoPreview ? "Carregando..." : "👁️ Ver foto"}
-                </button>
-              )}
-            </div>
+                {carregandoLista ? (
+                  <small className="foto-ajuda">Carregando...</small>
+                ) : fechamentosDisponiveis.length === 0 ? (
+                  <small className="foto-ajuda">
+                    Nenhum Fechamento de Caixa encontrado ainda pra essa
+                    loja.
+                  </small>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    {fechamentosDisponiveis.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={
+                          fechamentoEscolhido?.id === item.id
+                            ? "primary-button"
+                            : "secondary-button"
+                        }
+                        onClick={() => setFechamentoEscolhido(item)}
+                      >
+                        📅{" "}
+                        {new Date(item.criado_em).toLocaleString("pt-BR", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-            <small className="foto-ajuda">
-              Pega o último Fechamento de Caixa dessa loja, busca a
-              PagSeguro daquele dia e já lê o valor da foto sozinho — não
-              precisa fazer de novo depois de conciliado.
-            </small>
+                {fechamentoEscolhido && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "1rem",
+                      flexWrap: "wrap",
+                      marginTop: "4px",
+                    }}
+                  >
+                    <strong style={{ fontSize: "13px" }}>
+                      2. Gerar a conciliação
+                    </strong>
+
+                    <button
+                      type="button"
+                      className="approve-button"
+                      style={{ fontSize: "15px", padding: "10px 18px" }}
+                      onClick={conciliarAgora}
+                      disabled={carregando || enviandoFoto}
+                    >
+                      {carregando || enviandoFoto
+                        ? "Conciliando..."
+                        : "✅ Conciliar agora"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() =>
+                        verFotoSelecionada(fechamentoEscolhido.id)
+                      }
+                      disabled={carregandoPreview}
+                    >
+                      {carregandoPreview ? "Carregando..." : "👁️ Ver foto"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
 
