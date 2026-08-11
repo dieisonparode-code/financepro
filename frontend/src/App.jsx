@@ -2493,6 +2493,15 @@ const statusCmv =
             </button>
           )}
 
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "contas-pagas" ? "active" : ""}
+              onClick={() => setPagina("contas-pagas")}
+            >
+              ✅ Contas Pagas
+            </button>
+          )}
+
           {temPermissao("clientes") && (
             <button
               className={pagina === "clientes" ? "active" : ""}
@@ -3120,8 +3129,10 @@ const statusCmv =
           />
         )}
 
-        {pagina === "contas-pagar" && (
+        {(pagina === "contas-pagar" || pagina === "contas-pagas") && (
           <ContasPagar
+            key={pagina}
+            abaInicial={pagina === "contas-pagas" ? "pagas" : "pendentes"}
             contas={contasPagarFiltradas}
             carregando={carregandoContasPagar}
             adicionarConta={adicionarContaPagar}

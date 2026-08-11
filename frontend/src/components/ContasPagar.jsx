@@ -91,6 +91,7 @@ function ContasPagar({
   lojas = [],
   vePermissaoTotal = true,
   lojaPadrao = null,
+  abaInicial = "pendentes",
 }) {
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
@@ -100,7 +101,7 @@ function ContasPagar({
   const [lojaId, setLojaId] = useState(lojaPadrao ? String(lojaPadrao) : "");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState("pendentes");
+  const [abaAtiva, setAbaAtiva] = useState(abaInicial);
   const [foto, setFoto] = useState("");
   const [processandoFoto, setProcessandoFoto] = useState(false);
   const [lendoFoto, setLendoFoto] = useState(false);
