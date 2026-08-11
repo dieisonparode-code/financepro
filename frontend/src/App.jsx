@@ -4102,6 +4102,53 @@ const statusCmv =
 
               <div className="foto-upload">
                 <input
+                  id="tirar-mais-foto"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  disabled={adicionandoFotoExtra}
+                  onChange={async (evento) => {
+                    const arquivo = evento.target.files?.[0];
+
+                    if (!arquivo) return;
+
+                    setAdicionandoFotoExtra(true);
+
+                    try {
+                      const fotoComprimida = await comprimirImagem(arquivo);
+
+                      setFormulario((anterior) => ({
+                        ...anterior,
+                        fotos_extra: [
+                          ...(anterior.fotos_extra || []),
+                          fotoComprimida,
+                        ],
+                      }));
+                    } catch (erro) {
+                      console.error("Erro ao anexar foto extra:", erro);
+                      alert(
+                        erro.message || "Não foi possível anexar essa foto."
+                      );
+                    } finally {
+                      setAdicionandoFotoExtra(false);
+                      evento.target.value = "";
+                    }
+                  }}
+                />
+
+                <label
+                  htmlFor="tirar-mais-foto"
+                  className="primary-button"
+                  style={
+                    adicionandoFotoExtra
+                      ? { opacity: 0.6, pointerEvents: "none" }
+                      : { display: "inline-block", textAlign: "center" }
+                  }
+                >
+                  {adicionandoFotoExtra ? "Anexando..." : "📷 Tirar mais foto"}
+                </label>
+
+                <input
                   id="anexar-mais-fotos"
                   type="file"
                   accept="image/*"
@@ -4141,7 +4188,11 @@ const statusCmv =
                   style={
                     adicionandoFotoExtra
                       ? { opacity: 0.6, pointerEvents: "none" }
-                      : { display: "inline-block", textAlign: "center" }
+                      : {
+                          display: "inline-block",
+                          textAlign: "center",
+                          marginTop: 8,
+                        }
                   }
                 >
                   {adicionandoFotoExtra
@@ -4150,8 +4201,8 @@ const statusCmv =
                 </label>
 
                 <small className="foto-ajuda">
-                  Tira uma foto ou escolhe da galeria — pode clicar de novo
-                  pra anexar quantas quiser.
+                  Um botão tira a foto na hora, o outro escolhe da galeria —
+                  pode clicar quantas vezes quiser pra anexar mais de uma.
                 </small>
               </div>
 
