@@ -235,6 +235,28 @@ function proximaDataSemanalAposFechamento(dataBase, diaSemanaAlvo) {
   return segundaDaSemana;
 }
 
+// "Venda a Prazo Funcionário": tudo consumido dentro do mês é descontado
+// no próximo dia útil do mês seguinte (só pula fim de semana).
+function proximoDiaUtilDoMesSeguinte(dataBase) {
+  const primeiroDiaMesSeguinte = new Date(
+    dataBase.getFullYear(),
+    dataBase.getMonth() + 1,
+    1,
+    12,
+    0,
+    0
+  );
+
+  while (
+    primeiroDiaMesSeguinte.getDay() === 0 ||
+    primeiroDiaMesSeguinte.getDay() === 6
+  ) {
+    primeiroDiaMesSeguinte.setDate(primeiroDiaMesSeguinte.getDate() + 1);
+  }
+
+  return primeiroDiaMesSeguinte;
+}
+
 // Mês fechado automaticamente: qualquer lançamento de um mês anterior ao
 // mês atual não pode mais ser editado/excluído. Sem botão de "fechar mês" —
 // assim que o mês vira, o mês anterior já fica travado sozinho.

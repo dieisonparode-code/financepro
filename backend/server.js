@@ -1977,12 +1977,15 @@ function montarResumoSaipos(vendas, lancamentos) {
 // partner_sale) e o nome correspondente cadastrado em "formas_pagamento".
 // Pix não entra aqui — é tratado separado (ver ehPagamentoPix), porque cai
 // na hora independente de ser balcão, iFood ou Brendi. O que não está aqui
-// (Dinheiro, Cortesia, Vale, A prazo funcionário) não tem taxa/prazo de
-// cartão pra calcular, então fica de fora da importação automática por
-// enquanto.
+// (Dinheiro, Cortesia, Vale) não tem taxa/prazo de cartão pra calcular,
+// então fica de fora da importação automática por enquanto. "A prazo
+// (funcionários)" vira Contas a Receber automaticamente, igual qualquer
+// outra venda — cai no próximo dia útil do mês seguinte (ver forma
+// "Funcionário", pagamento_mensal_dia_util).
 const MAPA_PAGAMENTO_BALCAO_SAIPOS = {
   Crédito: "Cartão de Crédito",
   Débito: "Cartão de Débito",
+  "A prazo (funcionários)": "Funcionário",
 };
 
 // Confirmado com o usuário (10/08/2026): Pix cai direto na hora, separado do
@@ -2019,15 +2022,44 @@ function proximaDataSemanalAposFechamento(dataBase, diaSemanaAlvo) {
   return segundaDaSemana;
 }
 
+// Pra "Venda a Prazo Funcionário": tudo que for consumido dentro do mês é
+// descontado no pagamento seguinte, que é o próximo dia útil do mês
+// seguinte (ex.: venda em agosto → cai no 1º dia útil de setembro). Só
+// pula fim de semana (sábado/domingo) — não considera feriado.
+function proximoDiaUtilDoMesSeguinte(dataBase) {
+  const primeiroDiaMesSeguinte = new Date(
+    dataBase.getFullYear(),
+    dataBase.getMonth() + 1,
+    1,
+    12,
+    0,
+    0
+  );
+
+  while (
+    primeiroDiaMesSeguinte.getDay() === 0 ||
+    primeiroDiaMesSeguinte.getDay() === 6
+  ) {
+    primeiroDiaMesSeguinte.setDate(primeiroDiaMesSeguinte.getDate() + 1);
+  }
+
+  return primeiroDiaMesSeguinte;
+}
+
 function calcularRecebimento(valorBruto, formaPagamento, dataBaseStr) {
   const taxa = Number(formaPagamento?.taxa_percentual || 0);
   const prazo = Number(formaPagamento?.prazo_dias || 0);
   const diaSemanaAlvo = formaPagamento?.dia_semana_pagamento;
+  const pagamentoMensalDiaUtil = Boolean(
+    formaPagamento?.pagamento_mensal_dia_util
+  );
 
   const valorLiquidoEsperado = valorBruto - (valorBruto * taxa) / 100;
   let dataBase = new Date(`${dataBaseStr}T12:00:00`);
 
-  if (diaSemanaAlvo != null) {
+  if (pagamentoMensalDiaUtil) {
+    dataBase = proximoDiaUtilDoMesSeguinte(dataBase);
+  } else if (diaSemanaAlvo != null) {
     dataBase = proximaDataSemanalAposFechamento(dataBase, diaSemanaAlvo);
   } else {
     dataBase.setDate(dataBase.getDate() + prazo);
@@ -2195,6 +2227,31 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       observacao: `[${chaveUnica}] Importado automaticamente da Saipos — ${grupo.quantidade} venda(s) em ${dataStr}.`,
       status: "aprovado",
     };
+
+    // "Venda a Prazo Funcionário": se foi tirada a foto do fechamento de
+    // caixa desse dia/loja (Fechamento de Caixa → "Venda a Prazo
+    // Funcionário"), anexa ela automaticamente nesse lançamento — é a
+    // forma "correta" confirmada pelo usuário. Sem foto, importa só o
+    // valor mesmo assim.
+    if (grupo.forma.nome === "Funcionário") {
+      const inicioDia = `${dataStr}T00:00:00-03:00`;
+      const fimDia = `${dataStr}T23:59:59-03:00`;
+
+      const { data: fechamentoComFoto } = await supabase
+        .from("fechamentos_caixa")
+        .select("foto")
+        .eq("tipo", "venda_prazo")
+        .eq("loja_id", loja.id)
+        .gte("criado_em", inicioDia)
+        .lte("criado_em", fimDia)
+        .order("criado_em", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fechamentoComFoto?.foto) {
+        dadosLancamento.foto = fechamentoComFoto.foto;
+      }
+    }
 
     const { data: existentes, error: erroBusca } = await supabase
       .from("lancamentos")
