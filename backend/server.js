@@ -2011,15 +2011,15 @@ app.post(
 
       // A pedido do usuário: toda foto de Diária Boy/Cozinha desse
       // fechamento que está sendo finalizado agora vai direto pra Contas a
-      // Pagar (com a foto anexada) — sem valor pré-definido, porque essas
-      // fotos não têm nenhum valor pra ler; o administrador completa antes
-      // de pagar.
+      // Pagar (com a foto anexada), já com o valor lido por IA no momento
+      // do registro (o operador confirma/corrige o valor antes de salvar
+      // a foto — cobre casos de pagamento dividido dinheiro+Pix).
       let contasPagarCriadas = 0;
 
       try {
         let consultaDiarias = supabase
           .from("fechamentos_caixa")
-          .select("id, tipo, foto, criado_em")
+          .select("id, tipo, foto, valor, criado_em")
           .in("tipo", Object.keys(NOMES_DIARIA_PARA_CONTA_PAGAR))
           .lte("criado_em", data.criado_em);
 
@@ -2040,9 +2040,12 @@ app.post(
           const dadosConta = {
             descricao: NOMES_DIARIA_PARA_CONTA_PAGAR[diaria.tipo],
             fornecedor: "",
-            valor: 0,
+            valor: diaria.valor != null ? Number(diaria.valor) : 0,
             data_vencimento: dataBrasiliaDe(diaria.criado_em),
-            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Preencha o valor correto antes de pagar.`,
+            observacao:
+              diaria.valor != null
+                ? `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Valor lido da foto — confira antes de pagar.`
+                : `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Preencha o valor antes de pagar.`,
             foto: diaria.foto || "",
             loja_id: null,
           };
@@ -3255,6 +3258,56 @@ app.post(
 
       res.status(500).json({
         erro: "Não foi possível ler a nota fiscal.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/fechamentos-caixa/ler-foto",
+  verificarPermissao(PERM_FECHAMENTO_CAIXA),
+  async function (req, res) {
+    try {
+      const { foto } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({
+          erro: "Envie a foto do comprovante.",
+        });
+      }
+
+      // Comprovante de diária pode ter parte paga em dinheiro e parte em
+      // Pix — pede o TOTAL somado, não só um dos valores. Usuário sempre
+      // pode corrigir antes de confirmar, então não precisa de 100% de
+      // certeza aqui.
+      const textoResposta = await lerImagemComIA(
+        foto,
+        'Essa é a foto de um comprovante de pagamento de diária (de um entregador/boy ou de um funcionário de cozinha) de uma hamburgueria. Pode ter o pagamento dividido em mais de uma forma (parte em dinheiro, parte em Pix, etc) — extraia o VALOR TOTAL PAGO, somando tudo se houver mais de um valor. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45}. Se não conseguir ler nenhum valor, use {"valor": null}.',
+        8192
+      );
+
+      let dadosLidos;
+
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(jsonEncontrado ? jsonEncontrado[0] : textoResposta);
+      } catch {
+        return res.json({
+          valor: null,
+          erro_leitura:
+            "Não foi possível ler o valor dessa foto. Preencha manualmente.",
+        });
+      }
+
+      res.json({
+        valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
+      });
+    } catch (erro) {
+      console.error("Erro ao ler foto de fechamento de caixa:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível ler a foto.",
         detalhes: erro.message,
       });
     }

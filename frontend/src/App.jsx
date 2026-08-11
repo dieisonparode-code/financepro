@@ -52,6 +52,7 @@ import {
   excluirFechamentoCaixa,
   buscarFinalizacoesFechamentoCaixa,
   finalizarFechamentoCaixa,
+  lerValorFechamentoCaixa,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -1695,6 +1696,19 @@ const statusCmv =
         setFotoRelatorioCaixaVisualizada(null);
       } else if (modalAberto) {
         fecharModal();
+      } else {
+        // Fallback: fecha o modal de qualquer outra tela (Contas a Pagar,
+        // Fechamento de Caixa, Nota Fiscal, etc.) — cada uma tem seu
+        // próprio estado, mas todas usam o mesmo padrão de fechar ao
+        // clicar fora (".modal-overlay" com onMouseDown). Simula esse
+        // clique no overlay mais de cima, sem precisar duplicar estado
+        // aqui pra cada tela nova que ganhar um modal no futuro.
+        const overlays = document.querySelectorAll(".modal-overlay");
+        const ultimoOverlay = overlays[overlays.length - 1];
+
+        ultimoOverlay?.dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true })
+        );
       }
     }
 
@@ -3337,6 +3351,7 @@ const statusCmv =
             adicionarFechamento={adicionarFechamentoCaixa}
             removerFechamento={removerFechamentoCaixa}
             buscarFoto={buscarFotoFechamentoCaixa}
+            lerValorFoto={lerValorFechamentoCaixa}
             finalizacoes={finalizacoesFechamentoCaixa}
             finalizarFechamento={finalizarFechamentoCaixaHandler}
           />

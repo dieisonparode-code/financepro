@@ -443,6 +443,14 @@ export async function finalizarFechamentoCaixa() {
   });
 }
 
+export async function lerValorFechamentoCaixa(foto) {
+  return requisicao("/fechamentos-caixa/ler-foto", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto }),
+  });
+}
+
 export async function buscarLojas() {
   return requisicao("/lojas", { headers: await cabecalhoAutenticado() });
 }

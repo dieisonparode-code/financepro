@@ -72,12 +72,18 @@ function formatarDataHora(dataIso) {
 // horas e passa a ser só "depois da última finalização".
 const OITO_HORAS_MS = 8 * 60 * 60 * 1000;
 
+// Diárias (Boy/Cozinha) não salvam a foto direto — abrem um rascunho pra
+// conferir/corrigir o valor lido por IA antes de confirmar (pedido do
+// usuário: "as vezes foi pago parte em dinheiro e parte pix").
+const TIPOS_COM_VALOR_CONFERIDO = ["boy", "cozinha"];
+
 function CadastroFechamentoCaixa({
   registros = [],
   carregando = false,
   adicionarFechamento,
   removerFechamento,
   buscarFoto,
+  lerValorFoto,
   finalizacoes = [],
   finalizarFechamento,
 }) {
@@ -85,6 +91,7 @@ function CadastroFechamentoCaixa({
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
   const [finalizando, setFinalizando] = useState(false);
+  const [rascunhoDiaria, setRascunhoDiaria] = useState(null);
 
   // Pedido do usuário: "caixa ainda não fechado não pode sumir" — enquanto
   // ninguém clicar em "Finalizar Fechamento de Caixa", nada some da lista,
@@ -155,6 +162,11 @@ function CadastroFechamentoCaixa({
   async function capturarFoto(tipo, arquivo) {
     if (!arquivo) return;
 
+    if (TIPOS_COM_VALOR_CONFERIDO.includes(tipo)) {
+      await capturarDiaria(tipo, arquivo);
+      return;
+    }
+
     setEnviandoTipo(tipo);
 
     try {
@@ -166,6 +178,74 @@ function CadastroFechamentoCaixa({
     } finally {
       setEnviandoTipo(null);
     }
+  }
+
+  async function capturarDiaria(tipo, arquivo) {
+    setEnviandoTipo(tipo);
+
+    let fotoComprimida;
+
+    try {
+      fotoComprimida = await comprimirImagem(arquivo);
+    } catch (erro) {
+      console.error("Erro ao processar foto:", erro);
+      alert(erro.message || "Não foi possível processar a foto selecionada.");
+      setEnviandoTipo(null);
+      return;
+    }
+
+    // Mostra o rascunho já com a foto — a leitura do valor continua em
+    // segundo plano, o operador não precisa esperar pra ver a foto.
+    setRascunhoDiaria({ tipo, foto: fotoComprimida, valor: "", lendo: true });
+    setEnviandoTipo(null);
+
+    try {
+      const resultado = await lerValorFoto(fotoComprimida);
+
+      setRascunhoDiaria((anterior) =>
+        anterior && anterior.foto === fotoComprimida
+          ? {
+              ...anterior,
+              valor: resultado?.valor != null ? String(resultado.valor) : "",
+              lendo: false,
+            }
+          : anterior
+      );
+    } catch (erroLeitura) {
+      console.error("Erro ao ler valor da diária:", erroLeitura);
+
+      setRascunhoDiaria((anterior) =>
+        anterior && anterior.foto === fotoComprimida
+          ? { ...anterior, lendo: false }
+          : anterior
+      );
+    }
+  }
+
+  async function confirmarRascunhoDiaria() {
+    if (!rascunhoDiaria) return;
+
+    setRascunhoDiaria((anterior) => ({ ...anterior, salvando: true }));
+
+    try {
+      await adicionarFechamento({
+        tipo: rascunhoDiaria.tipo,
+        foto: rascunhoDiaria.foto,
+        valor: rascunhoDiaria.valor !== "" ? Number(rascunhoDiaria.valor) : null,
+      });
+
+      setRascunhoDiaria(null);
+    } catch (erro) {
+      console.error("Erro ao salvar diária:", erro);
+      alert(erro.message || "Não foi possível salvar.");
+      setRascunhoDiaria((anterior) =>
+        anterior ? { ...anterior, salvando: false } : anterior
+      );
+    }
+  }
+
+  function cancelarRascunhoDiaria() {
+    setRascunhoDiaria(null);
   }
 
   async function confirmarExclusao(registro) {
@@ -387,6 +467,83 @@ function CadastroFechamentoCaixa({
           </div>
         )}
       </article>
+
+      {rascunhoDiaria && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(evento) => {
+            if (
+              evento.target === evento.currentTarget &&
+              !rascunhoDiaria.salvando
+            ) {
+              cancelarRascunhoDiaria();
+            }
+          }}
+        >
+          <div className="modal modal-foto">
+            <div className="modal-header">
+              <div>
+                <span className="eyebrow">
+                  {rotuloTipo(rascunhoDiaria.tipo)?.rotulo || "Diária"}
+                </span>
+                <h2>Confirme o valor</h2>
+              </div>
+            </div>
+
+            <img
+              src={rascunhoDiaria.foto}
+              alt="Foto da diária"
+              className="foto-modal-imagem"
+            />
+
+            <label>
+              Valor pago (some dinheiro + Pix se foi dividido)
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={
+                  rascunhoDiaria.lendo ? "Lendo valor da foto..." : "0,00"
+                }
+                value={rascunhoDiaria.valor}
+                disabled={rascunhoDiaria.lendo || rascunhoDiaria.salvando}
+                onChange={(evento) =>
+                  setRascunhoDiaria((anterior) => ({
+                    ...anterior,
+                    valor: evento.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            {rascunhoDiaria.lendo && (
+              <small className="foto-ajuda">
+                🤖 Lendo o valor automaticamente...
+              </small>
+            )}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={rascunhoDiaria.salvando}
+                onClick={cancelarRascunhoDiaria}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                className="primary-button"
+                disabled={rascunhoDiaria.salvando}
+                onClick={confirmarRascunhoDiaria}
+              >
+                {rascunhoDiaria.salvando ? "Salvando..." : "💾 Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fotoVisualizada && (
         <div
