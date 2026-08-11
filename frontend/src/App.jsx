@@ -1283,17 +1283,26 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     return Object.values(agrupadas);
   }, [lancamentosDashboard]);
 
+const [dataBuscaDespesa, setDataBuscaDespesa] = useState("");
+
 const lancamentosFiltrados = useMemo(() => {
   if (pagina === "receitas") {
     return lancamentosVisiveis.filter((item) => item.tipo === "receita");
   }
 
   if (pagina === "despesas") {
-    return lancamentosVisiveis.filter((item) => item.tipo === "despesa");
+    // Pedido do usuário: por padrão só mostra as despesas de hoje — pra
+    // ver dias anteriores, pesquisa pela data no campo da própria tela
+    // (senão a lista cresce pra sempre com o tempo).
+    const dataAlvo = dataBuscaDespesa || hojeLocal();
+
+    return lancamentosVisiveis.filter(
+      (item) => item.tipo === "despesa" && item.data === dataAlvo
+    );
   }
 
   return lancamentosVisiveis;
-}, [lancamentosVisiveis, pagina]);
+}, [lancamentosVisiveis, pagina, dataBuscaDespesa]);
 
 const contasPagarFiltradas = useMemo(() => {
   if (!vePermissaoTotal && perfil) {
@@ -2942,6 +2951,44 @@ const statusCmv =
         {(pagina === "receitas" || pagina === "despesas") && (
           <section className="panel">
             <h2>Lançamentos</h2>
+
+            {pagina === "despesas" && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  marginBottom: "12px",
+                }}
+              >
+                <label style={{ margin: 0 }}>
+                  Ver despesas do dia
+                  <input
+                    type="date"
+                    value={dataBuscaDespesa || hojeLocal()}
+                    onChange={(evento) =>
+                      setDataBuscaDespesa(evento.target.value)
+                    }
+                  />
+                </label>
+
+                {dataBuscaDespesa && dataBuscaDespesa !== hojeLocal() && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setDataBuscaDespesa("")}
+                  >
+                    Voltar pra hoje
+                  </button>
+                )}
+
+                <small className="foto-ajuda">
+                  Só mostra o dia de hoje por padrão — escolha outra data
+                  pra ver despesas de dias anteriores.
+                </small>
+              </div>
+            )}
 
             {carregando && <p>Carregando...</p>}
 
