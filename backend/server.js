@@ -1811,13 +1811,32 @@ async function consultarSaipos(caminho, parametros) {
 // A API da Saipos, de vez em quando, devolve uma resposta 200 (sem erro
 // nenhum pro retry normal pegar) mas com MENOS vendas do que realmente
 // existem naquele período — confirmado várias vezes comparando a mesma
-// consulta feita duas vezes em seguida. Pra dado financeiro isso é grave
+// consulta feita duas vezes em seguida. Pra dado FINANCEIRO isso é grave
 // (uma venda perdida na importação automática é dinheiro que nunca entra
-// no sistema, sem ninguém notar). Por isso: nunca confia na primeira
-// resposta sozinha — busca de novo e fica com a versão MAIS completa
-// (mais vendas). Se as duas tentativas baterem, já para; senão, tenta até
-// 3 vezes.
-async function buscarVendasSaipos(idLojaSaipos, dataInicio, dataFim) {
+// no sistema, sem ninguém notar) — nesse caso vale a pena buscar de novo e
+// ficar com a versão mais completa. Mas a tela "Vendas (Saipos)" só mostra
+// informação (atualiza sozinha a cada 1 min, autocorrige na próxima
+// consulta) — ali vale mais a velocidade do que essa garantia extra, por
+// isso `garantirCompletude` fica desligado por padrão e só a importação
+// financeira liga explicitamente.
+async function buscarVendasSaipos(
+  idLojaSaipos,
+  dataInicio,
+  dataFim,
+  garantirCompletude = false
+) {
+  if (!garantirCompletude) {
+    const vendas = await consultarSaipos("/search_sales", {
+      p_date_column_filter: "shift_date",
+      p_filter_date_start: dataInicio,
+      p_filter_date_end: dataFim,
+    });
+
+    return vendas.filter(
+      (venda) => Number(venda.id_store) === Number(idLojaSaipos)
+    );
+  }
+
   const tentativas = [];
   const numeroTentativas = 3;
 
@@ -2030,7 +2049,8 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
   const vendas = await buscarVendasSaipos(
     loja.saipos_id_store,
     `${dataStr} 00:00:00`,
-    `${dataStr} 23:59:59`
+    `${dataStr} 23:59:59`,
+    true // financeiro — garante completude, mesmo sendo mais lento
   );
   const vendasValidas = vendas.filter((venda) => venda.canceled !== "Y");
 
