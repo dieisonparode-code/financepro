@@ -357,19 +357,42 @@ function Conciliacao({ lojaId }) {
   const confrontoCalculado = useMemo(() => {
     const totaisBrutos = { ...(resumo?.totais_brutos_por_forma_pagamento || {}) };
 
-    // iFood/Brendi (Pago Online), Voucher Parceiro e A prazo (funcionários)
-    // vêm da própria Saipos, que já contabiliza automático — só Dinheiro
-    // fica sem "Sistema" (é físico, só o que o operador informar mesmo).
+    // iFood/Brendi (Pago Online), Voucher Parceiro, A prazo (funcionários),
+    // Vale, Cortesia e QUALQUER outra forma nova que a Saipos vier a
+    // reportar entram automático como "Sistema" — só Dinheiro fica sem
+    // "Sistema" automático (é físico, só o que o operador informar mesmo).
+    // Crédito/Débito/Pix de balcão a Saipos também reporta, mas quem manda
+    // nesses é a PagSeguro (já preenchido acima), então são ignorados aqui
+    // pra não somar em dobro.
     if (resumoSaipos?.totais_por_forma_pagamento) {
-      Object.entries(MAPA_SAIPOS_PARA_CONFRONTO).forEach(
-        ([nomeSaipos, nomeConfronto]) => {
-          totaisBrutos[nomeConfronto] =
-            resumoSaipos.totais_por_forma_pagamento[nomeSaipos] || 0;
+      Object.entries(resumoSaipos.totais_por_forma_pagamento).forEach(
+        ([nomeSaipos, valor]) => {
+          if (/pix/i.test(nomeSaipos)) return; // já vem da PagSeguro
+          if (nomeSaipos === "Crédito" || nomeSaipos === "Débito") return; // já vem da PagSeguro
+          const nomeConfronto = MAPA_SAIPOS_PARA_CONFRONTO[nomeSaipos] || nomeSaipos;
+          if (nomeConfronto === "Dinheiro") return; // Dinheiro não tem Sistema automático
+          totaisBrutos[nomeConfronto] = Number(valor || 0);
         }
       );
     }
 
-    const linhas = Object.keys(valoresInformados).map((forma) => {
+    // Valor manual informado pelo usuário só pra esse fechamento
+    // específico (ex.: Dinheiro, que normalmente não tem "Sistema"
+    // automático) — sobrescreve o que vier de PagSeguro/Saipos.
+    if (fechamentoEscolhido?.sistema_manual) {
+      Object.assign(totaisBrutos, fechamentoEscolhido.sistema_manual);
+    }
+
+    // A lista de linhas é a união do que o operador informou (foto/OCR) com
+    // o que a Saipos/PagSeguro reportou como Sistema — assim, se aparecer
+    // uma forma de pagamento nova só no Sistema (ainda sem foto lida ou não
+    // reconhecida na foto), ela mesmo assim aparece na tabela já com o
+    // valor esperado preenchido.
+    const todasAsFormas = Array.from(
+      new Set([...Object.keys(valoresInformados), ...Object.keys(totaisBrutos)])
+    );
+
+    const linhas = todasAsFormas.map((forma) => {
       const temSistema = forma in totaisBrutos;
       const valorSistema = totaisBrutos[forma] || 0;
       const valorInformadoTexto = valoresInformados[forma] ?? "";
@@ -401,7 +424,7 @@ function Conciliacao({ lojaId }) {
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [resumo, resumoSaipos, valoresInformados]);
+  }, [resumo, resumoSaipos, valoresInformados, fechamentoEscolhido]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
