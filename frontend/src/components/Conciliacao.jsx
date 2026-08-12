@@ -122,7 +122,7 @@ function Conciliacao({ lojaId }) {
   const [carregandoPreview, setCarregandoPreview] = useState(false);
   const [fechamentosDisponiveis, setFechamentosDisponiveis] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(false);
-  const [fechamentoEscolhido, setFechamentoEscolhido] = useState(null);
+  const [grupoEscolhido, setGrupoEscolhido] = useState(null);
 
   // Pedido do usuário: mostra a lista de Fechamentos de Caixa dessa loja
   // pra ele escolher qual conciliar — não é mais só "o último" sozinho.
@@ -151,12 +151,54 @@ function Conciliacao({ lojaId }) {
       .finally(() => setCarregandoLista(false));
   }, [lojaId]);
 
+  // Pedido do usuário: um fechamento pode ter 2 fotos (Foto 1 / Foto 2),
+  // que salvam como 2 registros separados no banco mas são o MESMO
+  // fechamento físico — antes apareciam como 2 botões distintos, confuso.
+  // Agora agrupa pela data do turno (mesma regra de corte 5h usada pra
+  // buscar PagSeguro/Saipos) e mostra um botão só por dia.
+  const fechamentosAgrupados = useMemo(() => {
+    const mapa = new Map();
+
+    fechamentosDisponiveis.forEach((item) => {
+      const chave = hojeDoRegistro(item.criado_em);
+      if (!mapa.has(chave)) mapa.set(chave, []);
+      mapa.get(chave).push(item);
+    });
+
+    return Array.from(mapa.entries())
+      .map(([dataChave, itens]) => ({
+        dataChave,
+        itens: itens.sort(
+          (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
+        ),
+      }))
+      .sort((a, b) => (a.dataChave < b.dataChave ? 1 : -1));
+  }, [fechamentosDisponiveis]);
+
+  // Junta o que já foi lido/salvo em CADA registro do grupo (foto 1 e/ou
+  // foto 2) num só objeto — se uma categoria só aparecer numa das fotos,
+  // ainda assim entra na conciliação.
+  function mesclarDosItens(grupo, campo) {
+    if (!grupo) return null;
+    const mesclado = {};
+    let temAlgo = false;
+
+    grupo.itens.forEach((item) => {
+      if (item[campo]) {
+        temAlgo = true;
+        Object.assign(mesclado, item[campo]);
+      }
+    });
+
+    return temAlgo ? mesclado : null;
+  }
+
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
   // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
   // de escolher qual Fechamento de Caixa usar, um botão busca a PagSeguro
-  // só daquele dia e já lê a foto sozinho.
+  // só daquele dia e já lê a(s) foto(s) sozinho.
   async function conciliarAgora() {
-    if (!fechamentoEscolhido) return;
+    if (!grupoEscolhido) return;
 
     setCarregando(true);
     setErro("");
@@ -164,12 +206,12 @@ function Conciliacao({ lojaId }) {
     setResumo(null);
     setResumoSaipos(null);
 
-    const dataFechamento = hojeDoRegistro(fechamentoEscolhido.criado_em);
+    const dataFechamento = grupoEscolhido.dataChave;
 
-    // As três buscas não dependem uma da outra (vendas na PagSeguro ×
-    // vendas na Saipos × leitura da foto por IA) — rodando em paralelo em
-    // vez de uma esperar a outra, o tempo total fica perto da mais lenta
-    // das três, não da soma.
+    // As buscas não dependem uma da outra (vendas na PagSeguro × vendas na
+    // Saipos × leitura de cada foto por IA) — rodando em paralelo em vez
+    // de uma esperar a outra, o tempo total fica perto da mais lenta, não
+    // da soma.
     const buscaVendas = buscarVendasPagSeguro(dataFechamento, dataFechamento)
       .then((resultado) => setResumo(resultado))
       .catch((erroBusca) =>
@@ -182,39 +224,66 @@ function Conciliacao({ lojaId }) {
     // iFood/Brendi (Pago Online), Voucher Parceiro e A prazo (funcionários)
     // já são contabilizados pela própria Saipos — não falha a conciliação
     // se essa loja ainda não tiver o ID da Saipos cadastrado, só não
-    // preenche essas 3 linhas.
+    // preenche essas linhas.
     const buscaSaipos = buscarFechamentoSaipos(lojaId, dataFechamento)
       .then((resultado) => setResumoSaipos(resultado))
       .catch(() => setResumoSaipos(null));
 
     // Pedido do usuário: uma vez lida a foto, o valor fica salvo nesse
-    // fechamento — refazer a conciliação usa o valor salvo, sem chamar a
-    // IA de novo (evita o valor mudar sozinho entre uma tentativa e
-    // outra). Só o botão "Ler foto de novo" força uma releitura.
-    const buscaFoto = fechamentoEscolhido.valores_informados
-      ? Promise.resolve(
-          usarValoresSalvos(fechamentoEscolhido.valores_informados)
-        )
-      : buscarFotoFechamentoCaixa(fechamentoEscolhido.id)
-          .then((fotoResultado) =>
-            conferirFotoDataUrl(fotoResultado?.foto, {
-              salvarEm: fechamentoEscolhido.id,
-            })
+    // registro — refazer a conciliação usa o valor salvo, sem chamar a IA
+    // de novo (evita o valor mudar sozinho entre uma tentativa e outra).
+    // Só o botão "Ler foto de novo" força uma releitura. Um fechamento pode
+    // ter até 2 fotos (Foto 1 / Foto 2) — lê/reaproveita as duas e junta os
+    // valores na mesma tabela.
+    const buscasFoto = grupoEscolhido.itens.map((item) =>
+      item.valores_informados
+        ? Promise.resolve(
+            usarValoresSalvos(item.valores_informados, { silencioso: true })
           )
-          .catch((erroFoto) => {
-            setResultadoFoto({
+        : buscarFotoFechamentoCaixa(item.id)
+            .then((fotoResultado) =>
+              conferirFotoDataUrl(fotoResultado?.foto, {
+                salvarEm: item.id,
+                silencioso: true,
+              })
+            )
+            .catch((erroFoto) => ({
               erro_leitura:
                 erroFoto.message ||
-                "Não foi possível buscar a foto desse fechamento.",
-            });
-          });
+                "Não foi possível buscar uma das fotos desse fechamento.",
+            }))
+    );
 
-    await Promise.all([buscaVendas, buscaSaipos, buscaFoto]);
+    const [, , ...resultadosFoto] = await Promise.all([
+      buscaVendas,
+      buscaSaipos,
+      ...buscasFoto,
+    ]);
+
+    setResultadoFoto(agregarResultadosFoto(resultadosFoto));
     setCarregando(false);
   }
 
+  // Combina o resultado da leitura/reaproveitamento de cada foto do grupo
+  // num só objeto pra mostrar uma mensagem só (em vez de uma por foto).
+  function agregarResultadosFoto(resultados) {
+    const validos = resultados.filter(Boolean);
+    const algumSucesso = validos.some((r) => r.sucesso);
+    const algumSalvo = validos.some((r) => r.salvo);
+    const formasNaoLidas = Array.from(
+      new Set(validos.flatMap((r) => r.formasNaoLidas || []))
+    );
+    const erro = validos.find((r) => r.erro_leitura);
+
+    if (!algumSucesso && erro) {
+      return { erro_leitura: erro.erro_leitura, debugRespostaIa: erro.debugRespostaIa };
+    }
+
+    return { sucesso: algumSucesso, salvo: algumSalvo, formasNaoLidas };
+  }
+
   // Usa uma leitura já salva anteriormente, sem chamar a IA de novo.
-  function usarValoresSalvos(valoresSalvos) {
+  function usarValoresSalvos(valoresSalvos, { silencioso } = {}) {
     setValoresInformados((anterior) => {
       const novo = { ...anterior };
 
@@ -227,48 +296,61 @@ function Conciliacao({ lojaId }) {
       return novo;
     });
 
-    setResultadoFoto({ sucesso: true, salvo: true, formasNaoLidas: [] });
+    const resultado = { sucesso: true, salvo: true, formasNaoLidas: [] };
+    if (!silencioso) setResultadoFoto(resultado);
+    return resultado;
   }
 
+  // Força reler TODAS as fotos do grupo (ignora o que já estava salvo) —
+  // usado quando o operador clica "Ler foto de novo" de propósito.
   async function relerFotoAgora() {
-    if (!fechamentoEscolhido) return;
+    if (!grupoEscolhido) return;
 
     setEnviandoFoto(true);
     setResultadoFoto(null);
 
-    try {
-      const fotoResultado = await buscarFotoFechamentoCaixa(
-        fechamentoEscolhido.id
-      );
-      await conferirFotoDataUrl(fotoResultado?.foto, {
-        salvarEm: fechamentoEscolhido.id,
-      });
-    } catch (erroFoto) {
-      setResultadoFoto({
-        erro_leitura:
-          erroFoto.message || "Não foi possível buscar a foto desse fechamento.",
-      });
-      setEnviandoFoto(false);
-    }
+    const resultados = await Promise.all(
+      grupoEscolhido.itens.map(async (item) => {
+        try {
+          const fotoResultado = await buscarFotoFechamentoCaixa(item.id);
+          return await conferirFotoDataUrl(fotoResultado?.foto, {
+            salvarEm: item.id,
+            silencioso: true,
+          });
+        } catch (erroFoto) {
+          return {
+            erro_leitura:
+              erroFoto.message ||
+              "Não foi possível buscar uma das fotos desse fechamento.",
+          };
+        }
+      })
+    );
+
+    setResultadoFoto(agregarResultadosFoto(resultados));
+    setEnviandoFoto(false);
   }
 
-  async function conferirFotoDataUrl(fotoDataUrl, { salvarEm } = {}) {
-    if (!fotoDataUrl) return;
+  async function conferirFotoDataUrl(fotoDataUrl, { salvarEm, silencioso } = {}) {
+    if (!fotoDataUrl) return null;
 
-    setEnviandoFoto(true);
-    setResultadoFoto(null);
+    if (!silencioso) {
+      setEnviandoFoto(true);
+      setResultadoFoto(null);
+    }
 
     try {
       const resultado = await conferirFechamentoFoto(fotoDataUrl);
 
       if (resultado.erro_leitura || !resultado.valores) {
-        setResultadoFoto({
+        const resultadoErro = {
           erro_leitura:
             resultado.erro_leitura ||
             "Não foi possível ler os valores dessa foto.",
           debugRespostaIa: resultado.debug_resposta_ia,
-        });
-        return;
+        };
+        if (!silencioso) setResultadoFoto(resultadoErro);
+        return resultadoErro;
       }
 
       // Preenche a tabela de confronto sozinha com o que a foto trouxe —
@@ -290,10 +372,8 @@ function Conciliacao({ lojaId }) {
         .filter(([, valor]) => valor == null)
         .map(([forma]) => forma);
 
-      setResultadoFoto({
-        sucesso: true,
-        formasNaoLidas,
-      });
+      const resultadoOk = { sucesso: true, formasNaoLidas };
+      if (!silencioso) setResultadoFoto(resultadoOk);
 
       // Salva a leitura no fechamento pra não precisar (nem poder) ler de
       // novo por engano nas próximas vezes — só sobrescreve se o operador
@@ -313,22 +393,32 @@ function Conciliacao({ lojaId }) {
             )
           );
 
-          setFechamentoEscolhido((anterior) =>
-            anterior && anterior.id === salvarEm
-              ? { ...anterior, valores_informados: salvo.valores_informados }
+          setGrupoEscolhido((anterior) =>
+            anterior
+              ? {
+                  ...anterior,
+                  itens: anterior.itens.map((item) =>
+                    item.id === salvarEm
+                      ? { ...item, valores_informados: salvo.valores_informados }
+                      : item
+                  ),
+                }
               : anterior
           );
         } catch (erroSalvar) {
           console.error("Erro ao salvar leitura da foto:", erroSalvar);
         }
       }
+
+      return resultadoOk;
     } catch (erroFoto) {
-      setResultadoFoto({
-        erro_leitura:
-          erroFoto.message || "Não foi possível conferir a foto.",
-      });
+      const resultadoErro = {
+        erro_leitura: erroFoto.message || "Não foi possível conferir a foto.",
+      };
+      if (!silencioso) setResultadoFoto(resultadoErro);
+      return resultadoErro;
     } finally {
-      setEnviandoFoto(false);
+      if (!silencioso) setEnviandoFoto(false);
     }
   }
 
@@ -378,9 +468,11 @@ function Conciliacao({ lojaId }) {
 
     // Valor manual informado pelo usuário só pra esse fechamento
     // específico (ex.: Dinheiro, que normalmente não tem "Sistema"
-    // automático) — sobrescreve o que vier de PagSeguro/Saipos.
-    if (fechamentoEscolhido?.sistema_manual) {
-      Object.assign(totaisBrutos, fechamentoEscolhido.sistema_manual);
+    // automático) — sobrescreve o que vier de PagSeguro/Saipos. Recurso
+    // raro, usado só em algum caso pontual — hoje nenhum fechamento usa.
+    const sistemaManual = mesclarDosItens(grupoEscolhido, "sistema_manual");
+    if (sistemaManual) {
+      Object.assign(totaisBrutos, sistemaManual);
     }
 
     // A lista de linhas é a união do que o operador informou (foto/OCR) com
@@ -424,7 +516,7 @@ function Conciliacao({ lojaId }) {
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [resumo, resumoSaipos, valoresInformados, fechamentoEscolhido]);
+  }, [resumo, resumoSaipos, valoresInformados, grupoEscolhido]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
@@ -549,7 +641,7 @@ function Conciliacao({ lojaId }) {
 
                 {carregandoLista ? (
                   <small className="foto-ajuda">Carregando...</small>
-                ) : fechamentosDisponiveis.length === 0 ? (
+                ) : fechamentosAgrupados.length === 0 ? (
                   <small className="foto-ajuda">
                     Nenhum Fechamento de Caixa encontrado ainda pra essa
                     loja.
@@ -562,28 +654,30 @@ function Conciliacao({ lojaId }) {
                       gap: "8px",
                     }}
                   >
-                    {fechamentosDisponiveis.map((item) => (
+                    {fechamentosAgrupados.map((grupo) => (
                       <button
-                        key={item.id}
+                        key={grupo.dataChave}
                         type="button"
                         className={
-                          fechamentoEscolhido?.id === item.id
+                          grupoEscolhido?.dataChave === grupo.dataChave
                             ? "primary-button"
                             : "secondary-button"
                         }
-                        onClick={() => setFechamentoEscolhido(item)}
+                        onClick={() => setGrupoEscolhido(grupo)}
                       >
                         📅{" "}
-                        {new Date(item.criado_em).toLocaleString("pt-BR", {
-                          dateStyle: "short",
-                          timeStyle: "short",
-                        })}
+                        {new Date(
+                          `${grupo.dataChave}T00:00:00`
+                        ).toLocaleDateString("pt-BR")}
+                        {grupo.itens.length > 1
+                          ? ` (${grupo.itens.length} fotos)`
+                          : ""}
                       </button>
                     ))}
                   </div>
                 )}
 
-                {fechamentoEscolhido && (
+                {grupoEscolhido && (
                   <div
                     style={{
                       display: "flex",
@@ -609,24 +703,31 @@ function Conciliacao({ lojaId }) {
                         : "✅ Conciliar agora"}
                     </button>
 
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() =>
-                        verFotoSelecionada(fechamentoEscolhido.id)
-                      }
-                      disabled={carregandoPreview}
-                    >
-                      {carregandoPreview ? "Carregando..." : "👁️ Ver foto"}
-                    </button>
+                    {grupoEscolhido.itens.map((item, indice) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => verFotoSelecionada(item.id)}
+                        disabled={carregandoPreview}
+                      >
+                        {carregandoPreview
+                          ? "Carregando..."
+                          : grupoEscolhido.itens.length > 1
+                            ? `👁️ Ver foto ${indice + 1}`
+                            : "👁️ Ver foto"}
+                      </button>
+                    ))}
 
-                    {fechamentoEscolhido.valores_informados && (
+                    {grupoEscolhido.itens.some(
+                      (item) => item.valores_informados
+                    ) && (
                       <button
                         type="button"
                         className="secondary-button"
                         onClick={relerFotoAgora}
                         disabled={carregando || enviandoFoto}
-                        title="A leitura já está salva — só use isso se quiser tentar ler a foto de novo."
+                        title="A leitura já está salva — só use isso se quiser tentar ler a(s) foto(s) de novo."
                       >
                         {enviandoFoto ? "Lendo..." : "🔄 Ler foto de novo"}
                       </button>
