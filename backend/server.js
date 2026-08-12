@@ -1806,7 +1806,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
