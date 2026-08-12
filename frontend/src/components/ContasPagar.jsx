@@ -3,8 +3,18 @@ import { lerFotoContaPagar } from "../services/api";
 
 // Mesma compressão já usada em Despesas/Conciliação — reduz o tamanho antes
 // de guardar (a foto vira base64 direto na tabela, sem isso ficaria pesado).
+// Bug real encontrado (12/08/2026): a foto de um fechamento aparecia
+// certa no celular (Redmi) mas foi salva de cabeça para baixo — o
+// celular corrige a rotação (EXIF) só na hora de MOSTRAR a foto na
+// galeria, mas o <img>+canvas usado aqui pra comprimir nem sempre
+// respeita esse EXIF (varia por navegador/aparelho), gravando os pixels
+// já errados. Isso explicava leituras erradas da IA que pareciam só
+// "foto ruim". Corrigido usando createImageBitmap com
+// imageOrientation:"from-image", que aplica a rotação certa de forma
+// explícita; se o navegador não suportar, cai pro jeito antigo (o mesmo
+// de sempre) como reserva.
 function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
-  return new Promise((resolve, reject) => {
+  function comImageElement(resolve, reject) {
     const leitor = new FileReader();
 
     leitor.onload = () => {
@@ -35,6 +45,30 @@ function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
       reject(new Error("Não foi possível abrir o arquivo selecionado."));
 
     leitor.readAsDataURL(arquivo);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof createImageBitmap !== "function") {
+      comImageElement(resolve, reject);
+      return;
+    }
+
+    createImageBitmap(arquivo, { imageOrientation: "from-image" })
+      .then((bitmap) => {
+        const escala = Math.min(1, larguraMaxima / bitmap.width);
+        const largura = Math.round(bitmap.width * escala);
+        const altura = Math.round(bitmap.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(bitmap, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      })
+      .catch(() => comImageElement(resolve, reject));
   });
 }
 
@@ -59,15 +93,35 @@ function diasAte(data) {
   return Math.round((alvo - hoje) / (1000 * 60 * 60 * 24));
 }
 
-// Primeiro dia do mês atual, no formato YYYY-MM-DD — usado pra limitar o
-// histórico de Contas Pagas ao mês corrente por padrão (mês anterior só
-// aparece se a pessoa pesquisar por ele).
-function primeiroDiaMesAtual() {
-  const agora = new Date();
-  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(
+// Pedido do usuário (12/08/2026): uma conta paga só fica visível por
+// padrão em "Contas Pagas" até as 8h da manhã do dia seguinte ao
+// pagamento — depois disso some da lista padrão (só volta se pesquisar
+// pela data ou pelo nome). Mesmo espírito do "últimas 8h" já usado no
+// Fechamento de Caixa.
+function dataFormatada(data) {
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(
     2,
     "0"
-  )}-01`;
+  )}-${String(data.getDate()).padStart(2, "0")}`;
+}
+
+function pagamentoDentroDaJanelaPadrao(dataPagamento) {
+  if (!dataPagamento) return false;
+
+  const agora = new Date();
+  const hoje = dataFormatada(agora);
+
+  if (dataPagamento === hoje) return true;
+
+  // Antes das 8h, o pagamento de ontem ainda conta como "recente" — só
+  // some da lista padrão quando passar das 8h da manhã seguinte.
+  if (agora.getHours() < 8) {
+    const ontem = new Date(agora);
+    ontem.setDate(ontem.getDate() - 1);
+    return dataPagamento === dataFormatada(ontem);
+  }
+
+  return false;
 }
 
 function situacaoConta(conta) {
@@ -367,11 +421,12 @@ function ContasPagar({
             }
 
             // Sem nenhum filtro de data escolhido: se já pesquisou por
-            // nome, mostra de qualquer época; senão, só o mês atual (mês
-            // anterior cresceria a lista pra sempre).
+            // nome, mostra de qualquer época; senão, só o que foi pago
+            // "recentemente" (até as 8h da manhã do dia seguinte ao
+            // pagamento) — depois disso só aparece pesquisando pela data.
             return buscaLimpa
               ? true
-              : (conta.data_pagamento || "") >= primeiroDiaMesAtual();
+              : pagamentoDentroDaJanelaPadrao(conta.data_pagamento);
           })
           .sort((a, b) =>
             (b.data_pagamento || "").localeCompare(a.data_pagamento || "")

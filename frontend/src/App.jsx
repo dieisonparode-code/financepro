@@ -117,8 +117,18 @@ function formatarMoeda(valor) {
   });
 }
 
+// Bug real encontrado (12/08/2026): a foto de um fechamento aparecia
+// certa no celular (Redmi) mas foi salva de cabeça para baixo — o
+// celular corrige a rotação (EXIF) só na hora de MOSTRAR a foto na
+// galeria, mas o <img>+canvas usado aqui pra comprimir nem sempre
+// respeita esse EXIF (varia por navegador/aparelho), gravando os pixels
+// já errados. Isso explicava leituras erradas da IA que pareciam só
+// "foto ruim". Corrigido usando createImageBitmap com
+// imageOrientation:"from-image", que aplica a rotação certa de forma
+// explícita; se o navegador não suportar, cai pro jeito antigo (o mesmo
+// de sempre) como reserva.
 function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
-  return new Promise((resolve, reject) => {
+  function comImageElement(resolve, reject) {
     const leitor = new FileReader();
 
     leitor.onload = () => {
@@ -149,6 +159,30 @@ function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
       reject(new Error("Não foi possível abrir o arquivo selecionado."));
 
     leitor.readAsDataURL(arquivo);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof createImageBitmap !== "function") {
+      comImageElement(resolve, reject);
+      return;
+    }
+
+    createImageBitmap(arquivo, { imageOrientation: "from-image" })
+      .then((bitmap) => {
+        const escala = Math.min(1, larguraMaxima / bitmap.width);
+        const largura = Math.round(bitmap.width * escala);
+        const altura = Math.round(bitmap.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(bitmap, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      })
+      .catch(() => comImageElement(resolve, reject));
   });
 }
 
