@@ -1931,11 +1931,35 @@ app.put(
           ? req.body.valores
           : null;
 
+      // "sistema" vem da própria leitura da foto (coluna "Esperado" do
+      // comprovante) — não é mais só ajuste manual, a leitura automática
+      // também grava aqui. Mescla com o que já existia em vez de
+      // sobrescrever tudo, pra não perder um ajuste manual anterior.
+      const sistemaNovo =
+        req.body?.sistema && typeof req.body.sistema === "object"
+          ? req.body.sistema
+          : null;
+
+      const atualizacao = { valores_informados: valores };
+
+      if (sistemaNovo) {
+        const { data: atual } = await supabase
+          .from("fechamentos_caixa")
+          .select("sistema_manual")
+          .eq("id", id)
+          .single();
+
+        atualizacao.sistema_manual = {
+          ...(atual?.sistema_manual || {}),
+          ...sistemaNovo,
+        };
+      }
+
       const { data, error } = await supabase
         .from("fechamentos_caixa")
-        .update({ valores_informados: valores })
+        .update(atualizacao)
         .eq("id", id)
-        .select("id, valores_informados")
+        .select("id, valores_informados, sistema_manual")
         .single();
 
       if (error) {
@@ -3569,7 +3593,7 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. A seção "CONFERÊNCIA" (colunas Forma de Pagamento / Esperado / Em caixa / Diferença) lista TODAS as formas de pagamento, uma por linha — releia a imagem com atenção e liste TODAS as linhas dessa seção, mesmo as que tiverem letra pequena, valor baixo (ex: R$0,01 a R$50,00), estiverem borradas ou a foto estiver de cabeça para baixo. É comum ter 6 a 10 linhas diferentes (Dinheiro, Crédito, Débito, Funcionários/A prazo, Pago Online, Pix, Vale, Voucher, Cortesia, variantes TEF) — NÃO PARE de listar após achar só 4 ou 5, continue procurando o resto da tabela até o fim. Pra cada linha, use o valor da coluna "Em caixa" (se não tiver essa coluna, use o valor que aparecer). IMPORTANTE — normalize os nomes exatamente assim, agrupando/somando quando houver mais de uma linha do mesmo grupo: linhas "Crédito", "Cartão de Crédito", "TEF Crédito", "TEF-Crédito" → some tudo numa categoria "Cartão de crédito". Linhas "Débito", "Cartão de Débito", "TEF Débito", "TEF-Débito" → some tudo numa categoria "Cartão de débito". QUALQUER linha com "Pix" no nome (Pix, Pix cnpj, Pix na máquina, Pix na maquininha, TEF-PIX, TEF - PIX, Pix na Entrega, etc) → some tudo numa categoria "PIX". Linhas "Funcionário", "Funcionários", "A prazo", "A prazo (funcionários)" → some tudo numa categoria "A prazo". QUALQUER linha com "Pago Online" no nome (Pago Online, Pago Online Aiqfome, Pago Online iFood, etc) → some tudo numa categoria "Pago Online". Linhas "Voucher" ou "Voucher Parceiro" → some numa categoria "Voucher Parceiro". "Dinheiro", "Vale" e "Cortesia" mantenha os nomes como estão, sem combinar com nada. Não pule nenhuma forma de pagamento que aparecer no comprovante — se aparecer uma forma diferente das listadas aqui, inclua com o nome mais parecido possível dessa lista. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)". ATENÇÃO — isso é um confronto financeiro real, um valor errado é PIOR do que não ter valor nenhum: se você identificar o NOME de uma categoria mas não conseguir ler o número dela com confiança real (foto borrada, cortada, ilegível), ainda assim inclua essa categoria na lista, mas use "valor": null nela — NUNCA invente ou arrisque um número que você não tem certeza de ter lido corretamente. Só coloque um número quando realmente conseguir ler os dígitos na imagem. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "valor": 337.40}, {"nome": "Vale", "valor": null}, ...], "abertura_caixa": 410.25}. Se não achar abertura_caixa, use null nesse campo.',
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. A seção "CONFERÊNCIA" tem 4 colunas: Forma de Pagamento / Esperado / Em caixa / Diferença — lista TODAS as formas de pagamento, uma por linha — releia a imagem com atenção e liste TODAS as linhas dessa seção, mesmo as que tiverem letra pequena, valor baixo (ex: R$0,01 a R$50,00), estiverem borradas ou a foto estiver de cabeça para baixo. É comum ter 6 a 10 linhas diferentes (Dinheiro, Crédito, Débito, Funcionários/A prazo, Pago Online, Pix, Vale, Voucher, Cortesia, variantes TEF) — NÃO PARE de listar após achar só 4 ou 5, continue procurando o resto da tabela até o fim. Pra CADA linha, leia os DOIS números: a coluna "Esperado" (quanto o sistema esperava) E a coluna "Em caixa" (quanto realmente tinha/bateu) — são números DIFERENTES, não confunda um com o outro, releia com cuidado qual coluna é qual. IMPORTANTE — normalize os nomes exatamente assim, agrupando/somando quando houver mais de uma linha do mesmo grupo (soma tanto o Esperado quanto o Em caixa de cada linha do grupo): linhas "Crédito", "Cartão de Crédito", "TEF Crédito", "TEF-Crédito" → some tudo numa categoria "Cartão de crédito". Linhas "Débito", "Cartão de Débito", "TEF Débito", "TEF-Débito" → some tudo numa categoria "Cartão de débito". QUALQUER linha com "Pix" no nome (Pix, Pix cnpj, Pix na máquina, Pix na maquininha, TEF-PIX, TEF - PIX, Pix na Entrega, Pix Conta Bancária, etc) → some tudo numa categoria "PIX". Linhas "Funcionário", "Funcionários", "A prazo", "A prazo (funcionários)" → some tudo numa categoria "A prazo". QUALQUER linha com "Pago Online" no nome (Pago Online, Pago Online Aiqfome, Pago Online iFood, Pago Online via..., etc) → some tudo numa categoria "Pago Online". Linhas "Voucher" ou "Voucher Parceiro" → some numa categoria "Voucher Parceiro". "Dinheiro", "Vale" e "Cortesia" mantenha os nomes como estão, sem combinar com nada. Não pule nenhuma forma de pagamento que aparecer no comprovante — se aparecer uma forma diferente das listadas aqui, inclua com o nome mais parecido possível dessa lista. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)". ATENÇÃO — isso é um confronto financeiro real, um valor errado é PIOR do que não ter valor nenhum: se você identificar o NOME de uma categoria mas não conseguir ler com confiança real um dos dois números (ou os dois) dessa linha (foto borrada, cortada, ilegível), ainda assim inclua essa categoria na lista, mas use null no número que não tiver certeza — NUNCA invente ou arrisque um número que você não tem certeza de ter lido corretamente. Só coloque um número quando realmente conseguir ler os dígitos na imagem. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "esperado": 515.54, "em_caixa": 517.60}, {"nome": "Vale", "esperado": 11.28, "em_caixa": null}, ...], "abertura_caixa": 387.50}. Se não achar abertura_caixa, use null nesse campo.',
         2048,
         // Haiku lê essa foto em ~1-2s contra ~11-12s do Sonnet nesse mesmo
         // tipo de tabela — usuário reportou lentidão na Conciliação, e essa
@@ -3606,7 +3630,13 @@ app.post(
         ? dadosLidos.categorias
         : [];
 
+      // "valores" = coluna "Em caixa" da CONFERÊNCIA (o que realmente
+      // tinha) — alimenta o "Informado" da tela de conciliação.
+      // "esperado" = coluna "Esperado" da mesma tabela — é o próprio
+      // Saipos já dizendo o que esperava pra cada forma (inclusive
+      // Dinheiro, que nenhuma API externa informa) — alimenta o "Sistema".
       const valores = {};
+      const esperado = {};
 
       categorias.forEach((categoria) => {
         if (categoria?.nome == null) return;
@@ -3615,9 +3645,13 @@ app.post(
         // de propósito) — mantém a categoria com valor null, em vez de
         // descartar, pra tela mostrar "não consegui ler" e deixar o campo
         // em branco pro operador preencher, em vez de simplesmente não
-        // aparecer a linha.
-        valores[categoria.nome] =
-          categoria.valor != null ? Number(categoria.valor) : null;
+        // aparecer a linha. Aceita tanto o formato novo (esperado/em_caixa)
+        // quanto o antigo (valor), pra não quebrar se a IA responder no
+        // formato velho por engano.
+        const emCaixa = categoria.em_caixa ?? categoria.valor;
+        valores[categoria.nome] = emCaixa != null ? Number(emCaixa) : null;
+        esperado[categoria.nome] =
+          categoria.esperado != null ? Number(categoria.esperado) : null;
       });
 
       if (Object.keys(valores).length === 0) {
@@ -3631,6 +3665,7 @@ app.post(
 
       res.json({
         valores,
+        esperado,
         abertura_caixa:
           dadosLidos.abertura_caixa != null
             ? Number(dadosLidos.abertura_caixa)

@@ -375,6 +375,26 @@ function Conciliacao({ lojaId }) {
       const resultadoOk = { sucesso: true, formasNaoLidas };
       if (!silencioso) setResultadoFoto(resultadoOk);
 
+      // A coluna "Esperado" do próprio comprovante (Saipos já faz essa
+      // conta pra cada forma, inclusive Dinheiro) alimenta o "Sistema" da
+      // conciliação — exceto Crédito/Débito/PIX, que continuam vindo da
+      // PagSeguro (fonte mais confiável pra essas 3, é quem realmente
+      // recebeu o dinheiro).
+      const sistemaLidoDaFoto = {};
+      if (resultado.esperado) {
+        Object.entries(resultado.esperado).forEach(([forma, valor]) => {
+          if (valor == null) return;
+          if (
+            forma === "Cartão de crédito" ||
+            forma === "Cartão de débito" ||
+            /pix/i.test(forma)
+          ) {
+            return;
+          }
+          sistemaLidoDaFoto[forma] = valor;
+        });
+      }
+
       // Salva a leitura no fechamento pra não precisar (nem poder) ler de
       // novo por engano nas próximas vezes — só sobrescreve se o operador
       // clicar em "Ler foto de novo" explicitamente.
@@ -382,13 +402,20 @@ function Conciliacao({ lojaId }) {
         try {
           const salvo = await salvarValoresInformadosFechamento(
             salvarEm,
-            resultado.valores
+            resultado.valores,
+            Object.keys(sistemaLidoDaFoto).length > 0
+              ? sistemaLidoDaFoto
+              : undefined
           );
 
           setFechamentosDisponiveis((anteriores) =>
             anteriores.map((item) =>
               item.id === salvarEm
-                ? { ...item, valores_informados: salvo.valores_informados }
+                ? {
+                    ...item,
+                    valores_informados: salvo.valores_informados,
+                    sistema_manual: salvo.sistema_manual,
+                  }
                 : item
             )
           );
@@ -399,7 +426,11 @@ function Conciliacao({ lojaId }) {
                   ...anterior,
                   itens: anterior.itens.map((item) =>
                     item.id === salvarEm
-                      ? { ...item, valores_informados: salvo.valores_informados }
+                      ? {
+                          ...item,
+                          valores_informados: salvo.valores_informados,
+                          sistema_manual: salvo.sistema_manual,
+                        }
                       : item
                   ),
                 }
