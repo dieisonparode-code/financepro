@@ -108,16 +108,22 @@ function Conciliacao({ lojaId }) {
   const [erro, setErro] = useState("");
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [resultadoFoto, setResultadoFoto] = useState(null);
-  const [valoresInformados, setValoresInformados] = useState({
+  // Pedido do usuário (12/08/2026): só as formas que TODO fechamento tem
+  // (cartão, pix, dinheiro) ficam fixas aqui. As outras (A prazo, Pago
+  // Online, Vale, Voucher Parceiro, Cortesia, ou qualquer forma nova) só
+  // aparecem na tabela quando esse fechamento específico realmente teve
+  // essa forma (na foto ou no sistema da Saipos) — se não teve, não
+  // aparece a linha, em vez de mostrar "R$0,00"/"—" pra algo que nem
+  // existiu naquele dia.
+  const valoresInformadosBase = {
     "Cartão de crédito": "",
     "Cartão de débito": "",
     PIX: "",
     Dinheiro: "",
-    "A prazo": "",
-    "Pago Online": "",
-    Vale: "",
-    "Voucher Parceiro": "",
-  });
+  };
+  const [valoresInformados, setValoresInformados] = useState(
+    valoresInformadosBase
+  );
   const [fotoPreview, setFotoPreview] = useState(null);
   const [carregandoPreview, setCarregandoPreview] = useState(false);
   const [fechamentosDisponiveis, setFechamentosDisponiveis] = useState([]);
@@ -205,6 +211,10 @@ function Conciliacao({ lojaId }) {
     setResultadoFoto(null);
     setResumo(null);
     setResumoSaipos(null);
+    // Não deixa categoria dinâmica (A prazo/Vale/Voucher/Cortesia/etc) de
+    // um fechamento anterior vazar pra esse — cada fechamento começa do
+    // zero, só as formas fixas (cartão/pix/dinheiro).
+    setValoresInformados(valoresInformadosBase);
 
     const dataFechamento = grupoEscolhido.dataChave;
 
