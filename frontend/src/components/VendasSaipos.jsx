@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { buscarFechamentoSaipos } from "../services/api";
+import { buscarFechamentoSaipos, buscarVendasPagSeguro } from "../services/api";
 
 // Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
 // bate com a expectativa de quem está usando a tela, seja qual for a loja.
@@ -21,6 +21,19 @@ function formatarMoeda(valor) {
 
 const INTERVALO_ATUALIZACAO_MS = 60 * 1000;
 
+// Status 3 (Paga) e 4 (Disponível) são as únicas que a PagSeguro já
+// confirmou como recebidas de verdade — mesma regra usada na Conciliação.
+function estaPendenteOuCancelada(venda) {
+  return venda.status !== 3 && venda.status !== 4;
+}
+
+function formatarHora(dataIso) {
+  if (!dataIso) return "";
+  return new Date(dataIso).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
+}
+
 function VendasSaipos({ lojas = [], ehAdministrador = false }) {
   const lojasComSaipos = lojas.filter((loja) => loja.saipos_id_store);
 
@@ -32,6 +45,11 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [atualizadoEm, setAtualizadoEm] = useState(null);
+  // Pedido do usuário (12/08/2026): vendas caindo na PagSeguro em tempo
+  // real, direto nessa tela — em ordem cronológica única (não separada
+  // por forma de pagamento como na Conciliação).
+  const [vendasPagSeguro, setVendasPagSeguro] = useState([]);
+  const [erroPagSeguro, setErroPagSeguro] = useState("");
 
   // Acompanha qual era "hoje" da última vez que checamos — serve pra saber
   // se a pessoa está vendo o dia atual (e por isso a data deve virar sozinha
@@ -55,6 +73,21 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
       );
     } finally {
       setCarregando(false);
+    }
+
+    // Independente da Saipos — se uma falhar não trava a outra.
+    setErroPagSeguro("");
+
+    try {
+      const resultadoPagSeguro = await buscarVendasPagSeguro(data, data);
+      const ordenadas = (resultadoPagSeguro?.ultimas_vendas || [])
+        .slice()
+        .sort((a, b) => new Date(a.data) - new Date(b.data));
+      setVendasPagSeguro(ordenadas);
+    } catch (erroBusca) {
+      setErroPagSeguro(
+        erroBusca.message || "Não foi possível buscar as vendas na PagSeguro."
+      );
     }
   }
 
@@ -246,6 +279,56 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+      </article>
+
+      <article className="panel categoria-lista-panel">
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">PagSeguro em tempo real</span>
+            <h2>Crédito, Débito e PIX — do horário mais antigo pro mais novo</h2>
+          </div>
+        </div>
+
+        {erroPagSeguro ? (
+          <div className="empty-state">{erroPagSeguro}</div>
+        ) : vendasPagSeguro.length === 0 ? (
+          <div className="empty-state">
+            {carregando ? "Buscando..." : "Nenhuma venda encontrada nesse dia."}
+          </div>
+        ) : (
+          <div className="categorias-lista">
+            {vendasPagSeguro.map((venda) => {
+              const pendenteOuCancelada = estaPendenteOuCancelada(venda);
+
+              return (
+                <div className="categoria-item" key={venda.codigo}>
+                  <div className="categoria-identificacao">
+                    <div className="categoria-icone">
+                      {pendenteOuCancelada ? "⚠️" : "💰"}
+                    </div>
+
+                    <div>
+                      <strong
+                        style={pendenteOuCancelada ? { color: "#ff4655" } : undefined}
+                      >
+                        {formatarMoeda(venda.valor_liquido)}
+                      </strong>{" "}
+                      <small style={{ color: "#9fb0c4", fontSize: "11px" }}>
+                        {venda.forma_pagamento} · #{venda.codigo?.slice(-8)}
+                      </small>
+                      <div
+                        style={pendenteOuCancelada ? { color: "#ff4655" } : undefined}
+                      >
+                        {formatarHora(venda.data)}
+                        {pendenteOuCancelada && ` · ${venda.status_descricao}`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </article>
