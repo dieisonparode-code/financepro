@@ -103,8 +103,16 @@ function agruparVendasPorFormaPagamento(vendas) {
 // pra administrador), não precisa escolher de novo.
 function Conciliacao({ lojaId }) {
   const [abaAtiva, setAbaAtiva] = useState("caixa");
-  const [resumo, setResumo] = useState(null);
-  const [resumoSaipos, setResumoSaipos] = useState(null);
+  // BUG GRAVE corrigido (13/08/2026): resumo/resumoSaipos eram estados
+  // soltos (um valor só, não por fechamento) — trocar de data sem clicar
+  // "Conciliar agora" de novo deixava o "Sistema" do Cartão/PIX mostrando
+  // os dados da PagSeguro/Saipos do fechamento ANTERIOR. Agora guarda um
+  // valor POR DATA (dataChave); o que aparece na tela é sempre só o do
+  // fechamento selecionado agora — nunca sobra resto de outro dia. Bônus:
+  // voltar pra uma data já conciliada antes mostra na hora, sem buscar de
+  // novo.
+  const [resumoPorData, setResumoPorData] = useState({});
+  const [resumoSaiposPorData, setResumoSaiposPorData] = useState({});
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [enviandoFoto, setEnviandoFoto] = useState(false);
@@ -122,9 +130,17 @@ function Conciliacao({ lojaId }) {
     PIX: "",
     Dinheiro: "",
   };
-  const [valoresInformados, setValoresInformados] = useState(
-    valoresInformadosBase
-  );
+  // BUG GRAVE corrigido (13/08/2026), pra valer dessa vez: em vez de um
+  // "valoresInformados" solto que precisa ser resetado manualmente (via
+  // useEffect) toda vez que troca de fechamento — jeito frágil, e que na
+  // prática continuou vazando dado de um fechamento pro outro mesmo depois
+  // de 2 tentativas de conserto — agora guarda só as EDIÇÕES (o que foi
+  // digitado/lido) separadas POR DATA (edicoesPorData[dataChave]). O valor
+  // mostrado na tela é sempre CALCULADO na hora, a partir do fechamento
+  // selecionado agora — nunca pode sobrar resto de outro fechamento,
+  // porque não existe mais um estado único e solto pra "esquecer" de
+  // limpar.
+  const [edicoesPorData, setEdicoesPorData] = useState({});
   const [fotoPreview, setFotoPreview] = useState(null);
   const [carregandoPreview, setCarregandoPreview] = useState(false);
   const [fechamentosDisponiveis, setFechamentosDisponiveis] = useState([]);
@@ -240,53 +256,76 @@ function Conciliacao({ lojaId }) {
     return null;
   }
 
-  // BUG REAL corrigido (13/08/2026): o "Sistema" já reagia sozinho a trocar
-  // de fechamento (vem de totaisBrutosSistema, calculado a partir de
-  // grupoEscolhido), mas o "Informado" era um estado solto — trocar de
-  // data SEM clicar em "Conciliar agora" de novo deixava o Informado
-  // "grudado" com os valores do fechamento anterior, misturando dados de
-  // dois dias diferentes na mesma tabela. Isso é inaceitável num sistema
-  // financeiro. Agora, toda vez que a identidade do fechamento escolhido
-  // muda (dataChave), o Informado é resetado e recarregado com o que
-  // aquele fechamento específico já tiver salvo — nunca herda nada do
-  // fechamento anterior. Usa dataChave (não o objeto grupoEscolhido
-  // inteiro) como dependência de propósito: o objeto é substituído
-  // internamente (ex.: depois de ler uma foto) sem trocar de fechamento,
-  // e isso não pode disparar esse reset.
-  useEffect(() => {
-    if (!grupoEscolhido) {
-      setValoresInformados(valoresInformadosBase);
-      return;
-    }
-
-    const salvos = mesclarDosItens(grupoEscolhido, "valores_informados");
-    const novo = { ...valoresInformadosBase };
+  // Monta o Informado "de fábrica" de um grupo — o que já veio salvo no
+  // banco (leitura de foto anterior), sem nenhuma edição feita agora.
+  function baseInformadoDoGrupo(grupo) {
+    const base = { ...valoresInformadosBase };
+    const salvos = mesclarDosItens(grupo, "valores_informados");
 
     if (salvos) {
       Object.entries(salvos).forEach(([forma, valor]) => {
         if (valor != null) {
-          novo[forma] = Number(valor).toFixed(2);
+          base[forma] = Number(valor).toFixed(2);
         }
       });
     }
 
-    setValoresInformados(novo);
-    setResumo(null);
-    setResumoSaipos(null);
-    setResultadoFoto(null);
-    setErro("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grupoEscolhido?.dataChave]);
+    return base;
+  }
 
-  // BUG REAL corrigido (13/08/2026), segunda parte: mesmo com o reset
-  // acima, se o usuário clicasse "Conciliar agora" e trocasse de
-  // fechamento ENQUANTO a busca (PagSeguro/Saipos/foto) ainda estava em
-  // andamento, a resposta atrasada do fechamento ANTERIOR chegava depois
-  // e sobrescrevia os dados certos do fechamento novo — condição de
-  // corrida clássica. Esse ref sempre guarda qual fechamento está
-  // selecionado AGORA; toda resposta assíncrona confere contra ele antes
-  // de aplicar no estado, e se o usuário já tiver trocado de fechamento
-  // nesse meio tempo, a resposta atrasada é simplesmente descartada.
+  // O que aparece na tela é SEMPRE calculado na hora: a base do
+  // fechamento selecionado AGORA + só as edições feitas pra esse mesmo
+  // fechamento (edicoesPorData é isolado por dataChave). Não existe mais
+  // um estado único "solto" que precisa lembrar de resetar ao trocar de
+  // fechamento — por construção, nunca mistura dado de dois dias.
+  const valoresInformados = useMemo(() => {
+    if (!grupoEscolhido) return valoresInformadosBase;
+
+    return {
+      ...baseInformadoDoGrupo(grupoEscolhido),
+      ...(edicoesPorData[grupoEscolhido.dataChave] || {}),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupoEscolhido, edicoesPorData]);
+
+  // Mantém um ref sempre com o valor MESCLADO atual (não só as edições) —
+  // usado pra suportar a forma antiga de chamar
+  // setValoresInformados((anterior) => ({...anterior, x})) sem reescrever
+  // cada chamada existente.
+  const valoresInformadosRef = useRef(valoresInformados);
+  useEffect(() => {
+    valoresInformadosRef.current = valoresInformados;
+  }, [valoresInformados]);
+
+  // Compatibilidade: todo o resto do código já chama
+  // setValoresInformados(valor) ou setValoresInformados((anterior) => novo)
+  // — aqui só redireciona pra dentro de edicoesPorData, na chave do
+  // fechamento que estiver selecionado NO MOMENTO da chamada (nunca no
+  // fechamento que estava selecionado antes).
+  function setValoresInformados(atualizadorOuValor) {
+    const dataChaveAtual = dataChaveSelecionadaRef.current;
+    if (!dataChaveAtual) return;
+
+    const valorNovo =
+      typeof atualizadorOuValor === "function"
+        ? atualizadorOuValor(valoresInformadosRef.current)
+        : atualizadorOuValor;
+
+    setEdicoesPorData((anterior) => ({
+      ...anterior,
+      [dataChaveAtual]: valorNovo,
+    }));
+  }
+
+  // BUG GRAVE corrigido (13/08/2026): se o usuário clicasse "Conciliar
+  // agora" e trocasse de fechamento ENQUANTO a busca (PagSeguro/Saipos/
+  // foto) ainda estava em andamento, a resposta atrasada do fechamento
+  // ANTERIOR chegava depois e sobrescrevia os dados do fechamento novo —
+  // condição de corrida clássica. Esse ref sempre guarda qual fechamento
+  // está selecionado AGORA; toda resposta assíncrona confere contra ele
+  // antes de aplicar no estado (inclusive dentro do próprio
+  // setValoresInformados acima), e se o usuário já tiver trocado de
+  // fechamento nesse meio tempo, a resposta atrasada é descartada.
   const dataChaveSelecionadaRef = useRef(null);
 
   useEffect(() => {
@@ -298,6 +337,31 @@ function Conciliacao({ lojaId }) {
       dataChaveAlvo === undefined ||
       dataChaveSelecionadaRef.current === dataChaveAlvo
     );
+  }
+
+  // "resumo"/"resumoSaipos" continuam se chamando assim no resto do código
+  // (setResumo(x), resumo?.campo) — só que agora são derivados do mapa por
+  // data, nunca guardam nada "solto" que precise lembrar de limpar.
+  const resumo = grupoEscolhido
+    ? resumoPorData[grupoEscolhido.dataChave] ?? null
+    : null;
+  const resumoSaipos = grupoEscolhido
+    ? resumoSaiposPorData[grupoEscolhido.dataChave] ?? null
+    : null;
+
+  function setResumo(valor) {
+    const dataChaveAtual = dataChaveSelecionadaRef.current;
+    if (!dataChaveAtual) return;
+    setResumoPorData((anterior) => ({ ...anterior, [dataChaveAtual]: valor }));
+  }
+
+  function setResumoSaipos(valor) {
+    const dataChaveAtual = dataChaveSelecionadaRef.current;
+    if (!dataChaveAtual) return;
+    setResumoSaiposPorData((anterior) => ({
+      ...anterior,
+      [dataChaveAtual]: valor,
+    }));
   }
 
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
