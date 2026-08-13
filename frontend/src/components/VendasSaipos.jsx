@@ -34,6 +34,38 @@ function formatarHora(dataIso) {
   });
 }
 
+// Pedido do usuário (12/08/2026): 3 colunas separadas por forma de
+// pagamento, nessa ordem — cada coluna já ordenada do horário mais
+// antigo pro mais novo (a lista inteira já vem ordenada assim antes de
+// agrupar).
+const ORDEM_FORMAS_PAGAMENTO = ["Cartão de débito", "Cartão de crédito", "PIX"];
+
+function agruparPorFormaPagamento(vendas) {
+  const grupos = new Map();
+
+  vendas.forEach((venda) => {
+    const forma = venda.forma_pagamento || "Outro";
+
+    if (!grupos.has(forma)) {
+      grupos.set(forma, []);
+    }
+
+    grupos.get(forma).push(venda);
+  });
+
+  const formasOrdenadas = [
+    ...ORDEM_FORMAS_PAGAMENTO.filter((forma) => grupos.has(forma)),
+    ...[...grupos.keys()].filter(
+      (forma) => !ORDEM_FORMAS_PAGAMENTO.includes(forma)
+    ),
+  ];
+
+  return formasOrdenadas.map((forma) => ({
+    forma,
+    vendas: grupos.get(forma),
+  }));
+}
+
 function VendasSaipos({ lojas = [], ehAdministrador = false }) {
   const lojasComSaipos = lojas.filter((loja) => loja.saipos_id_store);
 
@@ -298,37 +330,63 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
             {carregando ? "Buscando..." : "Nenhuma venda encontrada nesse dia."}
           </div>
         ) : (
-          <div className="categorias-lista">
-            {vendasPagSeguro.map((venda) => {
-              const pendenteOuCancelada = estaPendenteOuCancelada(venda);
-
-              return (
-                <div className="categoria-item" key={venda.codigo}>
-                  <div className="categoria-identificacao">
-                    <div className="categoria-icone">
-                      {pendenteOuCancelada ? "⚠️" : "💰"}
-                    </div>
-
-                    <div>
-                      <strong
-                        style={pendenteOuCancelada ? { color: "#ff4655" } : undefined}
-                      >
-                        {formatarMoeda(venda.valor_liquido)}
-                      </strong>{" "}
-                      <small style={{ color: "#9fb0c4", fontSize: "11px" }}>
-                        {venda.forma_pagamento} · #{venda.codigo?.slice(-8)}
-                      </small>
-                      <div
-                        style={pendenteOuCancelada ? { color: "#ff4655" } : undefined}
-                      >
-                        {formatarHora(venda.data)}
-                        {pendenteOuCancelada && ` · ${venda.status_descricao}`}
-                      </div>
-                    </div>
-                  </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "1rem",
+            }}
+          >
+            {agruparPorFormaPagamento(vendasPagSeguro).map((grupo) => (
+              <div key={grupo.forma}>
+                <div style={{ marginBottom: "10px" }}>
+                  <strong style={{ color: "#16ca50" }}>{grupo.forma}</strong>{" "}
+                  <span>({grupo.vendas.length})</span>
                 </div>
-              );
-            })}
+
+                <div className="categorias-lista">
+                  {grupo.vendas.map((venda) => {
+                    const pendenteOuCancelada = estaPendenteOuCancelada(venda);
+
+                    return (
+                      <div className="categoria-item" key={venda.codigo}>
+                        <div className="categoria-identificacao">
+                          <div className="categoria-icone">
+                            {pendenteOuCancelada ? "⚠️" : "💰"}
+                          </div>
+
+                          <div>
+                            <strong
+                              style={
+                                pendenteOuCancelada
+                                  ? { color: "#ff4655" }
+                                  : undefined
+                              }
+                            >
+                              {formatarMoeda(venda.valor_liquido)}
+                            </strong>{" "}
+                            <small style={{ color: "#9fb0c4", fontSize: "11px" }}>
+                              #{venda.codigo?.slice(-8)}
+                            </small>
+                            <div
+                              style={
+                                pendenteOuCancelada
+                                  ? { color: "#ff4655" }
+                                  : undefined
+                              }
+                            >
+                              {formatarHora(venda.data)}
+                              {pendenteOuCancelada &&
+                                ` · ${venda.status_descricao}`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </article>
