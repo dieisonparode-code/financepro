@@ -198,7 +198,11 @@
 }
 
 .modal-foto {
-  width: min(520px, 100%);
+  /* Pedido do usuário (13/08/2026): comprovante de fechamento é uma tira
+     longa e estreita — 520px de largura deixava a foto pequena demais
+     pra ler os números direito. Aumentado bastante (quase a tela toda,
+     em telas pequenas usa 96vw). */
+  width: min(900px, 96vw);
 }
 
 .modal-confirmacao {
@@ -312,7 +316,9 @@
 .foto-modal-imagem {
   display: block;
   width: 100%;
-  max-height: 70vh;
+  /* Aumentado de 70vh — comprovante é uma tira longa, precisa de mais
+     altura pra não ficar minúsculo na tela. */
+  max-height: 88vh;
   object-fit: contain;
   border-radius: 12px;
   background: #09182a;

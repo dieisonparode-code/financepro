@@ -44,6 +44,31 @@ function rotuloTipo(tipo) {
 // imageOrientation:"from-image", que aplica a rotação certa de forma
 // explícita; se o navegador não suportar, cai pro jeito antigo (o mesmo
 // de sempre) como reserva.
+//
+// Pedido do usuário (13/08/2026): mesmo com o EXIF corrigido, às vezes a
+// foto ainda sai "de lado" (deitada) — o comprovante de fechamento é
+// sempre uma tira longa e estreita (bem mais alto que largo), então se o
+// resultado vier deitado (mais largo que alto), gira 90° à força pra
+// sempre sair em pé. Só faz isso aqui (Fechamento de Caixa) — não nos
+// outros lugares que comprimem foto (Notas Fiscais, Contas a Pagar),
+// porque lá a foto pode legitimamente ser paisagem.
+function desenharForcandoEmPe(contexto, canvas, origem, largura, altura) {
+  if (largura <= altura) {
+    canvas.width = largura;
+    canvas.height = altura;
+    contexto.drawImage(origem, 0, 0, largura, altura);
+    return;
+  }
+
+  // Deitada: o canvas fica com largura/altura trocadas, e o desenho gira
+  // 90° (sentido horário) pra encaixar em pé.
+  canvas.width = altura;
+  canvas.height = largura;
+  contexto.translate(altura, 0);
+  contexto.rotate(Math.PI / 2);
+  contexto.drawImage(origem, 0, 0, largura, altura);
+}
+
 function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
   function comImageElement(resolve, reject) {
     const leitor = new FileReader();
@@ -57,11 +82,8 @@ function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
         const altura = Math.round(imagem.height * escala);
 
         const canvas = document.createElement("canvas");
-        canvas.width = largura;
-        canvas.height = altura;
-
         const contexto = canvas.getContext("2d");
-        contexto.drawImage(imagem, 0, 0, largura, altura);
+        desenharForcandoEmPe(contexto, canvas, imagem, largura, altura);
 
         resolve(canvas.toDataURL("image/jpeg", qualidade));
       };
@@ -91,11 +113,8 @@ function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
         const altura = Math.round(bitmap.height * escala);
 
         const canvas = document.createElement("canvas");
-        canvas.width = largura;
-        canvas.height = altura;
-
         const contexto = canvas.getContext("2d");
-        contexto.drawImage(bitmap, 0, 0, largura, altura);
+        desenharForcandoEmPe(contexto, canvas, bitmap, largura, altura);
 
         resolve(canvas.toDataURL("image/jpeg", qualidade));
       })
