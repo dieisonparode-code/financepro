@@ -239,6 +239,9 @@ function prepararLancamento(dados = {}) {
     categoria: dados.categoria || "",
     subcategoria: dados.subcategoria || "",
     fornecedor: dados.fornecedor || "",
+    item: (dados.item || "").trim(),
+    quantidade: dados.quantidade != null ? Number(dados.quantidade) : null,
+    unidade: (dados.unidade || "").trim(),
     observacao: dados.observacao || "",
     foto: dados.foto || "",
     foto_mercadoria: dados.foto_mercadoria || "",
@@ -305,7 +308,7 @@ app.get("/", function (req, res) {
 });
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
 app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
@@ -347,7 +350,9 @@ app.get(
     try {
       const { data, error } = await supabase
         .from("lancamentos")
-        .select("id, descricao, valor, data, fornecedor, loja_id, categoria")
+        .select(
+          "id, descricao, valor, data, fornecedor, item, quantidade, unidade, loja_id, categoria"
+        )
         .eq("tipo", "despesa")
         .not("fornecedor", "is", null)
         .neq("fornecedor", "")
@@ -357,69 +362,145 @@ app.get(
         throw error;
       }
 
-      const grupos = {};
+      // Limiar de 15% pra cima/baixo da própria média histórica —
+      // simples de explicar pro usuário.
+      const LIMIAR_VARIACAO = 15;
+
+      function calcularIndicador(valorAtual, valorMedio) {
+        const variacao =
+          valorMedio > 0 ? ((valorAtual - valorMedio) / valorMedio) * 100 : 0;
+
+        return {
+          variacao_percentual: Number(variacao.toFixed(1)),
+          indicador:
+            variacao >= LIMIAR_VARIACAO
+              ? "abusivo"
+              : variacao <= -LIMIAR_VARIACAO
+              ? "bom"
+              : "normal",
+        };
+      }
+
+      // Preferência do usuário (13/08/2026): comparar por ITEM (preço por
+      // kg/litro/unidade), não só o valor total da compra — só cai no
+      // "valor total" quando a compra não tem item+quantidade preenchidos
+      // (ex.: aluguel, conta de luz, essas não tem "preço por unidade").
+      const gruposFornecedor = {};
 
       (data || []).forEach((lancamento) => {
-        const nomeFornecedor = lancamento.fornecedor.trim();
+        const nomeFornecedor = (lancamento.fornecedor || "").trim();
 
         if (!nomeFornecedor) return;
 
-        if (!grupos[nomeFornecedor]) {
-          grupos[nomeFornecedor] = [];
+        if (!gruposFornecedor[nomeFornecedor]) {
+          gruposFornecedor[nomeFornecedor] = { itens: {}, semItem: [] };
         }
 
-        grupos[nomeFornecedor].push({
-          id: lancamento.id,
-          descricao: lancamento.descricao,
-          valor: Number(lancamento.valor || 0),
-          data: lancamento.data,
-          loja_id: lancamento.loja_id,
-          categoria: lancamento.categoria,
-        });
+        const quantidade = Number(lancamento.quantidade || 0);
+        const nomeItem = (lancamento.item || "").trim();
+        const valor = Number(lancamento.valor || 0);
+
+        if (nomeItem && quantidade > 0) {
+          const chaveItem = nomeItem.toLowerCase();
+
+          if (!gruposFornecedor[nomeFornecedor].itens[chaveItem]) {
+            gruposFornecedor[nomeFornecedor].itens[chaveItem] = {
+              item: nomeItem,
+              unidade: lancamento.unidade || "",
+              compras: [],
+            };
+          }
+
+          gruposFornecedor[nomeFornecedor].itens[chaveItem].compras.push({
+            id: lancamento.id,
+            descricao: lancamento.descricao,
+            data: lancamento.data,
+            valor,
+            quantidade,
+            preco_unidade: Number((valor / quantidade).toFixed(4)),
+          });
+        } else {
+          gruposFornecedor[nomeFornecedor].semItem.push({
+            id: lancamento.id,
+            descricao: lancamento.descricao,
+            data: lancamento.data,
+            valor,
+          });
+        }
       });
 
-      // Limiar de 15% pra cima/baixo da própria média histórica do
-      // fornecedor — simples de explicar, não precisa de preço por
-      // unidade/kg (o sistema não guarda quantidade das compras).
-      const LIMIAR_VARIACAO = 15;
+      const fornecedores = Object.entries(gruposFornecedor)
+        .map(([fornecedor, grupo]) => {
+          const itens = Object.values(grupo.itens)
+            .map((itemGrupo) => {
+              const precoTotal = itemGrupo.compras.reduce(
+                (soma, c) => soma + c.preco_unidade,
+                0
+              );
+              const precoMedioUnidade = precoTotal / itemGrupo.compras.length;
 
-      const fornecedores = Object.entries(grupos)
-        .map(([fornecedor, compras]) => {
-          const valorTotal = compras.reduce((soma, c) => soma + c.valor, 0);
-          const valorMedio = valorTotal / compras.length;
+              const comprasComIndicador = itemGrupo.compras.map((compra) => ({
+                ...compra,
+                ...calcularIndicador(compra.preco_unidade, precoMedioUnidade),
+              }));
 
-          const comprasComIndicador = compras.map((compra) => {
-            const variacao =
-              valorMedio > 0
-                ? ((compra.valor - valorMedio) / valorMedio) * 100
-                : 0;
+              const ultimaCompra =
+                comprasComIndicador[comprasComIndicador.length - 1];
 
-            return {
-              ...compra,
-              variacao_percentual: Number(variacao.toFixed(1)),
-              indicador:
-                variacao >= LIMIAR_VARIACAO
-                  ? "abusivo"
-                  : variacao <= -LIMIAR_VARIACAO
-                  ? "bom"
-                  : "normal",
-            };
-          });
+              return {
+                item: itemGrupo.item,
+                unidade: itemGrupo.unidade,
+                total_compras: itemGrupo.compras.length,
+                preco_medio_unidade: Number(precoMedioUnidade.toFixed(2)),
+                menor_preco_unidade: Number(
+                  Math.min(...itemGrupo.compras.map((c) => c.preco_unidade)).toFixed(2)
+                ),
+                maior_preco_unidade: Number(
+                  Math.max(...itemGrupo.compras.map((c) => c.preco_unidade)).toFixed(2)
+                ),
+                ultima_compra: ultimaCompra,
+                compras: comprasComIndicador.slice().reverse(),
+              };
+            })
+            .sort((a, b) => b.total_compras - a.total_compras);
 
-          const ultimaCompra = comprasComIndicador[comprasComIndicador.length - 1];
+          const semItemValorTotal = grupo.semItem.reduce(
+            (soma, c) => soma + c.valor,
+            0
+          );
+          const semItemValorMedio =
+            grupo.semItem.length > 0
+              ? semItemValorTotal / grupo.semItem.length
+              : 0;
+
+          const semItem =
+            grupo.semItem.length > 0
+              ? {
+                  total_compras: grupo.semItem.length,
+                  valor_total: Number(semItemValorTotal.toFixed(2)),
+                  valor_medio: Number(semItemValorMedio.toFixed(2)),
+                  compras: grupo.semItem
+                    .map((compra) => ({
+                      ...compra,
+                      ...calcularIndicador(compra.valor, semItemValorMedio),
+                    }))
+                    .slice()
+                    .reverse(),
+                }
+              : null;
+
+          const totalCompras =
+            itens.reduce((soma, i) => soma + i.total_compras, 0) +
+            (semItem?.total_compras || 0);
 
           return {
             fornecedor,
-            total_compras: compras.length,
-            valor_total: Number(valorTotal.toFixed(2)),
-            valor_medio: Number(valorMedio.toFixed(2)),
-            menor_valor: Number(Math.min(...compras.map((c) => c.valor)).toFixed(2)),
-            maior_valor: Number(Math.max(...compras.map((c) => c.valor)).toFixed(2)),
-            ultima_compra: ultimaCompra,
-            compras: comprasComIndicador.slice().reverse(),
+            total_compras: totalCompras,
+            itens,
+            sem_item: semItem,
           };
         })
-        .sort((a, b) => b.valor_total - a.valor_total);
+        .sort((a, b) => b.total_compras - a.total_compras);
 
       res.json(fornecedores);
     } catch (erro) {

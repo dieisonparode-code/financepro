@@ -27,7 +27,51 @@ function rotuloIndicador(indicador) {
   return { texto: "Na média", cor: "#9fb0c4" };
 }
 
-function Fornecedores({ historico = [], carregando = false, lojas = [] }) {
+function textoVariacao(compra) {
+  const indicador = rotuloIndicador(compra.indicador);
+
+  return (
+    indicador.texto +
+    (compra.variacao_percentual
+      ? ` (${compra.variacao_percentual > 0 ? "+" : ""}${
+          compra.variacao_percentual
+        }%)`
+      : "")
+  );
+}
+
+function TabelaCompras({ compras, coluna3Titulo, valorLinha }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Descrição</th>
+          <th>{coluna3Titulo}</th>
+          <th>Variação vs. média</th>
+        </tr>
+      </thead>
+      <tbody>
+        {compras.map((compra) => {
+          const indicador = rotuloIndicador(compra.indicador);
+
+          return (
+            <tr key={compra.id}>
+              <td>{formatarData(compra.data)}</td>
+              <td>{compra.descricao}</td>
+              <td>{valorLinha(compra)}</td>
+              <td style={{ color: indicador.cor }}>
+                {textoVariacao(compra)}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function Fornecedores({ historico = [], carregando = false }) {
   const [busca, setBusca] = useState("");
   const [expandido, setExpandido] = useState(null);
 
@@ -43,15 +87,17 @@ function Fornecedores({ historico = [], carregando = false, lojas = [] }) {
         <div className="panel-header">
           <div>
             <span className="eyebrow">Fornecedores</span>
-            <h2>Histórico de preços</h2>
+            <h2>Histórico de preços por item</h2>
           </div>
         </div>
 
         <p style={{ color: "#9fb0c4", fontSize: 13.5 }}>
-          Compara o valor de cada compra lançada em Despesas (ou pago em
-          Contas a Pagar) com a própria média histórica desse fornecedor —
-          sinaliza quando um pagamento veio bem acima ou bem abaixo do
-          normal. Só entram compras com o campo "Fornecedor" preenchido.
+          Compara o preço por kg/litro/unidade de cada item comprado com a
+          própria média histórica desse item nesse fornecedor — sinaliza
+          quando um pagamento veio bem acima ou bem abaixo do normal. Pra
+          entrar aqui, a despesa precisa ter "Fornecedor", "Item comprado" e
+          "Quantidade" preenchidos ao lançar. Despesas sem item (aluguel,
+          conta de luz etc.) aparecem à parte, comparadas pelo valor total.
         </p>
 
         <label>
@@ -81,97 +127,168 @@ function Fornecedores({ historico = [], carregando = false, lojas = [] }) {
         ) : historicoVisivel.length === 0 ? (
           <div className="empty-state">
             Nenhum fornecedor encontrado. Pra aparecer aqui, preencha o campo
-            "Fornecedor" ao lançar uma despesa ou uma conta a pagar.
+            "Fornecedor" ao lançar uma despesa (e, se possível, "Item
+            comprado" + "Quantidade" pra comparar preço por unidade).
           </div>
         ) : (
           <div className="categorias-lista">
-            {historicoVisivel.map((item) => {
-              const indicadorUltima = rotuloIndicador(
-                item.ultima_compra?.indicador
-              );
-
-              return (
-                <div key={item.fornecedor} className="categoria-item">
-                  <div
-                    className="categoria-identificacao"
-                    style={{ cursor: "pointer", width: "100%" }}
-                    onClick={() =>
-                      setExpandido((atual) =>
-                        atual === item.fornecedor ? null : item.fornecedor
-                      )
-                    }
-                  >
-                    <div className="categoria-icone">🏭</div>
-                    <div style={{ width: "100%" }}>
-                      <strong>{item.fornecedor}</strong>
-                      <div>
-                        {item.total_compras}{" "}
-                        {item.total_compras === 1 ? "compra" : "compras"} —
-                        média {formatarMoeda(item.valor_medio)} — total{" "}
-                        {formatarMoeda(item.valor_total)}
-                      </div>
-                      <div>
-                        Última compra: {formatarData(item.ultima_compra?.data)}{" "}
-                        —{" "}
-                        <strong>
-                          {formatarMoeda(item.ultima_compra?.valor)}
-                        </strong>{" "}
-                        <span style={{ color: indicadorUltima.cor }}>
-                          {indicadorUltima.texto}
-                          {item.ultima_compra?.variacao_percentual
-                            ? ` (${
-                                item.ultima_compra.variacao_percentual > 0
-                                  ? "+"
-                                  : ""
-                              }${item.ultima_compra.variacao_percentual}%)`
-                            : ""}
-                        </span>
-                      </div>
+            {historicoVisivel.map((fornecedorItem) => (
+              <div key={fornecedorItem.fornecedor} className="categoria-item">
+                <div
+                  className="categoria-identificacao"
+                  style={{ width: "100%" }}
+                >
+                  <div className="categoria-icone">🏭</div>
+                  <div style={{ width: "100%" }}>
+                    <strong>{fornecedorItem.fornecedor}</strong>
+                    <div>
+                      {fornecedorItem.total_compras}{" "}
+                      {fornecedorItem.total_compras === 1
+                        ? "compra"
+                        : "compras"}{" "}
+                      no total —{" "}
+                      {fornecedorItem.itens.length > 0
+                        ? `${fornecedorItem.itens.length} ${
+                            fornecedorItem.itens.length === 1
+                              ? "item acompanhado"
+                              : "itens acompanhados"
+                          }`
+                        : "nenhum item com quantidade preenchida ainda"}
                     </div>
                   </div>
+                </div>
 
-                  {expandido === item.fornecedor && (
-                    <div style={{ width: "100%", marginTop: 10 }}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Data</th>
-                            <th>Descrição</th>
-                            <th>Valor</th>
-                            <th>Variação vs. média</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {item.compras.map((compra) => {
-                            const indicadorCompra = rotuloIndicador(
-                              compra.indicador
-                            );
+                <div style={{ width: "100%", marginTop: 10 }}>
+                  {fornecedorItem.itens.map((itemGrupo) => {
+                    const chave = `${fornecedorItem.fornecedor}|||${itemGrupo.item}`;
+                    const indicadorUltima = rotuloIndicador(
+                      itemGrupo.ultima_compra?.indicador
+                    );
 
-                            return (
-                              <tr key={compra.id}>
-                                <td>{formatarData(compra.data)}</td>
-                                <td>{compra.descricao}</td>
-                                <td>{formatarMoeda(compra.valor)}</td>
-                                <td style={{ color: indicadorCompra.cor }}>
-                                  {indicadorCompra.texto}
-                                  {compra.variacao_percentual
-                                    ? ` (${
-                                        compra.variacao_percentual > 0
-                                          ? "+"
-                                          : ""
-                                      }${compra.variacao_percentual}%)`
-                                    : ""}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    return (
+                      <div
+                        key={chave}
+                        style={{
+                          marginTop: 8,
+                          paddingTop: 8,
+                          borderTop: "1px solid rgba(159,176,196,0.15)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "row",
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            cursor: "pointer",
+                          }}
+                          onClick={() =>
+                            setExpandido((atual) =>
+                              atual === chave ? null : chave
+                            )
+                          }
+                        >
+                          <div>
+                            <strong>📦 {itemGrupo.item}</strong>{" "}
+                            <span style={{ color: "#9fb0c4" }}>
+                              ({itemGrupo.total_compras}{" "}
+                              {itemGrupo.total_compras === 1
+                                ? "compra"
+                                : "compras"}
+                              , média{" "}
+                              {formatarMoeda(itemGrupo.preco_medio_unidade)}/
+                              {itemGrupo.unidade || "un"})
+                            </span>
+                          </div>
+
+                          <div>
+                            Última:{" "}
+                            <strong>
+                              {formatarMoeda(
+                                itemGrupo.ultima_compra?.preco_unidade
+                              )}
+                              /{itemGrupo.unidade || "un"}
+                            </strong>{" "}
+                            <span style={{ color: indicadorUltima.cor }}>
+                              {textoVariacao(itemGrupo.ultima_compra)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {expandido === chave && (
+                          <div style={{ marginTop: 8 }}>
+                            <TabelaCompras
+                              compras={itemGrupo.compras}
+                              coluna3Titulo={`R$/${itemGrupo.unidade || "un"}`}
+                              valorLinha={(compra) =>
+                                `${formatarMoeda(compra.preco_unidade)} (${
+                                  compra.quantidade
+                                } ${itemGrupo.unidade || "un"} por ${formatarMoeda(
+                                  compra.valor
+                                )})`
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {fornecedorItem.sem_item && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        paddingTop: 8,
+                        borderTop: "1px solid rgba(159,176,196,0.15)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "row",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          cursor: "pointer",
+                        }}
+                        onClick={() =>
+                          setExpandido((atual) =>
+                            atual === `${fornecedorItem.fornecedor}|||semitem`
+                              ? null
+                              : `${fornecedorItem.fornecedor}|||semitem`
+                          )
+                        }
+                      >
+                        <div>
+                          <strong>Sem item específico</strong>{" "}
+                          <span style={{ color: "#9fb0c4" }}>
+                            ({fornecedorItem.sem_item.total_compras}{" "}
+                            {fornecedorItem.sem_item.total_compras === 1
+                              ? "compra"
+                              : "compras"}
+                            , média {formatarMoeda(fornecedorItem.sem_item.valor_medio)})
+                          </span>
+                        </div>
+                      </div>
+
+                      {expandido ===
+                        `${fornecedorItem.fornecedor}|||semitem` && (
+                        <div style={{ marginTop: 8 }}>
+                          <TabelaCompras
+                            compras={fornecedorItem.sem_item.compras}
+                            coluna3Titulo="Valor"
+                            valorLinha={(compra) => formatarMoeda(compra.valor)}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </article>

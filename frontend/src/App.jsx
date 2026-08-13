@@ -329,6 +329,9 @@ function criarFormularioInicial(tipo = "receita") {
         : "Fornecedores",
     subcategoria: "",
     fornecedor: "",
+    item: "",
+    quantidade: "",
+    unidade: "kg",
     observacao: "",
     foto: "",
     foto_mercadoria: "",
@@ -1744,6 +1747,10 @@ const statusCmv =
           : "Fornecedores"),
       subcategoria: lancamento.subcategoria || "",
       fornecedor: lancamento.fornecedor || "",
+      item: lancamento.item || "",
+      quantidade:
+        lancamento.quantidade != null ? String(lancamento.quantidade) : "",
+      unidade: lancamento.unidade || "kg",
       observacao: lancamento.observacao || "",
       foto: "",
       foto_mercadoria: "",
@@ -1956,6 +1963,12 @@ const statusCmv =
       categoria: formulario.categoria,
       subcategoria: formulario.subcategoria.trim(),
       fornecedor: formulario.fornecedor.trim(),
+      item: tipoLancamento === "despesa" ? formulario.item.trim() : "",
+      quantidade:
+        tipoLancamento === "despesa" && formulario.quantidade
+          ? Number(String(formulario.quantidade).replace(",", "."))
+          : null,
+      unidade: tipoLancamento === "despesa" ? formulario.unidade : "",
       observacao: formulario.observacao.trim(),
       foto: formulario.foto || "",
       foto_mercadoria: formulario.foto_mercadoria || "",
@@ -4355,6 +4368,52 @@ const statusCmv =
                   placeholder="Ex.: Distribuidora ABC"
                 />
               </label>
+
+              {tipoLancamento === "despesa" && (
+                <div className="form-row">
+                  <label>
+                    Item comprado (opcional)
+                    <input
+                      type="text"
+                      value={formulario.item}
+                      onChange={(evento) =>
+                        alterarCampo("item", evento.target.value)
+                      }
+                      placeholder="Ex.: Carne moída"
+                    />
+                  </label>
+
+                  <label>
+                    Quantidade
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={formulario.quantidade}
+                      onChange={(evento) =>
+                        alterarCampo("quantidade", evento.target.value)
+                      }
+                      placeholder="Ex.: 50"
+                    />
+                  </label>
+
+                  <label>
+                    Unidade
+                    <select
+                      value={formulario.unidade}
+                      onChange={(evento) =>
+                        alterarCampo("unidade", evento.target.value)
+                      }
+                    >
+                      <option value="kg">kg</option>
+                      <option value="g">g</option>
+                      <option value="litro">litro</option>
+                      <option value="unidade">unidade</option>
+                      <option value="caixa">caixa</option>
+                      <option value="pacote">pacote</option>
+                    </select>
+                  </label>
+                </div>
+              )}
 
               <div className="form-row">
                 <label>
