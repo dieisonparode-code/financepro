@@ -679,18 +679,44 @@ function ContasPagar({
           <strong>{contasVisiveis.length}</strong>
         </div>
 
-        {modo === "pendentes" && selecionadas.length > 0 && (
-          <button
-            type="button"
-            className="approve-button"
-            onClick={confirmarPagamentoSelecionadas}
-            disabled={confirmandoPagamento}
-            style={{ marginBottom: 12 }}
+        {modo === "pendentes" && contasVisiveis.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              marginBottom: 12,
+            }}
           >
-            {confirmandoPagamento
-              ? "Confirmando..."
-              : `✅ Confirmar pagamento (${selecionadas.length})`}
-          </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() =>
+                setSelecionadas(
+                  selecionadas.length === contasVisiveis.length
+                    ? []
+                    : contasVisiveis.map((conta) => conta.id)
+                )
+              }
+            >
+              {selecionadas.length === contasVisiveis.length
+                ? "Desmarcar todas"
+                : `Selecionar todas (${contasVisiveis.length})`}
+            </button>
+
+            {selecionadas.length > 0 && (
+              <button
+                type="button"
+                className="approve-button"
+                onClick={confirmarPagamentoSelecionadas}
+                disabled={confirmandoPagamento}
+              >
+                {confirmandoPagamento
+                  ? "Confirmando..."
+                  : `✅ Confirmar pagamento (${selecionadas.length})`}
+              </button>
+            )}
+          </div>
         )}
 
         {carregando ? (
