@@ -899,6 +899,8 @@ function ContasPagar({
                         <div
                           style={{
                             display: "flex",
+                            flexDirection: "row",
+                            flexWrap: "nowrap",
                             alignItems: "center",
                             gap: 6,
                             marginTop: 4,
@@ -911,7 +913,7 @@ function ContasPagar({
                             defaultValue={conta.pix || ""}
                             disabled={salvandoPixId === conta.id}
                             placeholder="Chave Pix..."
-                            style={{ width: 160, display: "inline-block" }}
+                            style={{ width: 160, flexShrink: 0 }}
                             onBlur={(evento) =>
                               salvarPixEditado(conta, evento.target.value)
                             }
@@ -1040,6 +1042,8 @@ function ContasPagar({
                       <div
                         style={{
                           display: "flex",
+                          flexDirection: "row",
+                          flexWrap: "nowrap",
                           alignItems: "center",
                           gap: 8,
                           marginTop: 4,
