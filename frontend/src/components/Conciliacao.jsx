@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   buscarVendasPagSeguro,
   conferirFechamentoFoto,
@@ -278,12 +278,36 @@ function Conciliacao({ lojaId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupoEscolhido?.dataChave]);
 
+  // BUG REAL corrigido (13/08/2026), segunda parte: mesmo com o reset
+  // acima, se o usuário clicasse "Conciliar agora" e trocasse de
+  // fechamento ENQUANTO a busca (PagSeguro/Saipos/foto) ainda estava em
+  // andamento, a resposta atrasada do fechamento ANTERIOR chegava depois
+  // e sobrescrevia os dados certos do fechamento novo — condição de
+  // corrida clássica. Esse ref sempre guarda qual fechamento está
+  // selecionado AGORA; toda resposta assíncrona confere contra ele antes
+  // de aplicar no estado, e se o usuário já tiver trocado de fechamento
+  // nesse meio tempo, a resposta atrasada é simplesmente descartada.
+  const dataChaveSelecionadaRef = useRef(null);
+
+  useEffect(() => {
+    dataChaveSelecionadaRef.current = grupoEscolhido?.dataChave ?? null;
+  }, [grupoEscolhido?.dataChave]);
+
+  function aindaSelecionado(dataChaveAlvo) {
+    return (
+      dataChaveAlvo === undefined ||
+      dataChaveSelecionadaRef.current === dataChaveAlvo
+    );
+  }
+
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
   // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
   // de escolher qual Fechamento de Caixa usar, um botão busca a PagSeguro
   // só daquele dia e já lê a(s) foto(s) sozinho.
   async function conciliarAgora() {
     if (!grupoEscolhido) return;
+
+    const dataChaveAlvo = grupoEscolhido.dataChave;
 
     setCarregando(true);
     setErro("");
@@ -302,21 +326,31 @@ function Conciliacao({ lojaId }) {
     // de uma esperar a outra, o tempo total fica perto da mais lenta, não
     // da soma.
     const buscaVendas = buscarVendasPagSeguro(dataFechamento, dataFechamento)
-      .then((resultado) => setResumo(resultado))
-      .catch((erroBusca) =>
+      .then((resultado) => {
+        if (!aindaSelecionado(dataChaveAlvo)) return;
+        setResumo(resultado);
+      })
+      .catch((erroBusca) => {
+        if (!aindaSelecionado(dataChaveAlvo)) return;
         setErro(
           erroBusca.message ||
             "Não foi possível buscar as vendas na PagSeguro."
-        )
-      );
+        );
+      });
 
     // iFood/Brendi (Pago Online), Voucher Parceiro e A prazo (funcionários)
     // já são contabilizados pela própria Saipos — não falha a conciliação
     // se essa loja ainda não tiver o ID da Saipos cadastrado, só não
     // preenche essas linhas.
     const buscaSaipos = buscarFechamentoSaipos(lojaId, dataFechamento)
-      .then((resultado) => setResumoSaipos(resultado))
-      .catch(() => setResumoSaipos(null));
+      .then((resultado) => {
+        if (!aindaSelecionado(dataChaveAlvo)) return;
+        setResumoSaipos(resultado);
+      })
+      .catch(() => {
+        if (!aindaSelecionado(dataChaveAlvo)) return;
+        setResumoSaipos(null);
+      });
 
     // Pedido do usuário: uma vez lida a foto, o valor fica salvo nesse
     // registro — refazer a conciliação usa o valor salvo, sem chamar a IA
@@ -328,15 +362,18 @@ function Conciliacao({ lojaId }) {
     // do comprovante), e se a IA "inventar" categoria numa foto sem
     // tabela, ler ela por cima correria o risco de sobrescrever os
     // valores certos já achados na primeira foto.
-    const buscaFotos = lerFotosDoGrupoEmOrdem(grupoEscolhido.itens);
+    const buscaFotos = lerFotosDoGrupoEmOrdem(grupoEscolhido.itens, dataChaveAlvo);
 
     await Promise.all([buscaVendas, buscaSaipos, buscaFotos]);
     setCarregando(false);
   }
 
-  async function lerOuUsarFotoDoItem(item) {
+  async function lerOuUsarFotoDoItem(item, dataChaveAlvo) {
     if (item.valores_informados) {
-      return usarValoresSalvos(item.valores_informados, { silencioso: true });
+      return usarValoresSalvos(item.valores_informados, {
+        silencioso: true,
+        dataChaveAlvo,
+      });
     }
 
     try {
@@ -344,6 +381,7 @@ function Conciliacao({ lojaId }) {
       return await conferirFotoDataUrl(fotoResultado?.foto, {
         salvarEm: item.id,
         silencioso: true,
+        dataChaveAlvo,
       });
     } catch (erroFoto) {
       return {
@@ -354,15 +392,16 @@ function Conciliacao({ lojaId }) {
     }
   }
 
-  async function lerFotosDoGrupoEmOrdem(itens) {
+  async function lerFotosDoGrupoEmOrdem(itens, dataChaveAlvo) {
     const resultados = [];
 
     for (const item of itens) {
-      const resultado = await lerOuUsarFotoDoItem(item);
+      const resultado = await lerOuUsarFotoDoItem(item, dataChaveAlvo);
       resultados.push(resultado);
       if (resultado?.sucesso) break;
     }
 
+    if (!aindaSelecionado(dataChaveAlvo)) return;
     setResultadoFoto(agregarResultadosFoto(resultados));
   }
 
@@ -385,7 +424,13 @@ function Conciliacao({ lojaId }) {
   }
 
   // Usa uma leitura já salva anteriormente, sem chamar a IA de novo.
-  function usarValoresSalvos(valoresSalvos, { silencioso } = {}) {
+  function usarValoresSalvos(valoresSalvos, { silencioso, dataChaveAlvo } = {}) {
+    // Usuário já trocou de fechamento antes disso terminar — descarta,
+    // não aplica em cima do fechamento errado.
+    if (!aindaSelecionado(dataChaveAlvo)) {
+      return { sucesso: false, formasNaoLidas: [] };
+    }
+
     setValoresInformados((anterior) => {
       const novo = { ...anterior };
 
@@ -410,6 +455,8 @@ function Conciliacao({ lojaId }) {
   async function relerFotoAgora() {
     if (!grupoEscolhido) return;
 
+    const dataChaveAlvo = grupoEscolhido.dataChave;
+
     setEnviandoFoto(true);
     setResultadoFoto(null);
 
@@ -422,6 +469,7 @@ function Conciliacao({ lojaId }) {
         resultado = await conferirFotoDataUrl(fotoResultado?.foto, {
           salvarEm: item.id,
           silencioso: true,
+          dataChaveAlvo,
         });
       } catch (erroFoto) {
         resultado = {
@@ -434,7 +482,9 @@ function Conciliacao({ lojaId }) {
       if (resultado?.sucesso) break;
     }
 
-    setResultadoFoto(agregarResultadosFoto(resultados));
+    if (aindaSelecionado(dataChaveAlvo)) {
+      setResultadoFoto(agregarResultadosFoto(resultados));
+    }
     setEnviandoFoto(false);
   }
 
@@ -500,7 +550,10 @@ function Conciliacao({ lojaId }) {
     setPainelConciliacoesAberto(false);
   }
 
-  async function conferirFotoDataUrl(fotoDataUrl, { salvarEm, silencioso } = {}) {
+  async function conferirFotoDataUrl(
+    fotoDataUrl,
+    { salvarEm, silencioso, dataChaveAlvo } = {}
+  ) {
     if (!fotoDataUrl) return null;
 
     if (!silencioso) {
@@ -510,6 +563,13 @@ function Conciliacao({ lojaId }) {
 
     try {
       const resultado = await conferirFechamentoFoto(fotoDataUrl);
+
+      // Usuário já trocou de fechamento enquanto a IA lia a foto — descarta
+      // essa resposta atrasada, não pode pintar a tabela do fechamento
+      // errado.
+      if (!aindaSelecionado(dataChaveAlvo)) {
+        return { sucesso: false, formasNaoLidas: [] };
+      }
 
       if (resultado.erro_leitura || !resultado.valores) {
         const resultadoErro = {
