@@ -6,6 +6,7 @@ import {
   buscarFotoFechamentoCaixa,
   buscarFechamentoSaipos,
   salvarValoresInformadosFechamento,
+  finalizarConciliacaoFechamento,
 } from "../services/api";
 
 // A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
@@ -129,6 +130,13 @@ function Conciliacao({ lojaId }) {
   const [fechamentosDisponiveis, setFechamentosDisponiveis] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [grupoEscolhido, setGrupoEscolhido] = useState(null);
+  const [finalizandoConciliacao, setFinalizandoConciliacao] = useState(false);
+  // Pedido do usuário (12/08/2026): botão "Conciliações" no topo abre um
+  // painel simples pra buscar, pela data, um fechamento já finalizado.
+  const [painelConciliacoesAberto, setPainelConciliacoesAberto] =
+    useState(false);
+  const [dataBuscaConciliacoes, setDataBuscaConciliacoes] = useState("");
+  const [erroBuscaConciliacoes, setErroBuscaConciliacoes] = useState("");
   // Retiradas de dinheiro do caixa ("Pago com dinheiro do caixa") dessa
   // loja — usadas pra calcular o Esperado do Dinheiro (Abertura + Vendas
   // em dinheiro − Retiradas do turno).
@@ -172,8 +180,9 @@ function Conciliacao({ lojaId }) {
   // que salvam como 2 registros separados no banco mas são o MESMO
   // fechamento físico — antes apareciam como 2 botões distintos, confuso.
   // Agora agrupa pela data do turno (mesma regra de corte 5h usada pra
-  // buscar PagSeguro/Saipos) e mostra um botão só por dia.
-  const fechamentosAgrupados = useMemo(() => {
+  // buscar PagSeguro/Saipos, e que na prática coincide com a data de
+  // ABERTURA do caixa) e mostra um botão só por dia.
+  const todosOsGrupos = useMemo(() => {
     const mapa = new Map();
 
     fechamentosDisponiveis.forEach((item) => {
@@ -191,6 +200,25 @@ function Conciliacao({ lojaId }) {
       }))
       .sort((a, b) => (a.dataChave < b.dataChave ? 1 : -1));
   }, [fechamentosDisponiveis]);
+
+  // Pedido do usuário (12/08/2026): depois de "Finalizar Conciliação", o
+  // fechamento some da lista padrão — só volta a aparecer buscando pela
+  // data em "Conciliações".
+  const fechamentosAgrupados = useMemo(
+    () =>
+      todosOsGrupos.filter(
+        (grupo) => !grupo.itens.some((item) => item.conciliacao_finalizada_em)
+      ),
+    [todosOsGrupos]
+  );
+
+  const gruposFinalizados = useMemo(
+    () =>
+      todosOsGrupos.filter((grupo) =>
+        grupo.itens.some((item) => item.conciliacao_finalizada_em)
+      ),
+    [todosOsGrupos]
+  );
 
   // Usa os dados da PRIMEIRA foto do grupo (mais antiga) que realmente
   // tiver alguma coisa salva — nem chega a olhar pra segunda foto se a
@@ -370,6 +398,68 @@ function Conciliacao({ lojaId }) {
 
     setResultadoFoto(agregarResultadosFoto(resultados));
     setEnviandoFoto(false);
+  }
+
+  // Marca o fechamento como conciliação finalizada — some da lista padrão
+  // de "Escolha o fechamento" (só volta buscando pela data em
+  // "Conciliações").
+  async function finalizarConciliacao() {
+    if (!grupoEscolhido) return;
+
+    const confirmar = window.confirm(
+      "Finalizar essa conciliação? Ela vai sumir da lista de fechamentos pra escolher — só dá pra achar de novo buscando pela data em \"Conciliações\"."
+    );
+
+    if (!confirmar) return;
+
+    setFinalizandoConciliacao(true);
+
+    try {
+      const idsFinalizados = [];
+
+      for (const item of grupoEscolhido.itens) {
+        const salvo = await finalizarConciliacaoFechamento(item.id);
+        idsFinalizados.push({ id: item.id, em: salvo.conciliacao_finalizada_em });
+      }
+
+      setFechamentosDisponiveis((anteriores) =>
+        anteriores.map((item) => {
+          const achado = idsFinalizados.find((alvo) => alvo.id === item.id);
+          return achado
+            ? { ...item, conciliacao_finalizada_em: achado.em }
+            : item;
+        })
+      );
+
+      setGrupoEscolhido(null);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível finalizar a conciliação.");
+    } finally {
+      setFinalizandoConciliacao(false);
+    }
+  }
+
+  function buscarConciliacaoPorData() {
+    setErroBuscaConciliacoes("");
+
+    if (!dataBuscaConciliacoes) {
+      setErroBuscaConciliacoes("Escolha uma data.");
+      return;
+    }
+
+    const grupo = gruposFinalizados.find(
+      (item) => item.dataChave === dataBuscaConciliacoes
+    );
+
+    if (!grupo) {
+      setErroBuscaConciliacoes(
+        "Nenhuma conciliação finalizada encontrada nessa data (a data que vale é a de abertura do caixa)."
+      );
+      return;
+    }
+
+    setGrupoEscolhido(grupo);
+    setPainelConciliacoesAberto(false);
   }
 
   async function conferirFotoDataUrl(fotoDataUrl, { salvarEm, silencioso } = {}) {
@@ -663,22 +753,74 @@ function Conciliacao({ lojaId }) {
 
   return (
     <>
-      <div className="conciliacao-abas">
-        <button
-          type="button"
-          className={abaAtiva === "caixa" ? "aba-ativa" : ""}
-          onClick={() => setAbaAtiva("caixa")}
-        >
-          Fechamento de Caixa
-        </button>
-        <button
-          type="button"
-          className={abaAtiva === "despesas" ? "aba-ativa" : ""}
-          onClick={() => setAbaAtiva("despesas")}
-        >
-          Despesas (Extrato Bancário)
-        </button>
+      <div
+        className="conciliacao-abas"
+        style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}
+      >
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className={abaAtiva === "caixa" ? "aba-ativa" : ""}
+            onClick={() => setAbaAtiva("caixa")}
+          >
+            Fechamento de Caixa
+          </button>
+          <button
+            type="button"
+            className={abaAtiva === "despesas" ? "aba-ativa" : ""}
+            onClick={() => setAbaAtiva("despesas")}
+          >
+            Despesas (Extrato Bancário)
+          </button>
+        </div>
+
+        {abaAtiva === "caixa" && (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setPainelConciliacoesAberto((anterior) => !anterior);
+              setErroBuscaConciliacoes("");
+            }}
+          >
+            📅 Conciliações
+          </button>
+        )}
       </div>
+
+      {abaAtiva === "caixa" && painelConciliacoesAberto && (
+        <div
+          className="panel"
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: "12px",
+            flexWrap: "wrap",
+            margin: "8px 0 16px",
+          }}
+        >
+          <label style={{ margin: 0 }}>
+            Data de abertura do caixa
+            <input
+              type="date"
+              value={dataBuscaConciliacoes}
+              onChange={(evento) => setDataBuscaConciliacoes(evento.target.value)}
+            />
+          </label>
+
+          <button
+            type="button"
+            className="primary-button"
+            onClick={buscarConciliacaoPorData}
+          >
+            Buscar
+          </button>
+
+          {erroBuscaConciliacoes && (
+            <small style={{ color: "#ff4655" }}>{erroBuscaConciliacoes}</small>
+          )}
+        </div>
+      )}
 
       {abaAtiva === "despesas" ? (
         <ConciliacaoDespesas />
@@ -873,6 +1015,20 @@ function Conciliacao({ lojaId }) {
                         title="A leitura já está salva — só use isso se quiser tentar ler a(s) foto(s) de novo."
                       >
                         {enviandoFoto ? "Lendo..." : "🔄 Ler foto de novo"}
+                      </button>
+                    )}
+
+                    {resumo && (
+                      <button
+                        type="button"
+                        className="delete-button"
+                        onClick={finalizarConciliacao}
+                        disabled={finalizandoConciliacao}
+                        title="Marca esse fechamento como concluído — ele some da lista pra escolher, só volta buscando pela data em Conciliações."
+                      >
+                        {finalizandoConciliacao
+                          ? "Finalizando..."
+                          : "🔴 Finalizar Conciliação"}
                       </button>
                     )}
                   </div>

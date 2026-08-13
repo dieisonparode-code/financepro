@@ -1981,7 +1981,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -2158,6 +2158,54 @@ app.put(
 
       res.status(500).json({
         erro: "Não foi possível salvar a leitura da foto.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Pedido do usuário (12/08/2026): depois de conciliar um fechamento, um
+// botão "Finalizar Conciliação" marca ele como concluído — some da lista
+// padrão de "Escolha o fechamento" e só volta a aparecer buscando pela
+// data em "Conciliações".
+app.put(
+  "/fechamentos-caixa/:id/finalizar-conciliacao",
+  verificarPermissao(["fechamento_caixa", "conciliacao"]),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID do fechamento inválido.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("fechamentos_caixa")
+        .update({ conciliacao_finalizada_em: new Date().toISOString() })
+        .eq("id", id)
+        .select("id, conciliacao_finalizada_em")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "finalizou conciliação",
+        "fechamentos_caixa",
+        id,
+        null
+      );
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao finalizar conciliação:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível finalizar a conciliação.",
         detalhes: erro.message,
       });
     }
