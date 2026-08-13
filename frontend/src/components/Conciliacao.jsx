@@ -129,12 +129,17 @@ function Conciliacao({ lojaId }) {
   const [fechamentosDisponiveis, setFechamentosDisponiveis] = useState([]);
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [grupoEscolhido, setGrupoEscolhido] = useState(null);
+  // Retiradas de dinheiro do caixa ("Pago com dinheiro do caixa") dessa
+  // loja — usadas pra calcular o Esperado do Dinheiro (Abertura + Vendas
+  // em dinheiro − Retiradas do turno).
+  const [retiradasCaixa, setRetiradasCaixa] = useState([]);
 
   // Pedido do usuário: mostra a lista de Fechamentos de Caixa dessa loja
   // pra ele escolher qual conciliar — não é mais só "o último" sozinho.
   useEffect(() => {
     if (!lojaId) {
       setFechamentosDisponiveis([]);
+      setRetiradasCaixa([]);
       return;
     }
 
@@ -142,18 +147,24 @@ function Conciliacao({ lojaId }) {
 
     buscarFechamentosCaixa()
       .then((dados) => {
-        const daLoja = (Array.isArray(dados) ? dados : [])
-          .filter(
-            (item) =>
-              item.tipo === "caixa" &&
-              String(item.loja_id) === String(lojaId)
-          )
+        const todosDaLoja = (Array.isArray(dados) ? dados : []).filter(
+          (item) => String(item.loja_id) === String(lojaId)
+        );
+
+        const daLoja = todosDaLoja
+          .filter((item) => item.tipo === "caixa")
           .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))
           .slice(0, 20);
 
         setFechamentosDisponiveis(daLoja);
+        setRetiradasCaixa(
+          todosDaLoja.filter((item) => item.tipo === "pago_dinheiro_caixa")
+        );
       })
-      .catch(() => setFechamentosDisponiveis([]))
+      .catch(() => {
+        setFechamentosDisponiveis([]);
+        setRetiradasCaixa([]);
+      })
       .finally(() => setCarregandoLista(false));
   }, [lojaId]);
 
@@ -423,6 +434,33 @@ function Conciliacao({ lojaId }) {
           }
           sistemaLidoDaFoto[forma] = valor;
         });
+      }
+
+      // Pedido do usuário (12/08/2026): o Esperado do Dinheiro tem que
+      // bater na fórmula clássica de caixa físico — Abertura + Vendas em
+      // dinheiro − Retiradas do turno (cada "Pago com dinheiro do caixa"
+      // já registrado). Sobrescreve o "Esperado" lido bruto da tabela
+      // CONFERÊNCIA (que é só uma célula, mais exposta a erro de leitura)
+      // por esse cálculo, composto de números que também são lidos da
+      // mesma foto + dado que o próprio sistema já tem (retiradas).
+      if (resultado.abertura_caixa != null && resultado.vendas_dinheiro != null) {
+        const dataChave = grupoEscolhido?.dataChave;
+        const somaRetiradas = dataChave
+          ? retiradasCaixa
+              .filter((item) => hojeDoRegistro(item.criado_em) === dataChave)
+              .reduce(
+                (soma, item) => soma + Number(item.valor_pago_dinheiro || 0),
+                0
+              )
+          : 0;
+
+        sistemaLidoDaFoto.Dinheiro = Number(
+          (
+            Number(resultado.abertura_caixa) +
+            Number(resultado.vendas_dinheiro) -
+            somaRetiradas
+          ).toFixed(2)
+        );
       }
 
       // Salva a leitura no fechamento pra não precisar (nem poder) ler de
