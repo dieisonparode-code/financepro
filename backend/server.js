@@ -2956,12 +2956,14 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       let canalSlug;
       let nomeParaCadastro;
 
-      if (ehPagamentoPix(nomeSaipos)) {
-        chave = "pix_direto";
-        rotulo = "PIX";
-        canalSlug = "pix_direto";
-        nomeParaCadastro = "PIX";
-      } else if (canal && nomeSaiposMinusculo.includes("voucher")) {
+      // BUG REAL corrigido (13/08/2026): a Saipos tem uma forma chamada
+      // "Pago Online via Pix" (pedido de app pago com Pix) — como o nome
+      // contém "pix", ehPagamentoPix() pegava ela como Pix direto (cai na
+      // hora), quando na verdade o dinheiro passa pelo repasse normal do
+      // canal (semanal quarta pro iFood, D+1 pra Brendi), igual qualquer
+      // outro "Pago Online". Por isso o teste de "pago online" tem que
+      // vir ANTES do teste genérico de Pix.
+      if (canal && nomeSaiposMinusculo.includes("voucher")) {
         registrarPulado(
           `"${nomeSaipos}" (venda ${canal}) é desconto, não é dinheiro recebido — não é importado`
         );
@@ -2971,6 +2973,13 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
         rotulo = canal;
         canalSlug = canal.toLowerCase().replace(/[^a-z0-9]+/g, "_");
         nomeParaCadastro = canal;
+      } else if (ehPagamentoPix(nomeSaipos)) {
+        // Pix de verdade (balcão, QrCode, conta bancária) — cai na hora,
+        // não passa pelo repasse de canal nenhum.
+        chave = "pix_direto";
+        rotulo = "PIX";
+        canalSlug = "pix_direto";
+        nomeParaCadastro = "PIX";
       } else {
         // Ou é venda de balcão (sem canal), ou é uma forma cobrada na
         // entrega dentro de uma venda de canal (Débito/Crédito/Dinheiro) —

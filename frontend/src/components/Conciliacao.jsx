@@ -821,7 +821,16 @@ function Conciliacao({ lojaId }) {
         ([nomeSaipos, valor]) => {
           let nomeConfronto;
 
-          if (/pix/i.test(nomeSaipos)) {
+          // BUG REAL corrigido (13/08/2026): a Saipos tem uma forma
+          // chamada "Pago Online via Pix" (pedido de app cujo trilho é
+          // Pix) — o teste "contém a palavra pix" pegava ela junto do PIX
+          // de balcão por engano, inflando o Sistema do PIX com dinheiro
+          // que na verdade é Pago Online (e já aparece certinho como
+          // "Pago Online" no próprio comprovante). Por isso "pago online"
+          // tem que ser checado ANTES do "pix" genérico.
+          if (/pago online/i.test(nomeSaipos)) {
+            nomeConfronto = "Pago Online";
+          } else if (/pix/i.test(nomeSaipos)) {
             // Saipos pode reportar Pix em mais de uma linha (ex.: "Pix
             // Conta Bancária" + "Pix QrCode") — some tudo numa única
             // categoria "PIX".
