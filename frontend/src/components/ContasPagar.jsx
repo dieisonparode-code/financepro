@@ -612,9 +612,10 @@ function ContasPagar({
                 <button
                   type="button"
                   className="secondary-button"
+                  title={pixCopiado === "form" ? "Copiado!" : "Copiar"}
                   onClick={() => copiarPix(pix, "form")}
                 >
-                  {pixCopiado === "form" ? "✅ Copiado" : "📋 Copiar"}
+                  📋
                 </button>
               )}
             </div>
@@ -886,8 +887,7 @@ function ContasPagar({
                           em dinheiro — pagar somente{" "}
                           <strong style={{ color: "#ef4444" }}>
                             {formatarMoeda(conta.valor)}
-                          </strong>{" "}
-                          (valor acima)
+                          </strong>
                         </span>
                       ) : (
                         <span className={situacao.classe}>
@@ -925,13 +925,16 @@ function ContasPagar({
                             <button
                               type="button"
                               className="secondary-button"
+                              title={
+                                pixCopiado === `lista-${conta.id}`
+                                  ? "Copiado!"
+                                  : "Copiar"
+                              }
                               onClick={() =>
                                 copiarPix(conta.pix, `lista-${conta.id}`)
                               }
                             >
-                              {pixCopiado === `lista-${conta.id}`
-                                ? "✅ Copiado"
-                                : "📋 Copiar"}
+                              📋
                             </button>
                           )}
                         </div>
@@ -1070,6 +1073,11 @@ function ContasPagar({
                           <button
                             type="button"
                             className="secondary-button"
+                            title={
+                              pixCopiado === `detalhe-${detalheVisualizado.id}`
+                                ? "Copiado!"
+                                : "Copiar"
+                            }
                             onClick={() =>
                               copiarPix(
                                 detalheVisualizado.pix,
@@ -1077,9 +1085,7 @@ function ContasPagar({
                               )
                             }
                           >
-                            {pixCopiado === `detalhe-${detalheVisualizado.id}`
-                              ? "✅ Copiado"
-                              : "📋 Copiar"}
+                            📋
                           </button>
                         )}
                       </div>
