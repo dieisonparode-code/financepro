@@ -1539,6 +1539,7 @@ function prepararContaPagar(dados = {}) {
     data_vencimento: dados.data_vencimento || null,
     observacao: (dados.observacao || "").trim(),
     foto: dados.foto || "",
+    pix: (dados.pix || "").trim(),
   };
 }
 
@@ -2478,10 +2479,40 @@ app.post(
             continue;
           }
 
+          // Tenta puxar automaticamente a chave Pix da própria foto da
+          // diária (é comum o funcionário anotar valor + chave Pix no
+          // mesmo bilhete) — não bloqueia a criação da conta se falhar,
+          // o campo fica editável na tela pra preencher/corrigir na mão.
+          let pixLidoDaFoto = "";
+
+          if (diaria.foto) {
+            try {
+              const textoRespostaPix = await lerImagemComIA(
+                diaria.foto,
+                'Essa é a foto de um bilhete/anotação de uma diária paga a um funcionário de hamburgueria. Procure uma CHAVE PIX ou código Pix copia-e-cola anotado nela (pode ser CPF, telefone, e-mail, chave aleatória ou um código longo começando com algo como "00020126"). Responda SOMENTE em JSON válido: {"pix": "chave ou código encontrado, ou null se não houver nenhuma anotação de Pix nessa foto"}.',
+                1024,
+                "claude-haiku-4-5-20251001"
+              );
+
+              const jsonPix = textoRespostaPix.match(/\{[\s\S]*\}/);
+              const dadosPix = JSON.parse(
+                jsonPix ? jsonPix[0] : textoRespostaPix
+              );
+
+              pixLidoDaFoto = dadosPix?.pix || "";
+            } catch (erroPix) {
+              console.error(
+                "Erro ao ler Pix da foto da diária:",
+                erroPix.message
+              );
+            }
+          }
+
           const dadosConta = {
             descricao: nomeDiaria,
             fornecedor: "",
             valor: valorAPagar,
+            pix: pixLidoDaFoto,
             // Guarda estruturado (não só no texto da observação) o quanto
             // já saiu em dinheiro na hora — pedido do usuário: mostrar
             // "Pago R$X em dinheiro — pagar somente R$Y" na lista, com
@@ -3799,7 +3830,7 @@ app.post(
       // e sobrescrever sem o usuário perceber.
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um boleto, nota fiscal ou comprovante de uma conta a pagar de uma hamburgueria. Extraia: o VALOR TOTAL a pagar (normalmente perto de "TOTAL" ou "VALOR DO DOCUMENTO"), e o nome do FORNECEDOR/emissor/beneficiário (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+        'Essa é a foto de um boleto, nota fiscal, comprovante ou anotação manuscrita de uma conta a pagar de uma hamburgueria (pode ser, por exemplo, um bilhete anotando o valor de uma diária de um funcionário e a chave Pix dele para pagamento). Extraia: o VALOR TOTAL a pagar (normalmente perto de "TOTAL" ou "VALOR DO DOCUMENTO", ou o valor da diária anotada), o nome do FORNECEDOR/emissor/beneficiário (se estiver visível), e a CHAVE PIX ou código Pix copia-e-cola para pagamento (pode ser um CPF, telefone, e-mail, chave aleatória ou o código "copia e cola" longo começando com algo como "00020126") — se houver mais de uma chave/anotação de Pix visível, pegue a mais completa/clara. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "pix": "chave ou código ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
         8192
       );
 
@@ -3812,6 +3843,7 @@ app.post(
         return res.json({
           valor: null,
           fornecedor: null,
+          pix: null,
           erro_leitura:
             "Não foi possível ler os dados dessa foto. Preencha manualmente.",
         });
@@ -3820,6 +3852,7 @@ app.post(
       res.json({
         valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
         fornecedor: dadosLidos.fornecedor || null,
+        pix: dadosLidos.pix || null,
       });
     } catch (erro) {
       console.error("Erro ao ler foto da conta a pagar:", erro.message);

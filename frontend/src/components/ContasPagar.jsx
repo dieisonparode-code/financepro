@@ -164,6 +164,7 @@ function ContasPagar({
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
   const [valor, setValor] = useState("");
+  const [pix, setPix] = useState("");
   const [dataVencimento, setDataVencimento] = useState("");
   const [observacao, setObservacao] = useState("");
   const [lojaId, setLojaId] = useState(lojaPadrao ? String(lojaPadrao) : "");
@@ -185,6 +186,7 @@ function ContasPagar({
     setDescricao("");
     setFornecedor("");
     setValor("");
+    setPix("");
     setDataVencimento("");
     setObservacao("");
     setLojaId(lojaPadrao ? String(lojaPadrao) : "");
@@ -218,6 +220,10 @@ function ContasPagar({
       if (resultado.fornecedor) {
         setFornecedor(resultado.fornecedor);
       }
+
+      if (resultado.pix) {
+        setPix(resultado.pix);
+      }
     } catch (erro) {
       alert(erro.message || "Não foi possível ler a foto.");
     } finally {
@@ -247,6 +253,7 @@ function ContasPagar({
         descricao: descricao.trim(),
         fornecedor,
         valor,
+        pix,
         data_vencimento: dataVencimento,
         observacao,
         loja_id: lojaId,
@@ -272,6 +279,7 @@ function ContasPagar({
     setDescricao(conta.descricao);
     setFornecedor(conta.fornecedor || "");
     setValor(conta.valor);
+    setPix(conta.pix || "");
     setDataVencimento(conta.data_vencimento);
     setObservacao(conta.observacao || "");
     setLojaId(conta.loja_id ? String(conta.loja_id) : "");
@@ -296,6 +304,7 @@ function ContasPagar({
         descricao: conta.descricao,
         fornecedor: conta.fornecedor,
         valor: novoValor,
+        pix: conta.pix,
         data_vencimento: conta.data_vencimento,
         observacao: conta.observacao,
         loja_id: conta.loja_id,
@@ -305,6 +314,45 @@ function ContasPagar({
       alert(erro.message || "Não foi possível atualizar o valor.");
     } finally {
       setSalvandoValorId(null);
+    }
+  }
+
+  const [pixEditando, setPixEditando] = useState(null);
+  const [salvandoPixId, setSalvandoPixId] = useState(null);
+  const [pixCopiado, setPixCopiado] = useState(null);
+
+  async function copiarPix(chavePix, identificador) {
+    if (!chavePix) return;
+
+    try {
+      await navigator.clipboard.writeText(chavePix);
+      setPixCopiado(identificador);
+      setTimeout(() => setPixCopiado(null), 2000);
+    } catch {
+      alert("Não foi possível copiar. Copie manualmente: " + chavePix);
+    }
+  }
+
+  async function salvarPixEditado(conta, novoPix) {
+    if ((conta.pix || "") === novoPix) return;
+
+    setSalvandoPixId(conta.id);
+
+    try {
+      await editarConta(conta.id, {
+        descricao: conta.descricao,
+        fornecedor: conta.fornecedor,
+        valor: conta.valor,
+        pix: novoPix,
+        data_vencimento: conta.data_vencimento,
+        observacao: conta.observacao,
+        loja_id: conta.loja_id,
+        foto: conta.foto,
+      });
+    } catch (erro) {
+      alert(erro.message || "Não foi possível atualizar o Pix.");
+    } finally {
+      setSalvandoPixId(null);
     }
   }
 
@@ -549,6 +597,28 @@ function ContasPagar({
               />
             </label>
           </div>
+
+          <label>
+            Pix (opcional)
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                value={pix}
+                onChange={(evento) => setPix(evento.target.value)}
+                placeholder="Chave Pix ou código copia-e-cola"
+                style={{ flex: 1 }}
+              />
+              {pix && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => copiarPix(pix, "form")}
+                >
+                  {pixCopiado === "form" ? "✅ Copiado" : "📋 Copiar"}
+                </button>
+              )}
+            </div>
+          </label>
 
           <label>
             Observação
@@ -824,6 +894,48 @@ function ContasPagar({
                           {situacao.rotulo}
                         </span>
                       )}
+
+                      {conta._origem !== "despesa" && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            marginTop: 4,
+                          }}
+                        >
+                          <span>Pix:</span>
+                          <input
+                            type="text"
+                            key={conta.id}
+                            defaultValue={conta.pix || ""}
+                            disabled={salvandoPixId === conta.id}
+                            placeholder="Chave Pix..."
+                            style={{ width: 160, display: "inline-block" }}
+                            onBlur={(evento) =>
+                              salvarPixEditado(conta, evento.target.value)
+                            }
+                            onKeyDown={(evento) => {
+                              if (evento.key === "Enter") {
+                                evento.target.blur();
+                              }
+                            }}
+                          />
+                          {conta.pix && (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() =>
+                                copiarPix(conta.pix, `lista-${conta.id}`)
+                              }
+                            >
+                              {pixCopiado === `lista-${conta.id}`
+                                ? "✅ Copiado"
+                                : "📋 Copiar"}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -915,6 +1027,66 @@ function ContasPagar({
                   </div>
                 </div>
               </div>
+
+              {detalheVisualizado._origem !== "despesa" && (
+                <div className="categoria-item">
+                  <div className="categoria-identificacao">
+                    <div className="categoria-icone">🔑</div>
+                    <div style={{ width: "100%" }}>
+                      <strong>Pix</strong>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginTop: 4,
+                        }}
+                      >
+                        <input
+                          type="text"
+                          key={detalheVisualizado.id}
+                          defaultValue={detalheVisualizado.pix || ""}
+                          disabled={salvandoPixId === detalheVisualizado.id}
+                          placeholder="Chave Pix..."
+                          style={{ flex: 1 }}
+                          onBlur={(evento) => {
+                            salvarPixEditado(
+                              detalheVisualizado,
+                              evento.target.value
+                            );
+                            setDetalheVisualizado((atual) =>
+                              atual
+                                ? { ...atual, pix: evento.target.value }
+                                : atual
+                            );
+                          }}
+                          onKeyDown={(evento) => {
+                            if (evento.key === "Enter") {
+                              evento.target.blur();
+                            }
+                          }}
+                        />
+                        {detalheVisualizado.pix && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              copiarPix(
+                                detalheVisualizado.pix,
+                                `detalhe-${detalheVisualizado.id}`
+                              )
+                            }
+                          >
+                            {pixCopiado === `detalhe-${detalheVisualizado.id}`
+                              ? "✅ Copiado"
+                              : "📋 Copiar"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {detalheVisualizado.fornecedor && (
                 <div className="categoria-item">
