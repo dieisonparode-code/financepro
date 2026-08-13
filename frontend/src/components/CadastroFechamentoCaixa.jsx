@@ -154,6 +154,11 @@ function CadastroFechamentoCaixa({
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
   const [finalizando, setFinalizando] = useState(false);
   const [rascunhoDiaria, setRascunhoDiaria] = useState(null);
+  // Pedido do usuário (12/08/2026): botão pra consultar o último caixa já
+  // fechado (o lote que entrou na última "Finalizar Fechamento de Caixa")
+  // — só pra ver, sem poder editar/excluir nada.
+  const [mostrarUltimoCaixaFechado, setMostrarUltimoCaixaFechado] =
+    useState(false);
 
   // Pedido do usuário: "caixa ainda não fechado não pode sumir" — enquanto
   // ninguém clicar em "Finalizar Fechamento de Caixa", nada some da lista,
@@ -191,6 +196,30 @@ function CadastroFechamentoCaixa({
     // Ordem crescente por data — a mais antiga primeiro, descendo até a
     // mais recente (pedido do usuário).
     .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+
+  // Pedido do usuário (12/08/2026): "reabrir" o último caixa já fechado só
+  // pra CONSULTA — é tudo que entrou entre a penúltima e a última
+  // "Finalizar Fechamento de Caixa" (o lote que acabou de ser finalizado).
+  const finalizacoesOrdenadas = [...finalizacoes].sort(
+    (a, b) => new Date(b.criado_em) - new Date(a.criado_em)
+  );
+  const penultimaFinalizacao = finalizacoesOrdenadas[1]
+    ? new Date(finalizacoesOrdenadas[1].criado_em).getTime()
+    : null;
+
+  const registrosDoUltimoCaixaFechado =
+    ultimaFinalizacao != null
+      ? registrosDaLoja
+          .filter((registro) => {
+            const criadoEm = new Date(registro.criado_em).getTime();
+            return (
+              criadoEm <= ultimaFinalizacao &&
+              (penultimaFinalizacao == null ||
+                criadoEm > penultimaFinalizacao)
+            );
+          })
+          .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em))
+      : [];
 
   // Pedido do usuário: assim que o operador tira a foto do Fechamento de
   // Caixa, ela já aparece em miniatura no topo — sem precisar clicar em
@@ -517,8 +546,76 @@ function CadastroFechamentoCaixa({
             <h2>Fechamento de Caixa</h2>
           </div>
 
-          <strong>{registrosRecentes.length}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {ultimaFinalizacao != null && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() =>
+                  setMostrarUltimoCaixaFechado((anterior) => !anterior)
+                }
+              >
+                👁️ {mostrarUltimoCaixaFechado
+                  ? "Fechar consulta"
+                  : "Ver último caixa fechado"}
+              </button>
+            )}
+
+            <strong>{registrosRecentes.length}</strong>
+          </div>
         </div>
+
+        {mostrarUltimoCaixaFechado && (
+          <div className="empty-state" style={{ marginBottom: 12 }}>
+            <strong>👁️ Consulta — só pra ver, nada aqui pode ser editado ou excluído.</strong>
+
+            {registrosDoUltimoCaixaFechado.length === 0 ? (
+              <div>Nenhum registro encontrado no último caixa fechado.</div>
+            ) : (
+              <div className="categorias-lista" style={{ marginTop: 10 }}>
+                {registrosDoUltimoCaixaFechado.map((registro) => {
+                  const infoTipo = rotuloTipo(registro.tipo);
+
+                  return (
+                    <div className="categoria-item" key={registro.id}>
+                      <div className="categoria-identificacao">
+                        <div className="categoria-icone">
+                          {infoTipo?.icone || "🗂️"}
+                        </div>
+
+                        <div>
+                          <strong>{infoTipo?.rotulo || registro.tipo}</strong>
+                          {registro.valor != null && (
+                            <span> · {formatarMoeda(registro.valor)}</span>
+                          )}
+                          {registro.nome_pessoa && (
+                            <span> · {registro.nome_pessoa}</span>
+                          )}
+                          <div>{formatarDataHora(registro.criado_em)}</div>
+                        </div>
+                      </div>
+
+                      {registro.tem_foto && (
+                        <div className="transaction-actions">
+                          <button
+                            type="button"
+                            className="edit-button"
+                            disabled={carregandoFotoId === registro.id}
+                            onClick={() => verFoto(registro)}
+                          >
+                            {carregandoFotoId === registro.id
+                              ? "Carregando..."
+                              : "Ver foto"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <small className="foto-ajuda">
           Fica aqui até você clicar em "Finalizar Fechamento de Caixa" (não
