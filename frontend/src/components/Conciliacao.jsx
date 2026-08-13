@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   buscarVendasPagSeguro,
   conferirFechamentoFoto,
@@ -954,52 +954,82 @@ function Conciliacao({ lojaId }) {
                             diferenca,
                             bateu,
                           }) => (
-                            <tr key={forma}>
-                              <td style={{ color: "#16ca50", fontWeight: 700 }}>
-                                {forma}
-                              </td>
-                              <td>
-                                {temSistema ? formatarMoeda(valorSistema) : "—"}
-                              </td>
-                              <td>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="0,00"
-                                  value={valoresInformados[forma] ?? ""}
-                                  onChange={(evento) =>
-                                    setValoresInformados((anterior) => ({
-                                      ...anterior,
-                                      [forma]: evento.target.value,
-                                    }))
-                                  }
-                                  style={{ maxWidth: "120px" }}
-                                />
-                              </td>
-                              <td
-                                style={{
-                                  color:
-                                    !temInformado || !temSistema
-                                      ? undefined
-                                      : bateu
-                                      ? "#16ca50"
-                                      : diferenca > 0
-                                      ? "#ff4655"
-                                      : "#16ca50",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {!temSistema
-                                  ? "(sem comparação ainda)"
-                                  : !temInformado
-                                  ? "—"
-                                  : bateu
-                                  ? "✅ Bateu"
-                                  : diferenca > 0
-                                  ? `Falta ${formatarMoeda(diferenca)}`
-                                  : `Sobra ${formatarMoeda(Math.abs(diferenca))}`}
-                              </td>
-                            </tr>
+                            <Fragment key={forma}>
+                              <tr>
+                                <td style={{ color: "#16ca50", fontWeight: 700 }}>
+                                  {forma}
+                                </td>
+                                <td>
+                                  {temSistema ? formatarMoeda(valorSistema) : "—"}
+                                </td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0,00"
+                                    value={valoresInformados[forma] ?? ""}
+                                    onChange={(evento) =>
+                                      setValoresInformados((anterior) => ({
+                                        ...anterior,
+                                        [forma]: evento.target.value,
+                                      }))
+                                    }
+                                    style={{ maxWidth: "120px" }}
+                                  />
+                                </td>
+                                <td
+                                  style={{
+                                    color:
+                                      !temInformado || !temSistema
+                                        ? undefined
+                                        : bateu
+                                        ? "#16ca50"
+                                        : diferenca > 0
+                                        ? "#ff4655"
+                                        : "#16ca50",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {!temSistema
+                                    ? "(sem comparação ainda)"
+                                    : !temInformado
+                                    ? "—"
+                                    : bateu
+                                    ? "✅ Bateu"
+                                    : diferenca > 0
+                                    ? `Falta ${formatarMoeda(diferenca)}`
+                                    : `Sobra ${formatarMoeda(Math.abs(diferenca))}`}
+                                </td>
+                              </tr>
+
+                              {/* Pedido do usuário (12/08/2026): quando o
+                              Dinheiro não bate, é o caso mais comum de ser
+                              uma retirada do caixa que esqueceram de
+                              registrar no botão "Pago com dinheiro do
+                              caixa" — avisa na hora em vez de só mostrar o
+                              número. */}
+                              {forma === "Dinheiro" &&
+                                temSistema &&
+                                temInformado &&
+                                !bateu && (
+                                  <tr>
+                                    <td
+                                      colSpan={4}
+                                      style={{
+                                        color: "#ffb020",
+                                        fontSize: "12px",
+                                        paddingTop: 0,
+                                      }}
+                                    >
+                                      ⚠️ Diferença no Dinheiro — confira se
+                                      teve alguma retirada de dinheiro do
+                                      caixa que não foi registrada no botão
+                                      "💵 Pago com dinheiro do caixa" no
+                                      Fechamento de Caixa.
+                                    </td>
+                                  </tr>
+                                )}
+                            </Fragment>
                           )
                         )}
                       </tbody>
