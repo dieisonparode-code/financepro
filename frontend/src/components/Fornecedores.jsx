@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -15,60 +15,91 @@ function formatarData(data) {
   return `${dia}/${mes}/${ano}`;
 }
 
-function rotuloIndicador(indicador) {
-  if (indicador === "abusivo") {
-    return { texto: "⚠️ Acima da média", cor: "#ef4444" };
-  }
+// Selo colorido simples — em vez de frase corrida, é só um retangulinho
+// com a cor e o texto curto, igual um "badge" de status que já existe em
+// outras telas do sistema.
+function Selo({ indicador }) {
+  const estilos = {
+    abusivo: { cor: "#ef4444", fundo: "rgba(239,68,68,0.15)", texto: "⚠️ Acima" },
+    bom: { cor: "#16ca50", fundo: "rgba(22,202,80,0.15)", texto: "✅ Bom preço" },
+    normal: { cor: "#9fb0c4", fundo: "rgba(159,176,196,0.12)", texto: "Na média" },
+  };
 
-  if (indicador === "bom") {
-    return { texto: "✅ Bom preço", cor: "#16ca50" };
-  }
-
-  return { texto: "Na média", cor: "#9fb0c4" };
-}
-
-function textoVariacao(compra) {
-  const indicador = rotuloIndicador(compra.indicador);
+  const estilo = estilos[indicador] || estilos.normal;
 
   return (
-    indicador.texto +
-    (compra.variacao_percentual
-      ? ` (${compra.variacao_percentual > 0 ? "+" : ""}${
-          compra.variacao_percentual
-        }%)`
-      : "")
+    <span
+      style={{
+        color: estilo.cor,
+        background: estilo.fundo,
+        borderRadius: 6,
+        padding: "3px 8px",
+        fontSize: 12.5,
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {estilo.texto}
+    </span>
   );
 }
 
-function TabelaCompras({ compras, coluna3Titulo, valorLinha }) {
-  return (
-    <table>
-      <thead>
-        <tr>
-          <th>Data</th>
-          <th>Descrição</th>
-          <th>{coluna3Titulo}</th>
-          <th>Variação vs. média</th>
-        </tr>
-      </thead>
-      <tbody>
-        {compras.map((compra) => {
-          const indicador = rotuloIndicador(compra.indicador);
+// Achata a estrutura fornecedor > itens/sem-item numa única lista de linhas
+// de tabela — é mais fácil de ler uma linha por item do que ter que abrir
+// vários níveis pra achar o número que importa.
+function montarLinhas(historico) {
+  const linhas = [];
 
-          return (
-            <tr key={compra.id}>
-              <td>{formatarData(compra.data)}</td>
-              <td>{compra.descricao}</td>
-              <td>{valorLinha(compra)}</td>
-              <td style={{ color: indicador.cor }}>
-                {textoVariacao(compra)}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
+  historico.forEach((fornecedorItem) => {
+    fornecedorItem.itens.forEach((itemGrupo) => {
+      linhas.push({
+        chave: `${fornecedorItem.fornecedor}|||${itemGrupo.item}`,
+        fornecedor: fornecedorItem.fornecedor,
+        item: itemGrupo.item,
+        unidade: itemGrupo.unidade || "un",
+        total_compras: itemGrupo.total_compras,
+        preco_medio: itemGrupo.preco_medio_unidade,
+        ultima_data: itemGrupo.ultima_compra?.data,
+        ultimo_preco: itemGrupo.ultima_compra?.preco_unidade,
+        ultimo_indicador: itemGrupo.ultima_compra?.indicador,
+        porUnidade: true,
+        historico: itemGrupo.compras.map((compra) => ({
+          data: compra.data,
+          valor: compra.preco_unidade,
+          indicador: compra.indicador,
+          detalhe: `${compra.quantidade} ${itemGrupo.unidade || "un"} — total ${formatarMoeda(
+            compra.valor
+          )}`,
+        })),
+      });
+    });
+
+    if (fornecedorItem.sem_item) {
+      const semItem = fornecedorItem.sem_item;
+      const ultima = semItem.compras[0]; // já vem invertido (mais recente primeiro)
+
+      linhas.push({
+        chave: `${fornecedorItem.fornecedor}|||semitem`,
+        fornecedor: fornecedorItem.fornecedor,
+        item: "Sem item específico (valor total)",
+        unidade: "",
+        total_compras: semItem.total_compras,
+        preco_medio: semItem.valor_medio,
+        ultima_data: ultima?.data,
+        ultimo_preco: ultima?.valor,
+        ultimo_indicador: ultima?.indicador,
+        porUnidade: false,
+        historico: semItem.compras.map((compra) => ({
+          data: compra.data,
+          valor: compra.valor,
+          indicador: compra.indicador,
+          detalhe: compra.descricao,
+        })),
+      });
+    }
+  });
+
+  return linhas;
 }
 
 function Fornecedores({ historico = [], carregando = false }) {
@@ -77,8 +108,13 @@ function Fornecedores({ historico = [], carregando = false }) {
 
   const buscaLimpa = busca.trim().toLowerCase();
 
-  const historicoVisivel = historico.filter((item) =>
-    buscaLimpa ? item.fornecedor.toLowerCase().includes(buscaLimpa) : true
+  const todasAsLinhas = montarLinhas(historico);
+
+  const linhasVisiveis = todasAsLinhas.filter((linha) =>
+    buscaLimpa
+      ? linha.fornecedor.toLowerCase().includes(buscaLimpa) ||
+        linha.item.toLowerCase().includes(buscaLimpa)
+      : true
   );
 
   return (
@@ -87,26 +123,23 @@ function Fornecedores({ historico = [], carregando = false }) {
         <div className="panel-header">
           <div>
             <span className="eyebrow">Fornecedores</span>
-            <h2>Histórico de preços por item</h2>
+            <h2>Histórico de preços</h2>
           </div>
         </div>
 
         <p style={{ color: "#9fb0c4", fontSize: 13.5 }}>
-          Compara o preço por kg/litro/unidade de cada item comprado com a
-          própria média histórica desse item nesse fornecedor — sinaliza
-          quando um pagamento veio bem acima ou bem abaixo do normal. Pra
-          entrar aqui, a despesa precisa ter "Fornecedor", "Item comprado" e
-          "Quantidade" preenchidos ao lançar. Despesas sem item (aluguel,
-          conta de luz etc.) aparecem à parte, comparadas pelo valor total.
+          Cada linha é um item comprado de um fornecedor. "Última compra"
+          mostra o preço mais recente e um selo comparando com a média de
+          todas as compras anteriores desse item.
         </p>
 
         <label>
-          Pesquisar fornecedor
+          Pesquisar fornecedor ou item
           <input
             type="text"
             value={busca}
             onChange={(evento) => setBusca(evento.target.value)}
-            placeholder="Ex.: Frigorífico X"
+            placeholder="Ex.: Frigorífico X ou Carne moída"
           />
         </label>
       </article>
@@ -115,8 +148,8 @@ function Fornecedores({ historico = [], carregando = false }) {
         <div className="panel-header">
           <div>
             <span className="eyebrow">
-              {historicoVisivel.length}{" "}
-              {historicoVisivel.length === 1 ? "fornecedor" : "fornecedores"}
+              {linhasVisiveis.length}{" "}
+              {linhasVisiveis.length === 1 ? "item" : "itens"}
             </span>
             <h2>Comparativo</h2>
           </div>
@@ -124,171 +157,99 @@ function Fornecedores({ historico = [], carregando = false }) {
 
         {carregando ? (
           <p>Carregando...</p>
-        ) : historicoVisivel.length === 0 ? (
+        ) : linhasVisiveis.length === 0 ? (
           <div className="empty-state">
-            Nenhum fornecedor encontrado. Pra aparecer aqui, preencha o campo
-            "Fornecedor" ao lançar uma despesa (e, se possível, "Item
-            comprado" + "Quantidade" pra comparar preço por unidade).
+            Nenhum fornecedor encontrado ainda. Pra aparecer aqui, preencha o
+            campo "Fornecedor" ao lançar uma despesa (e "Item comprado" +
+            "Quantidade", se quiser comparar preço por kg/litro/unidade).
           </div>
         ) : (
-          <div className="categorias-lista">
-            {historicoVisivel.map((fornecedorItem) => (
-              <div key={fornecedorItem.fornecedor} className="categoria-item">
-                <div
-                  className="categoria-identificacao"
-                  style={{ width: "100%" }}
-                >
-                  <div className="categoria-icone">🏭</div>
-                  <div style={{ width: "100%" }}>
-                    <strong>{fornecedorItem.fornecedor}</strong>
-                    <div>
-                      {fornecedorItem.total_compras}{" "}
-                      {fornecedorItem.total_compras === 1
-                        ? "compra"
-                        : "compras"}{" "}
-                      no total —{" "}
-                      {fornecedorItem.itens.length > 0
-                        ? `${fornecedorItem.itens.length} ${
-                            fornecedorItem.itens.length === 1
-                              ? "item acompanhado"
-                              : "itens acompanhados"
-                          }`
-                        : "nenhum item com quantidade preenchida ainda"}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ width: "100%", marginTop: 10 }}>
-                  {fornecedorItem.itens.map((itemGrupo) => {
-                    const chave = `${fornecedorItem.fornecedor}|||${itemGrupo.item}`;
-                    const indicadorUltima = rotuloIndicador(
-                      itemGrupo.ultima_compra?.indicador
-                    );
-
-                    return (
-                      <div
-                        key={chave}
-                        style={{
-                          marginTop: 8,
-                          paddingTop: 8,
-                          borderTop: "1px solid rgba(159,176,196,0.15)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "row",
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 8,
-                            cursor: "pointer",
-                          }}
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Fornecedor</th>
+                  <th>Item</th>
+                  <th>Compras</th>
+                  <th>Preço médio</th>
+                  <th>Última compra</th>
+                  <th>Situação</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {linhasVisiveis.map((linha) => (
+                  <Fragment key={linha.chave}>
+                    <tr>
+                      <td>{linha.fornecedor}</td>
+                      <td>{linha.item}</td>
+                      <td>{linha.total_compras}</td>
+                      <td>
+                        {formatarMoeda(linha.preco_medio)}
+                        {linha.porUnidade ? `/${linha.unidade}` : ""}
+                      </td>
+                      <td>
+                        {formatarData(linha.ultima_data)} —{" "}
+                        <strong>
+                          {formatarMoeda(linha.ultimo_preco)}
+                          {linha.porUnidade ? `/${linha.unidade}` : ""}
+                        </strong>
+                      </td>
+                      <td>
+                        <Selo indicador={linha.ultimo_indicador} />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="secondary-button"
                           onClick={() =>
                             setExpandido((atual) =>
-                              atual === chave ? null : chave
+                              atual === linha.chave ? null : linha.chave
                             )
                           }
                         >
-                          <div>
-                            <strong>📦 {itemGrupo.item}</strong>{" "}
-                            <span style={{ color: "#9fb0c4" }}>
-                              ({itemGrupo.total_compras}{" "}
-                              {itemGrupo.total_compras === 1
-                                ? "compra"
-                                : "compras"}
-                              , média{" "}
-                              {formatarMoeda(itemGrupo.preco_medio_unidade)}/
-                              {itemGrupo.unidade || "un"})
-                            </span>
-                          </div>
+                          {expandido === linha.chave
+                            ? "Fechar"
+                            : "Ver histórico"}
+                        </button>
+                      </td>
+                    </tr>
 
-                          <div>
-                            Última:{" "}
-                            <strong>
-                              {formatarMoeda(
-                                itemGrupo.ultima_compra?.preco_unidade
-                              )}
-                              /{itemGrupo.unidade || "un"}
-                            </strong>{" "}
-                            <span style={{ color: indicadorUltima.cor }}>
-                              {textoVariacao(itemGrupo.ultima_compra)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {expandido === chave && (
-                          <div style={{ marginTop: 8 }}>
-                            <TabelaCompras
-                              compras={itemGrupo.compras}
-                              coluna3Titulo={`R$/${itemGrupo.unidade || "un"}`}
-                              valorLinha={(compra) =>
-                                `${formatarMoeda(compra.preco_unidade)} (${
-                                  compra.quantidade
-                                } ${itemGrupo.unidade || "un"} por ${formatarMoeda(
-                                  compra.valor
-                                )})`
-                              }
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {fornecedorItem.sem_item && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        paddingTop: 8,
-                        borderTop: "1px solid rgba(159,176,196,0.15)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "row",
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          cursor: "pointer",
-                        }}
-                        onClick={() =>
-                          setExpandido((atual) =>
-                            atual === `${fornecedorItem.fornecedor}|||semitem`
-                              ? null
-                              : `${fornecedorItem.fornecedor}|||semitem`
-                          )
-                        }
-                      >
-                        <div>
-                          <strong>Sem item específico</strong>{" "}
-                          <span style={{ color: "#9fb0c4" }}>
-                            ({fornecedorItem.sem_item.total_compras}{" "}
-                            {fornecedorItem.sem_item.total_compras === 1
-                              ? "compra"
-                              : "compras"}
-                            , média {formatarMoeda(fornecedorItem.sem_item.valor_medio)})
-                          </span>
-                        </div>
-                      </div>
-
-                      {expandido ===
-                        `${fornecedorItem.fornecedor}|||semitem` && (
-                        <div style={{ marginTop: 8 }}>
-                          <TabelaCompras
-                            compras={fornecedorItem.sem_item.compras}
-                            coluna3Titulo="Valor"
-                            valorLinha={(compra) => formatarMoeda(compra.valor)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+                    {expandido === linha.chave && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "rgba(159,176,196,0.06)" }}>
+                          <table style={{ margin: 0 }}>
+                            <thead>
+                              <tr>
+                                <th>Data</th>
+                                <th>Preço</th>
+                                <th>Detalhe</th>
+                                <th>Situação</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {linha.historico.map((compra, indice) => (
+                                <tr key={indice}>
+                                  <td>{formatarData(compra.data)}</td>
+                                  <td>
+                                    {formatarMoeda(compra.valor)}
+                                    {linha.porUnidade ? `/${linha.unidade}` : ""}
+                                  </td>
+                                  <td>{compra.detalhe}</td>
+                                  <td>
+                                    <Selo indicador={compra.indicador} />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </article>
