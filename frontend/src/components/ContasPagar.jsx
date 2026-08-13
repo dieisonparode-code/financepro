@@ -802,9 +802,28 @@ function ContasPagar({
                           // vendo tudo filtrado por uma loja específica.
                           return nomeLoja ? <span>🏬 {nomeLoja}</span> : null;
                         })()}
-                      <span className={situacao.classe}>
-                        {situacao.rotulo}
-                      </span>
+                      {/* Pedido do usuário (13/08/2026): diária paga em
+                      duas partes (dinheiro na hora + restante) mostra
+                      quanto já foi pago (verde) e quanto falta (vermelho,
+                      é o valor editável acima) em vez do badge comum de
+                      vencimento. */}
+                      {conta.valor_pago_dinheiro ? (
+                        <span>
+                          Pago{" "}
+                          <strong style={{ color: "#16ca50" }}>
+                            {formatarMoeda(conta.valor_pago_dinheiro)}
+                          </strong>{" "}
+                          em dinheiro — pagar somente{" "}
+                          <strong style={{ color: "#ef4444" }}>
+                            {formatarMoeda(conta.valor)}
+                          </strong>{" "}
+                          (valor acima)
+                        </span>
+                      ) : (
+                        <span className={situacao.classe}>
+                          {situacao.rotulo}
+                        </span>
+                      )}
                     </div>
                   </div>
 

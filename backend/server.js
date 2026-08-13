@@ -2482,6 +2482,11 @@ app.post(
             descricao: nomeDiaria,
             fornecedor: "",
             valor: valorAPagar,
+            // Guarda estruturado (não só no texto da observação) o quanto
+            // já saiu em dinheiro na hora — pedido do usuário: mostrar
+            // "Pago R$X em dinheiro — pagar somente R$Y" na lista, com
+            // cor verde pro que já foi pago e vermelho pro que falta.
+            valor_pago_dinheiro: pagoDinheiro > 0 ? pagoDinheiro : null,
             data_vencimento: dataDiaria,
             observacao:
               pagoDinheiro > 0
