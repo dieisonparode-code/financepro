@@ -333,7 +333,10 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              // Fixo em 3 colunas (não auto-fit) — pedido do usuário: Débito,
+              // Crédito e PIX sempre lado a lado na mesma linha, nunca uma
+              // quebrando pra linha de baixo.
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: "1rem",
             }}
           >
