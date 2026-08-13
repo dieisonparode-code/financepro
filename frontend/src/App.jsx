@@ -427,6 +427,23 @@ function FinanceApp() {
     () => searchParams.get("pagina") || "dashboard"
   );
 
+  // Pedido do usuário (12/08/2026): Lojas/Usuários/Log de Auditoria/
+  // Estoque/Clientes/Categorias juntos num só botão "⚙️ Mais" (accordion),
+  // pra aba lateral não ficar gigante. Começa aberto se a página atual (ex:
+  // recarregou a tela em "usuarios") já for uma dessas, senão fica
+  // fechado.
+  const PAGINAS_MENU_MAIS = [
+    "categorias",
+    "clientes",
+    "estoque",
+    "lojas",
+    "usuarios",
+    "auditoria",
+  ];
+  const [menuMaisAberto, setMenuMaisAberto] = useState(() =>
+    PAGINAS_MENU_MAIS.includes(searchParams.get("pagina") || "dashboard")
+  );
+
   // Mantém a aba atual salva na URL (?pagina=despesas), assim atualizar
   // a página (F5) não volta sozinho pro dashboard.
   function setPagina(novaPagina) {
@@ -2733,15 +2750,6 @@ const statusCmv =
             </button>
           )}
 
-          {temPermissaoFinanceira("categorias") && (
-            <button
-              className={pagina === "categorias" ? "active" : ""}
-              onClick={() => setPagina("categorias")}
-            >
-              Categorias
-            </button>
-          )}
-
           {temPermissaoFinanceira("fluxo_caixa") && (
             <button
               className={pagina === "fluxo" ? "active" : ""}
@@ -2796,24 +2804,6 @@ const statusCmv =
             </button>
           )}
 
-          {temPermissao("clientes") && (
-            <button
-              className={pagina === "clientes" ? "active" : ""}
-              onClick={() => setPagina("clientes")}
-            >
-              Clientes
-            </button>
-          )}
-
-          {temPermissao("estoque") && (
-            <button
-              className={pagina === "estoque" ? "active" : ""}
-              onClick={() => setPagina("estoque")}
-            >
-              Estoque
-            </button>
-          )}
-
           {temPermissao("fechamento_caixa") && (
             <button
               className={pagina === "fechamento" ? "active" : ""}
@@ -2850,31 +2840,76 @@ const statusCmv =
             </button>
           )}
 
-          {ehAdministrador && (
-            <button
-              className={pagina === "lojas" ? "active" : ""}
-              onClick={() => setPagina("lojas")}
-            >
-              Lojas
-            </button>
-          )}
+          {(temPermissaoFinanceira("categorias") ||
+            temPermissao("clientes") ||
+            temPermissao("estoque") ||
+            ehAdministrador) && (
+            <>
+              <button
+                className={menuMaisAberto ? "active" : ""}
+                onClick={() => setMenuMaisAberto((anterior) => !anterior)}
+              >
+                ⚙️ Mais {menuMaisAberto ? "▲" : "▼"}
+              </button>
 
-          {ehAdministrador && (
-            <button
-              className={pagina === "usuarios" ? "active" : ""}
-              onClick={() => setPagina("usuarios")}
-            >
-              Usuários
-            </button>
-          )}
+              {menuMaisAberto && (
+                <div style={{ paddingLeft: 16 }}>
+                  {temPermissaoFinanceira("categorias") && (
+                    <button
+                      className={pagina === "categorias" ? "active" : ""}
+                      onClick={() => setPagina("categorias")}
+                    >
+                      Categorias
+                    </button>
+                  )}
 
-          {ehAdministrador && (
-            <button
-              className={pagina === "auditoria" ? "active" : ""}
-              onClick={() => setPagina("auditoria")}
-            >
-              Log de Auditoria
-            </button>
+                  {temPermissao("clientes") && (
+                    <button
+                      className={pagina === "clientes" ? "active" : ""}
+                      onClick={() => setPagina("clientes")}
+                    >
+                      Clientes
+                    </button>
+                  )}
+
+                  {temPermissao("estoque") && (
+                    <button
+                      className={pagina === "estoque" ? "active" : ""}
+                      onClick={() => setPagina("estoque")}
+                    >
+                      Estoque
+                    </button>
+                  )}
+
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "lojas" ? "active" : ""}
+                      onClick={() => setPagina("lojas")}
+                    >
+                      Lojas
+                    </button>
+                  )}
+
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "usuarios" ? "active" : ""}
+                      onClick={() => setPagina("usuarios")}
+                    >
+                      Usuários
+                    </button>
+                  )}
+
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "auditoria" ? "active" : ""}
+                      onClick={() => setPagina("auditoria")}
+                    >
+                      Log de Auditoria
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </nav>
 
