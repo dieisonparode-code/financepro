@@ -482,10 +482,12 @@ function Conciliacao({ lojaId }) {
     resumo?.totais_por_forma_pagamento || {}
   );
 
-  // Confronto Sistema × Informado calculado aqui (não só dentro da tabela)
-  // pra poder mostrar um aviso no topo da tela quando tiver diferença,
-  // igual o aviso de CMV alto do Dashboard.
-  const confrontoCalculado = useMemo(() => {
+  // Sistema (Esperado) de cada forma de pagamento — PagSeguro (cartão/PIX)
+  // + Saipos/foto (as demais, exceto Dinheiro) + eventual ajuste manual.
+  // Isolado num useMemo próprio (não só dentro do confronto) porque o
+  // efeito abaixo também precisa desse valor pra pré-preencher o
+  // Informado.
+  const totaisBrutosSistema = useMemo(() => {
     const totaisBrutos = { ...(resumo?.totais_brutos_por_forma_pagamento || {}) };
 
     // iFood/Brendi (Pago Online), Voucher Parceiro, A prazo (funcionários),
@@ -515,6 +517,39 @@ function Conciliacao({ lojaId }) {
     if (sistemaManual) {
       Object.assign(totaisBrutos, sistemaManual);
     }
+
+    return totaisBrutos;
+  }, [resumo, resumoSaipos, grupoEscolhido]);
+
+  // Pedido do usuário (12/08/2026): o Informado não deve começar em
+  // branco — já vem pré-preenchido com o valor do Sistema (Esperado),
+  // o operador só ajusta se o valor real contado no fechamento for
+  // diferente. Só preenche o que ainda estiver em branco (não sobrescreve
+  // nada que já foi lido da foto ou digitado).
+  useEffect(() => {
+    const formasComSistema = Object.keys(totaisBrutosSistema);
+    if (formasComSistema.length === 0) return;
+
+    setValoresInformados((anterior) => {
+      let mudou = false;
+      const novo = { ...anterior };
+
+      formasComSistema.forEach((forma) => {
+        if (novo[forma] === undefined || novo[forma] === "") {
+          novo[forma] = Number(totaisBrutosSistema[forma] || 0).toFixed(2);
+          mudou = true;
+        }
+      });
+
+      return mudou ? novo : anterior;
+    });
+  }, [totaisBrutosSistema]);
+
+  // Confronto Sistema × Informado calculado aqui (não só dentro da tabela)
+  // pra poder mostrar um aviso no topo da tela quando tiver diferença,
+  // igual o aviso de CMV alto do Dashboard.
+  const confrontoCalculado = useMemo(() => {
+    const totaisBrutos = totaisBrutosSistema;
 
     // A lista de linhas é a união do que o operador informou (foto/OCR) com
     // o que a Saipos/PagSeguro reportou como Sistema — assim, se aparecer
@@ -557,7 +592,7 @@ function Conciliacao({ lojaId }) {
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [resumo, resumoSaipos, valoresInformados, grupoEscolhido]);
+  }, [totaisBrutosSistema, valoresInformados]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
