@@ -127,8 +127,11 @@ const TRES_DIAS_MS = 3 * 24 * 60 * 60 * 1000;
 
 // Diárias (Boy/Cozinha) não salvam a foto direto — abrem um rascunho pra
 // conferir/corrigir o valor lido por IA antes de confirmar (pedido do
-// usuário: "as vezes foi pago parte em dinheiro e parte pix").
-const TIPOS_COM_VALOR_CONFERIDO = ["boy", "cozinha"];
+// usuário: "as vezes foi pago parte em dinheiro e parte pix"). "Pago com
+// dinheiro do caixa" (12/08/2026) usa o mesmo rascunho — é sempre 100% em
+// dinheiro (sem a pergunta de dividir) e já entra direto em Contas Pagas
+// quando o fechamento é finalizado.
+const TIPOS_COM_VALOR_CONFERIDO = ["boy", "cozinha", "pago_dinheiro_caixa"];
 
 function CadastroFechamentoCaixa({
   registros = [],
@@ -291,6 +294,9 @@ function CadastroFechamentoCaixa({
       // Por padrão nada foi pago em dinheiro ainda — se foi dividido
       // (parte em dinheiro, parte em Pix depois), o operador preenche.
       pagoDinheiro: "",
+      // Só usado no tipo "pago_dinheiro_caixa" — o que foi pago (ex:
+      // "Uber compras", "Diária extra Fulano").
+      nomePessoa: "",
       lendo: true,
       avisoLeitura: "",
     });
@@ -335,16 +341,24 @@ function CadastroFechamentoCaixa({
 
     setRascunhoDiaria((anterior) => ({ ...anterior, salvando: true }));
 
+    const ehPagoDinheiroCaixa = rascunhoDiaria.tipo === "pago_dinheiro_caixa";
+    const valorNumerico =
+      rascunhoDiaria.valor !== "" ? Number(rascunhoDiaria.valor) : null;
+
     try {
       await adicionarFechamento({
         tipo: rascunhoDiaria.tipo,
         foto: rascunhoDiaria.foto,
         loja_id: lojaId,
-        valor: rascunhoDiaria.valor !== "" ? Number(rascunhoDiaria.valor) : null,
-        valor_pago_dinheiro:
-          rascunhoDiaria.pagoDinheiro !== ""
-            ? Number(rascunhoDiaria.pagoDinheiro)
-            : 0,
+        valor: valorNumerico,
+        // "Pago com dinheiro do caixa" é sempre 100% em dinheiro — não
+        // pergunta a divisão, o valor todo já conta como pago na hora.
+        valor_pago_dinheiro: ehPagoDinheiroCaixa
+          ? valorNumerico || 0
+          : rascunhoDiaria.pagoDinheiro !== ""
+          ? Number(rascunhoDiaria.pagoDinheiro)
+          : 0,
+        nome_pessoa: ehPagoDinheiroCaixa ? rascunhoDiaria.nomePessoa : "",
       });
 
       setRascunhoDiaria(null);
@@ -644,6 +658,24 @@ function CadastroFechamentoCaixa({
               className="foto-modal-imagem"
             />
 
+            {rascunhoDiaria.tipo === "pago_dinheiro_caixa" && (
+              <label>
+                O que foi pago
+                <input
+                  type="text"
+                  placeholder="Ex: Uber compras, Diária extra Fulano..."
+                  value={rascunhoDiaria.nomePessoa}
+                  disabled={rascunhoDiaria.salvando}
+                  onChange={(evento) =>
+                    setRascunhoDiaria((anterior) => ({
+                      ...anterior,
+                      nomePessoa: evento.target.value,
+                    }))
+                  }
+                />
+              </label>
+            )}
+
             <label>
               Valor total do recibo
               <input
@@ -676,33 +708,42 @@ function CadastroFechamentoCaixa({
               </div>
             )}
 
-            <label>
-              💵 Pago em dinheiro agora (deixe 0,00 se nada foi pago em
-              dinheiro — vai tudo pra "a pagar")
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0,00"
-                value={rascunhoDiaria.pagoDinheiro}
-                disabled={rascunhoDiaria.salvando}
-                onChange={(evento) =>
-                  setRascunhoDiaria((anterior) => ({
-                    ...anterior,
-                    pagoDinheiro: evento.target.value,
-                  }))
-                }
-              />
-            </label>
+            {rascunhoDiaria.tipo === "pago_dinheiro_caixa" ? (
+              <div style={{ margin: "8px 0 16px", color: "#22c55e", fontWeight: 700 }}>
+                💰 Vai direto pra Contas Pagas — 100% pago em dinheiro do
+                caixa, sem "a pagar".
+              </div>
+            ) : (
+              <>
+                <label>
+                  💵 Pago em dinheiro agora (deixe 0,00 se nada foi pago em
+                  dinheiro — vai tudo pra "a pagar")
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={rascunhoDiaria.pagoDinheiro}
+                    disabled={rascunhoDiaria.salvando}
+                    onChange={(evento) =>
+                      setRascunhoDiaria((anterior) => ({
+                        ...anterior,
+                        pagoDinheiro: evento.target.value,
+                      }))
+                    }
+                  />
+                </label>
 
-            <div style={{ margin: "8px 0 16px" }}>
-              <div style={{ color: "#22c55e", fontWeight: 700 }}>
-                💰 {formatarMoeda(pagoDinheiroNumerico)} pago em dinheiro
-              </div>
-              <div style={{ color: "#ef4444", fontWeight: 700 }}>
-                🔴 A pagar: {formatarMoeda(aPagarNumerico)}
-              </div>
-            </div>
+                <div style={{ margin: "8px 0 16px" }}>
+                  <div style={{ color: "#22c55e", fontWeight: 700 }}>
+                    💰 {formatarMoeda(pagoDinheiroNumerico)} pago em dinheiro
+                  </div>
+                  <div style={{ color: "#ef4444", fontWeight: 700 }}>
+                    🔴 A pagar: {formatarMoeda(aPagarNumerico)}
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="modal-actions">
               <button

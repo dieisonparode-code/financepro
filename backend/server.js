@@ -2108,6 +2108,12 @@ app.get(
 const NOMES_DIARIA_PARA_CONTA_PAGAR = {
   boy: "Diária Boy",
   cozinha: "Diária Cozinha",
+  // Pedido do usuário (12/08/2026): "Pago com dinheiro do caixa" (retirada
+  // de frente de caixa — diária avulsa, compra rápida, etc, tudo pago na
+  // hora com o dinheiro físico do caixa) usa a mesma automação — mas é
+  // SEMPRE 100% em dinheiro (ver tratamento especial abaixo), nunca sobra
+  // "a pagar".
+  pago_dinheiro_caixa: "Pago com dinheiro do caixa",
 };
 
 app.post(
@@ -2162,7 +2168,9 @@ app.post(
       try {
         let consultaDiarias = supabase
           .from("fechamentos_caixa")
-          .select("id, tipo, foto, valor, valor_pago_dinheiro, criado_em")
+          .select(
+            "id, tipo, foto, valor, valor_pago_dinheiro, nome_pessoa, criado_em"
+          )
           .in("tipo", Object.keys(NOMES_DIARIA_PARA_CONTA_PAGAR))
           .lte("criado_em", data.criado_em);
 
@@ -2182,22 +2190,31 @@ app.post(
         for (const diaria of diarias || []) {
           const nomeDiaria = NOMES_DIARIA_PARA_CONTA_PAGAR[diaria.tipo];
           const valorTotal = diaria.valor != null ? Number(diaria.valor) : 0;
+          // "Pago com dinheiro do caixa" é sempre 100% em dinheiro, por
+          // definição — não faz sentido perguntar "quanto foi pago em
+          // dinheiro", o valor todo já é isso.
           const pagoDinheiro =
-            diaria.valor_pago_dinheiro != null
+            diaria.tipo === "pago_dinheiro_caixa"
+              ? valorTotal
+              : diaria.valor_pago_dinheiro != null
               ? Number(diaria.valor_pago_dinheiro)
               : 0;
           const valorAPagar = Math.max(0, valorTotal - pagoDinheiro);
           const dataDiaria = dataBrasiliaDe(diaria.criado_em);
 
           if (pagoDinheiro > 0) {
+            const ehPagoDinheiroCaixa = diaria.tipo === "pago_dinheiro_caixa";
             const novaDespesa = {
               id: Date.now() + diaria.id,
               tipo: "despesa",
-              descricao: nomeDiaria,
+              descricao:
+                ehPagoDinheiroCaixa && diaria.nome_pessoa
+                  ? diaria.nome_pessoa
+                  : nomeDiaria,
               valor: pagoDinheiro,
               data: dataDiaria,
               grupo: "",
-              categoria: "Outros",
+              categoria: ehPagoDinheiroCaixa ? "Retirada de Caixa" : "Outros",
               subcategoria: "",
               fornecedor: "",
               observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}) — parte paga em dinheiro na hora.`,
