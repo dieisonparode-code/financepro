@@ -183,7 +183,12 @@ function Conciliacao({ lojaId }) {
 
   // Junta o que já foi lido/salvo em CADA registro do grupo (foto 1 e/ou
   // foto 2) num só objeto — se uma categoria só aparecer numa das fotos,
-  // ainda assim entra na conciliação.
+  // ainda assim entra na conciliação. IMPORTANTE: a PRIMEIRA foto do grupo
+  // (mais antiga) tem prioridade — nem toda foto extra tem a tabela
+  // CONFERÊNCIA (pode ser só outra página do comprovante, tipo canais de
+  // venda), e nesse caso a IA pode "inventar" categoria; se essa foto
+  // extra fosse processada por último e sobrescrevesse a foto boa, os
+  // valores certos da primeira foto seriam perdidos.
   function mesclarDosItens(grupo, campo) {
     if (!grupo) return null;
     const mesclado = {};
@@ -192,7 +197,11 @@ function Conciliacao({ lojaId }) {
     grupo.itens.forEach((item) => {
       if (item[campo]) {
         temAlgo = true;
-        Object.assign(mesclado, item[campo]);
+        Object.entries(item[campo]).forEach(([chave, valor]) => {
+          if (!(chave in mesclado)) {
+            mesclado[chave] = valor;
+          }
+        });
       }
     });
 
@@ -243,35 +252,48 @@ function Conciliacao({ lojaId }) {
     // registro — refazer a conciliação usa o valor salvo, sem chamar a IA
     // de novo (evita o valor mudar sozinho entre uma tentativa e outra).
     // Só o botão "Ler foto de novo" força uma releitura. Um fechamento pode
-    // ter até 2 fotos (Foto 1 / Foto 2) — lê/reaproveita as duas e junta os
-    // valores na mesma tabela.
-    const buscasFoto = grupoEscolhido.itens.map((item) =>
-      item.valores_informados
-        ? Promise.resolve(
-            usarValoresSalvos(item.valores_informados, { silencioso: true })
-          )
-        : buscarFotoFechamentoCaixa(item.id)
-            .then((fotoResultado) =>
-              conferirFotoDataUrl(fotoResultado?.foto, {
-                salvarEm: item.id,
-                silencioso: true,
-              })
-            )
-            .catch((erroFoto) => ({
-              erro_leitura:
-                erroFoto.message ||
-                "Não foi possível buscar uma das fotos desse fechamento.",
-            }))
-    );
+    // ter até 2 fotos (Foto 1 / Foto 2) — lê EM ORDEM (a mais antiga
+    // primeiro) e PÁRA assim que achar uma foto com dados de verdade: nem
+    // toda foto extra tem a tabela CONFERÊNCIA (pode ser só outra página
+    // do comprovante), e se a IA "inventar" categoria numa foto sem
+    // tabela, ler ela por cima correria o risco de sobrescrever os
+    // valores certos já achados na primeira foto.
+    const buscaFotos = lerFotosDoGrupoEmOrdem(grupoEscolhido.itens);
 
-    const [, , ...resultadosFoto] = await Promise.all([
-      buscaVendas,
-      buscaSaipos,
-      ...buscasFoto,
-    ]);
-
-    setResultadoFoto(agregarResultadosFoto(resultadosFoto));
+    await Promise.all([buscaVendas, buscaSaipos, buscaFotos]);
     setCarregando(false);
+  }
+
+  async function lerOuUsarFotoDoItem(item) {
+    if (item.valores_informados) {
+      return usarValoresSalvos(item.valores_informados, { silencioso: true });
+    }
+
+    try {
+      const fotoResultado = await buscarFotoFechamentoCaixa(item.id);
+      return await conferirFotoDataUrl(fotoResultado?.foto, {
+        salvarEm: item.id,
+        silencioso: true,
+      });
+    } catch (erroFoto) {
+      return {
+        erro_leitura:
+          erroFoto.message ||
+          "Não foi possível buscar uma das fotos desse fechamento.",
+      };
+    }
+  }
+
+  async function lerFotosDoGrupoEmOrdem(itens) {
+    const resultados = [];
+
+    for (const item of itens) {
+      const resultado = await lerOuUsarFotoDoItem(item);
+      resultados.push(resultado);
+      if (resultado?.sucesso) break;
+    }
+
+    setResultadoFoto(agregarResultadosFoto(resultados));
   }
 
   // Combina o resultado da leitura/reaproveitamento de cada foto do grupo
@@ -311,31 +333,36 @@ function Conciliacao({ lojaId }) {
     return resultado;
   }
 
-  // Força reler TODAS as fotos do grupo (ignora o que já estava salvo) —
-  // usado quando o operador clica "Ler foto de novo" de propósito.
+  // Força reler as fotos do grupo (ignora o que já estava salvo) — usado
+  // quando o operador clica "Ler foto de novo" de propósito. Mesma regra
+  // de ordem/parada antecipada do conciliarAgora (primeira foto com dados
+  // de verdade tem prioridade).
   async function relerFotoAgora() {
     if (!grupoEscolhido) return;
 
     setEnviandoFoto(true);
     setResultadoFoto(null);
 
-    const resultados = await Promise.all(
-      grupoEscolhido.itens.map(async (item) => {
-        try {
-          const fotoResultado = await buscarFotoFechamentoCaixa(item.id);
-          return await conferirFotoDataUrl(fotoResultado?.foto, {
-            salvarEm: item.id,
-            silencioso: true,
-          });
-        } catch (erroFoto) {
-          return {
-            erro_leitura:
-              erroFoto.message ||
-              "Não foi possível buscar uma das fotos desse fechamento.",
-          };
-        }
-      })
-    );
+    const resultados = [];
+
+    for (const item of grupoEscolhido.itens) {
+      let resultado;
+      try {
+        const fotoResultado = await buscarFotoFechamentoCaixa(item.id);
+        resultado = await conferirFotoDataUrl(fotoResultado?.foto, {
+          salvarEm: item.id,
+          silencioso: true,
+        });
+      } catch (erroFoto) {
+        resultado = {
+          erro_leitura:
+            erroFoto.message ||
+            "Não foi possível buscar uma das fotos desse fechamento.",
+        };
+      }
+      resultados.push(resultado);
+      if (resultado?.sucesso) break;
+    }
 
     setResultadoFoto(agregarResultadosFoto(resultados));
     setEnviandoFoto(false);
