@@ -281,6 +281,12 @@ export async function excluirContaPagar(id) {
   });
 }
 
+export async function buscarHistoricoFornecedores() {
+  return requisicao("/fornecedores/historico", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function anexarComprovantePagamento(id, comprovante_pagamento) {
   return requisicao(`/contas-pagar/${id}/comprovante`, {
     method: "PUT",

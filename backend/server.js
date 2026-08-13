@@ -333,6 +333,106 @@ app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (re
   }
 });
 
+// Pedido do usuário (13/08/2026): histórico de preço pago por fornecedor,
+// pra identificar quem tá cobrando caro e quem tá com bom preço. Usa só a
+// tabela `lancamentos` (despesas) — quando uma Conta a Pagar é paga, ela já
+// vira uma despesa automaticamente lá (rota /contas-pagar/:id/pagar), então
+// não precisa somar as duas tabelas (isso duplicaria os valores).
+const PERM_FORNECEDORES = ["despesas", "contas_pagar", "relatorios"];
+
+app.get(
+  "/fornecedores/historico",
+  verificarPermissao(PERM_FORNECEDORES),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("lancamentos")
+        .select("id, descricao, valor, data, fornecedor, loja_id, categoria")
+        .eq("tipo", "despesa")
+        .not("fornecedor", "is", null)
+        .neq("fornecedor", "")
+        .order("data", { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      const grupos = {};
+
+      (data || []).forEach((lancamento) => {
+        const nomeFornecedor = lancamento.fornecedor.trim();
+
+        if (!nomeFornecedor) return;
+
+        if (!grupos[nomeFornecedor]) {
+          grupos[nomeFornecedor] = [];
+        }
+
+        grupos[nomeFornecedor].push({
+          id: lancamento.id,
+          descricao: lancamento.descricao,
+          valor: Number(lancamento.valor || 0),
+          data: lancamento.data,
+          loja_id: lancamento.loja_id,
+          categoria: lancamento.categoria,
+        });
+      });
+
+      // Limiar de 15% pra cima/baixo da própria média histórica do
+      // fornecedor — simples de explicar, não precisa de preço por
+      // unidade/kg (o sistema não guarda quantidade das compras).
+      const LIMIAR_VARIACAO = 15;
+
+      const fornecedores = Object.entries(grupos)
+        .map(([fornecedor, compras]) => {
+          const valorTotal = compras.reduce((soma, c) => soma + c.valor, 0);
+          const valorMedio = valorTotal / compras.length;
+
+          const comprasComIndicador = compras.map((compra) => {
+            const variacao =
+              valorMedio > 0
+                ? ((compra.valor - valorMedio) / valorMedio) * 100
+                : 0;
+
+            return {
+              ...compra,
+              variacao_percentual: Number(variacao.toFixed(1)),
+              indicador:
+                variacao >= LIMIAR_VARIACAO
+                  ? "abusivo"
+                  : variacao <= -LIMIAR_VARIACAO
+                  ? "bom"
+                  : "normal",
+            };
+          });
+
+          const ultimaCompra = comprasComIndicador[comprasComIndicador.length - 1];
+
+          return {
+            fornecedor,
+            total_compras: compras.length,
+            valor_total: Number(valorTotal.toFixed(2)),
+            valor_medio: Number(valorMedio.toFixed(2)),
+            menor_valor: Number(Math.min(...compras.map((c) => c.valor)).toFixed(2)),
+            maior_valor: Number(Math.max(...compras.map((c) => c.valor)).toFixed(2)),
+            ultima_compra: ultimaCompra,
+            compras: comprasComIndicador.slice().reverse(),
+          };
+        })
+        .sort((a, b) => b.valor_total - a.valor_total);
+
+      res.json(fornecedores);
+    } catch (erro) {
+      console.error("Erro ao montar histórico de fornecedores:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível montar o histórico de fornecedores.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.get("/lancamentos/:id/foto", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
     const id = Number(req.params.id);

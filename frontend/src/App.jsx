@@ -43,6 +43,7 @@ import {
   criarDespesaRecorrente,
   editarDespesaRecorrente,
   excluirDespesaRecorrente,
+  buscarHistoricoFornecedores,
   buscarClientes,
   criarCliente,
   atualizarCliente,
@@ -82,6 +83,7 @@ import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
 import DespesasRecorrentes from "./components/DespesasRecorrentes";
+import Fornecedores from "./components/Fornecedores";
 import ContasReceber from "./components/ContasReceber";
 import LogAuditoria from "./components/LogAuditoria";
 import VendasSaipos from "./components/VendasSaipos";
@@ -507,6 +509,8 @@ function FinanceApp() {
   const [despesasRecorrentes, setDespesasRecorrentes] = useState([]);
   const [carregandoDespesasRecorrentes, setCarregandoDespesasRecorrentes] =
     useState(true);
+  const [historicoFornecedores, setHistoricoFornecedores] = useState([]);
+  const [carregandoFornecedores, setCarregandoFornecedores] = useState(true);
 
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [carregandoFormasPagamento, setCarregandoFormasPagamento] =
@@ -731,6 +735,22 @@ function FinanceApp() {
 
   useEffect(() => {
     carregarDespesasRecorrentes();
+  }, []);
+
+  async function carregarHistoricoFornecedores() {
+    try {
+      setCarregandoFornecedores(true);
+      const dados = await buscarHistoricoFornecedores();
+      setHistoricoFornecedores(Array.isArray(dados) ? dados : []);
+    } catch (erro) {
+      console.error("Erro ao carregar histórico de fornecedores:", erro);
+    } finally {
+      setCarregandoFornecedores(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarHistoricoFornecedores();
   }, []);
 
   async function adicionarDespesaRecorrente(dados) {
@@ -2804,6 +2824,15 @@ const statusCmv =
             </button>
           )}
 
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "fornecedores" ? "active" : ""}
+              onClick={() => setPagina("fornecedores")}
+            >
+              🏭 Fornecedores
+            </button>
+          )}
+
           {temPermissao("fechamento_caixa") && (
             <button
               className={pagina === "fechamento" ? "active" : ""}
@@ -3581,6 +3610,14 @@ const statusCmv =
             adicionar={adicionarDespesaRecorrente}
             editar={editarDespesaRecorrenteHandler}
             remover={removerDespesaRecorrente}
+          />
+        )}
+
+        {pagina === "fornecedores" && (
+          <Fornecedores
+            historico={historicoFornecedores}
+            carregando={carregandoFornecedores}
+            lojas={lojas}
           />
         )}
 
