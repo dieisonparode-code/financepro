@@ -1742,6 +1742,181 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
   }
 });
 
+// Despesas Recorrentes (12/08/2026) — pedido do usuário: aluguel, internet,
+// contador etc. se repetem todo mês e hoje precisam ser lançadas na mão
+// sempre. Isso é só o "molde"; quem gera a Conta a Pagar de verdade todo
+// mês é a automação (rodarGeracaoDespesasRecorrentes, mais abaixo).
+function prepararDespesaRecorrente(dados = {}) {
+  return {
+    descricao: (dados.descricao || "").trim(),
+    fornecedor: (dados.fornecedor || "").trim(),
+    valor: Number(dados.valor || 0),
+    dia_vencimento: Number(dados.dia_vencimento || 1),
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    observacao: (dados.observacao || "").trim(),
+    ativo: dados.ativo !== false,
+  };
+}
+
+app.get(
+  "/despesas-recorrentes",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("despesas_recorrentes")
+        .select("*")
+        .order("descricao", { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar despesas recorrentes:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar as despesas recorrentes.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/despesas-recorrentes",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const dados = prepararDespesaRecorrente(req.body);
+
+      if (!dados.descricao || !dados.valor || !dados.dia_vencimento) {
+        return res.status(400).json({
+          erro: "Informe a descrição, o valor e o dia do vencimento.",
+        });
+      }
+
+      if (dados.dia_vencimento < 1 || dados.dia_vencimento > 31) {
+        return res.status(400).json({
+          erro: "O dia do vencimento tem que estar entre 1 e 31.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("despesas_recorrentes")
+        .insert([{ id: Date.now(), ...dados }])
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "criou",
+        "despesas_recorrentes",
+        data.id,
+        `${data.descricao} (${data.valor}, todo dia ${data.dia_vencimento})`
+      );
+
+      res.status(201).json(data);
+    } catch (erro) {
+      console.error("Erro ao criar despesa recorrente:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível criar a despesa recorrente.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/despesas-recorrentes/:id",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      const dados = prepararDespesaRecorrente(req.body);
+
+      if (!dados.descricao || !dados.valor || !dados.dia_vencimento) {
+        return res.status(400).json({
+          erro: "Informe a descrição, o valor e o dia do vencimento.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("despesas_recorrentes")
+        .update(dados)
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "editou",
+        "despesas_recorrentes",
+        data.id,
+        `${data.descricao} (${data.valor}, todo dia ${data.dia_vencimento})`
+      );
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao editar despesa recorrente:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível editar a despesa recorrente.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.delete(
+  "/despesas-recorrentes/:id",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      const { error } = await supabase
+        .from("despesas_recorrentes")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "excluiu", "despesas_recorrentes", id, null);
+
+      res.status(204).send();
+    } catch (erro) {
+      console.error("Erro ao excluir despesa recorrente:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível excluir a despesa recorrente.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const id = Number(req.params.id);
@@ -4557,6 +4732,122 @@ setInterval(function () {
 
   if (hora === 5 && minuto < 5) {
     rodarImportacaoAutomaticaDiariaSaipos();
+  }
+}, 60 * 1000);
+
+let ultimoDiaGeradoDespesasRecorrentes = null;
+
+// Despesas Recorrentes (12/08/2026) — todo dia confere se a Conta a Pagar
+// desse mês já existe pra cada despesa recorrente ativa; se não existir
+// ainda, cria sozinha (idempotente — marca no observacao qual recorrência
+// e qual mês geraram essa conta, pra nunca duplicar mesmo rodando todo
+// dia). Roda de novo todo dia (não só uma vez por mês) pra pegar despesas
+// recorrentes cadastradas DEPOIS do dia 1 daquele mês.
+async function rodarGeracaoDespesasRecorrentes() {
+  const hojeStr = dataBrasilia(0);
+
+  if (ultimoDiaGeradoDespesasRecorrentes === hojeStr) {
+    return;
+  }
+
+  ultimoDiaGeradoDespesasRecorrentes = hojeStr;
+
+  try {
+    const { data: recorrentes, error } = await supabase
+      .from("despesas_recorrentes")
+      .select("*")
+      .eq("ativo", true);
+
+    if (error) {
+      throw error;
+    }
+
+    const [ano, mes] = hojeStr.split("-").map(Number);
+    const anoMes = `${ano}-${String(mes).padStart(2, "0")}`;
+    const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
+
+    for (const recorrente of recorrentes || []) {
+      try {
+        const marcador = `[RECORRENTE:${recorrente.id}:${anoMes}]`;
+
+        const { data: existentes, error: erroBusca } = await supabase
+          .from("contas_pagar")
+          .select("id")
+          .ilike("observacao", `%${marcador}%`)
+          .limit(1);
+
+        if (erroBusca) {
+          throw erroBusca;
+        }
+
+        if (existentes && existentes.length > 0) {
+          continue;
+        }
+
+        const dia = Math.min(
+          Number(recorrente.dia_vencimento || 1),
+          ultimoDiaDoMes
+        );
+        const dataVencimento = `${ano}-${String(mes).padStart(
+          2,
+          "0"
+        )}-${String(dia).padStart(2, "0")}`;
+
+        const dadosConta = {
+          descricao: recorrente.descricao,
+          fornecedor: recorrente.fornecedor || "",
+          valor: Number(recorrente.valor || 0),
+          data_vencimento: dataVencimento,
+          observacao: `${marcador} Gerado automaticamente (despesa recorrente).${
+            recorrente.observacao ? " " + recorrente.observacao : ""
+          }`,
+          foto: "",
+          loja_id: recorrente.loja_id,
+        };
+
+        const { data: contaCriada, error: erroConta } = await supabase
+          .from("contas_pagar")
+          .insert([dadosConta])
+          .select("id")
+          .single();
+
+        if (erroConta) {
+          throw erroConta;
+        }
+
+        await supabase.from("log_auditoria").insert([
+          {
+            usuario_id: null,
+            usuario_nome: "Automação (Despesas Recorrentes)",
+            acao: "criou",
+            tabela_afetada: "contas_pagar",
+            registro_id: String(contaCriada.id),
+            detalhes: `Gerado automaticamente a partir da despesa recorrente #${recorrente.id} (${recorrente.descricao}), vencimento ${dataVencimento}.`,
+          },
+        ]);
+      } catch (erroRecorrente) {
+        console.error(
+          `Erro ao gerar conta a pagar da recorrência #${recorrente.id}:`,
+          erroRecorrente.message
+        );
+      }
+    }
+  } catch (erro) {
+    console.error(
+      "Erro na geração automática de despesas recorrentes:",
+      erro.message
+    );
+  }
+}
+
+// Confere a cada minuto se já é a hora certa (06:00–06:04, horário de
+// Brasília) de gerar as contas a pagar do mês a partir das despesas
+// recorrentes ativas.
+setInterval(function () {
+  const { hora, minuto } = horaBrasilia();
+
+  if (hora === 6 && minuto < 5) {
+    rodarGeracaoDespesasRecorrentes();
   }
 }, 60 * 1000);
 

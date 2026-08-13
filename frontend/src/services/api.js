@@ -471,6 +471,35 @@ export async function buscarLojas() {
   return requisicao("/lojas", { headers: await cabecalhoAutenticado() });
 }
 
+export async function buscarDespesasRecorrentes() {
+  return requisicao("/despesas-recorrentes", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarDespesaRecorrente(dados) {
+  return requisicao("/despesas-recorrentes", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function editarDespesaRecorrente(id, dados) {
+  return requisicao(`/despesas-recorrentes/${id}`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function excluirDespesaRecorrente(id) {
+  return requisicao(`/despesas-recorrentes/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function criarLoja(dados) {
   return requisicao("/lojas", {
     method: "POST",

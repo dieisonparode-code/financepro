@@ -39,6 +39,10 @@ import {
   atualizarContaPagar,
   marcarContaPagarComoPaga,
   excluirContaPagar,
+  buscarDespesasRecorrentes,
+  criarDespesaRecorrente,
+  editarDespesaRecorrente,
+  excluirDespesaRecorrente,
   buscarClientes,
   criarCliente,
   atualizarCliente,
@@ -77,6 +81,7 @@ import {
 import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
+import DespesasRecorrentes from "./components/DespesasRecorrentes";
 import ContasReceber from "./components/ContasReceber";
 import LogAuditoria from "./components/LogAuditoria";
 import VendasSaipos from "./components/VendasSaipos";
@@ -482,6 +487,9 @@ function FinanceApp() {
 
   const [contasPagar, setContasPagar] = useState([]);
   const [carregandoContasPagar, setCarregandoContasPagar] = useState(true);
+  const [despesasRecorrentes, setDespesasRecorrentes] = useState([]);
+  const [carregandoDespesasRecorrentes, setCarregandoDespesasRecorrentes] =
+    useState(true);
 
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [carregandoFormasPagamento, setCarregandoFormasPagamento] =
@@ -691,6 +699,37 @@ function FinanceApp() {
       supabase.removeChannel(canalContasPagar);
     };
   }, []);
+
+  async function carregarDespesasRecorrentes() {
+    try {
+      setCarregandoDespesasRecorrentes(true);
+      const dados = await buscarDespesasRecorrentes();
+      setDespesasRecorrentes(Array.isArray(dados) ? dados : []);
+    } catch (erro) {
+      console.error("Erro ao carregar despesas recorrentes:", erro);
+    } finally {
+      setCarregandoDespesasRecorrentes(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarDespesasRecorrentes();
+  }, []);
+
+  async function adicionarDespesaRecorrente(dados) {
+    await criarDespesaRecorrente(dados);
+    await carregarDespesasRecorrentes();
+  }
+
+  async function editarDespesaRecorrenteHandler(id, dados) {
+    await editarDespesaRecorrente(id, dados);
+    await carregarDespesasRecorrentes();
+  }
+
+  async function removerDespesaRecorrente(id) {
+    await excluirDespesaRecorrente(id);
+    await carregarDespesasRecorrentes();
+  }
 
   useEffect(() => {
     async function carregarClientesSalvos() {
@@ -2748,6 +2787,15 @@ const statusCmv =
             </button>
           )}
 
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "despesas-recorrentes" ? "active" : ""}
+              onClick={() => setPagina("despesas-recorrentes")}
+            >
+              🔁 Despesas Recorrentes
+            </button>
+          )}
+
           {temPermissao("clientes") && (
             <button
               className={pagina === "clientes" ? "active" : ""}
@@ -3465,6 +3513,24 @@ const statusCmv =
                 ? lojaDashboard
                 : null
             }
+          />
+        )}
+
+        {pagina === "despesas-recorrentes" && (
+          <DespesasRecorrentes
+            recorrentes={despesasRecorrentes}
+            carregando={carregandoDespesasRecorrentes}
+            lojas={lojas}
+            lojaPadrao={
+              !vePermissaoTotal
+                ? perfil?.loja_id || null
+                : lojaDashboard !== "todas"
+                ? lojaDashboard
+                : null
+            }
+            adicionar={adicionarDespesaRecorrente}
+            editar={editarDespesaRecorrenteHandler}
+            remover={removerDespesaRecorrente}
           />
         )}
 
