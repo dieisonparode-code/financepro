@@ -181,31 +181,24 @@ function Conciliacao({ lojaId }) {
       .sort((a, b) => (a.dataChave < b.dataChave ? 1 : -1));
   }, [fechamentosDisponiveis]);
 
-  // Junta o que já foi lido/salvo em CADA registro do grupo (foto 1 e/ou
-  // foto 2) num só objeto — se uma categoria só aparecer numa das fotos,
-  // ainda assim entra na conciliação. IMPORTANTE: a PRIMEIRA foto do grupo
-  // (mais antiga) tem prioridade — nem toda foto extra tem a tabela
-  // CONFERÊNCIA (pode ser só outra página do comprovante, tipo canais de
-  // venda), e nesse caso a IA pode "inventar" categoria; se essa foto
-  // extra fosse processada por último e sobrescrevesse a foto boa, os
-  // valores certos da primeira foto seriam perdidos.
+  // Usa os dados da PRIMEIRA foto do grupo (mais antiga) que realmente
+  // tiver alguma coisa salva — nem chega a olhar pra segunda foto se a
+  // primeira já tem dados. Mesma regra do "pára assim que achar" usado na
+  // leitura ao vivo (lerFotosDoGrupoEmOrdem): nem toda foto extra tem a
+  // tabela CONFERÊNCIA (pode ser só outra página do comprovante, tipo
+  // canais de venda), e nesse caso a IA pode ter "inventado" categoria
+  // antes dessa correção — misturar isso com os dados certos da primeira
+  // foto criava linha fantasma (ex: "Cortesia" que nunca existiu).
   function mesclarDosItens(grupo, campo) {
     if (!grupo) return null;
-    const mesclado = {};
-    let temAlgo = false;
 
-    grupo.itens.forEach((item) => {
-      if (item[campo]) {
-        temAlgo = true;
-        Object.entries(item[campo]).forEach(([chave, valor]) => {
-          if (!(chave in mesclado)) {
-            mesclado[chave] = valor;
-          }
-        });
+    for (const item of grupo.itens) {
+      if (item[campo] && Object.keys(item[campo]).length > 0) {
+        return item[campo];
       }
-    });
+    }
 
-    return temAlgo ? mesclado : null;
+    return null;
   }
 
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
