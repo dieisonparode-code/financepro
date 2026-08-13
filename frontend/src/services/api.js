@@ -281,6 +281,14 @@ export async function excluirContaPagar(id) {
   });
 }
 
+export async function anexarComprovantePagamento(id, comprovante_pagamento) {
+  return requisicao(`/contas-pagar/${id}/comprovante`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ comprovante_pagamento }),
+  });
+}
+
 export async function salvarDinheiroInformado(emCaixa, abertura, lojaId = null) {
   return requisicao("/caixa-dinheiro-informado", {
     method: "POST",

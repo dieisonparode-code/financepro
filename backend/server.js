@@ -1741,7 +1741,57 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       detalhes: erro.message,
     });
   }
-});
+  }
+);
+
+// Rota dedicada (não passa pelo prepararContaPagar/PUT normal) pra anexar o
+// comprovante de pagamento sem correr risco de nenhuma outra edição (valor,
+// pix, etc.) sobrescrever esse campo sem querer — só mexe nessa coluna.
+app.put(
+  "/contas-pagar/:id/comprovante",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({
+          erro: "ID da conta inválido.",
+        });
+      }
+
+      const { comprovante_pagamento } = req.body;
+
+      const { data, error } = await supabase
+        .from("contas_pagar")
+        .update({ comprovante_pagamento: comprovante_pagamento || null })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "anexou comprovante de pagamento em",
+        "contas_pagar",
+        data.id,
+        data.descricao
+      );
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao anexar comprovante de pagamento:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível anexar o comprovante.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 // Despesas Recorrentes (12/08/2026) — pedido do usuário: aluguel, internet,
 // contador etc. se repetem todo mês e hoje precisam ser lançadas na mão

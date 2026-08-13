@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { lerFotoContaPagar } from "../services/api";
+import { lerFotoContaPagar, anexarComprovantePagamento } from "../services/api";
 
 // Mesma compressão já usada em Despesas/Conciliação — reduz o tamanho antes
 // de guardar (a foto vira base64 direto na tabela, sem isso ficaria pesado).
@@ -320,6 +320,35 @@ function ContasPagar({
   const [pixEditando, setPixEditando] = useState(null);
   const [salvandoPixId, setSalvandoPixId] = useState(null);
   const [pixCopiado, setPixCopiado] = useState(null);
+
+  // Comprovante de pagamento (foto anexada DEPOIS de pagar, na aba Contas
+  // Pagas) — guardado à parte no state pra aparecer na hora, sem precisar
+  // recarregar a página (o objeto `conta` vem do state do componente pai,
+  // que só atualiza no próximo carregamento da lista).
+  const [comprovantesAnexados, setComprovantesAnexados] = useState({});
+  const [anexandoComprovanteId, setAnexandoComprovanteId] = useState(null);
+
+  async function anexarComprovante(conta, arquivo) {
+    if (!arquivo) return;
+
+    setAnexandoComprovanteId(conta.id);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+
+      await anexarComprovantePagamento(conta.id, fotoComprimida);
+
+      setComprovantesAnexados((atuais) => ({
+        ...atuais,
+        [conta.id]: fotoComprimida,
+      }));
+    } catch (erro) {
+      console.error("Erro ao anexar comprovante:", erro);
+      alert(erro.message || "Não foi possível anexar o comprovante.");
+    } finally {
+      setAnexandoComprovanteId(null);
+    }
+  }
 
   async function copiarPix(chavePix, identificador) {
     if (!chavePix) return;
@@ -952,6 +981,56 @@ function ContasPagar({
                     >
                       👁️ Ver detalhes
                     </button>
+
+                    {modo === "pagas" && conta._origem !== "despesa" && (
+                      <>
+                        <input
+                          id={`comprovante-${conta.id}`}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          disabled={anexandoComprovanteId === conta.id}
+                          onChange={(evento) => {
+                            const arquivo = evento.target.files?.[0];
+                            anexarComprovante(conta, arquivo);
+                            evento.target.value = "";
+                          }}
+                        />
+
+                        <label
+                          htmlFor={`comprovante-${conta.id}`}
+                          className="secondary-button"
+                          style={{
+                            cursor: "pointer",
+                            opacity:
+                              anexandoComprovanteId === conta.id ? 0.6 : 1,
+                          }}
+                        >
+                          {anexandoComprovanteId === conta.id
+                            ? "Enviando..."
+                            : conta.comprovante_pagamento ||
+                              comprovantesAnexados[conta.id]
+                            ? "📎 Trocar comprovante"
+                            : "📎 Anexar comprovante"}
+                        </label>
+
+                        {(conta.comprovante_pagamento ||
+                          comprovantesAnexados[conta.id]) && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              setFotoVisualizada(
+                                comprovantesAnexados[conta.id] ||
+                                  conta.comprovante_pagamento
+                              )
+                            }
+                          >
+                            👁️ Ver comprovante
+                          </button>
+                        )}
+                      </>
+                    )}
 
                     {conta._origem !== "despesa" && (
                       <>
