@@ -2749,7 +2749,25 @@ const statusCmv =
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
+        <div
+          className="brand"
+          role="button"
+          tabIndex={0}
+          style={{ cursor: "pointer" }}
+          title="Ir para o Dashboard"
+          onClick={() => {
+            // Pedido do usuário (13/08/2026): clicar na marca sempre leva
+            // pro Dashboard E recarrega a página (não só troca de aba) —
+            // útil como um "botão de reset" rápido se algo ficar travado.
+            window.location.href = window.location.pathname + "?pagina=dashboard";
+          }}
+          onKeyDown={(evento) => {
+            if (evento.key === "Enter" || evento.key === " ") {
+              window.location.href =
+                window.location.pathname + "?pagina=dashboard";
+            }
+          }}
+        >
           <div className="brand-icon">FP</div>
           <div>
             <strong>FinancePro</strong>
