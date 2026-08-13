@@ -878,33 +878,6 @@ function Conciliacao({ lojaId }) {
     });
   }, [totaisBrutosSistema]);
 
-  // Pedido do usuário (13/08/2026): pro Cartão de crédito/débito/PIX, o
-  // Informado tem que vir DIRETO da PagSeguro (valor real que entrou),
-  // nunca digitado/lido da foto — a Saipos já virou o "Sistema" (Esperado)
-  // acima, então esses 3 ficam automáticos nas duas pontas, sem depender
-  // de leitura de IA (que foi a causa de vários números errados hoje).
-  // SEMPRE sobrescreve (não só quando está em branco), porque esses 3 não
-  // têm mais nada pra o operador digitar.
-  useEffect(() => {
-    const totaisPagSeguro = resumo?.totais_brutos_por_forma_pagamento;
-    if (!totaisPagSeguro) return;
-
-    setValoresInformados((anterior) => {
-      const novo = { ...anterior };
-      let mudou = false;
-
-      ["Cartão de crédito", "Cartão de débito", "PIX"].forEach((forma) => {
-        const valorPagSeguro = Number(totaisPagSeguro[forma] || 0).toFixed(2);
-        if (novo[forma] !== valorPagSeguro) {
-          novo[forma] = valorPagSeguro;
-          mudou = true;
-        }
-      });
-
-      return mudou ? novo : anterior;
-    });
-  }, [resumo]);
-
   // Confronto Sistema × Informado calculado aqui (não só dentro da tabela)
   // pra poder mostrar um aviso no topo da tela quando tiver diferença,
   // igual o aviso de CMV alto do Dashboard.
@@ -1346,18 +1319,6 @@ function Conciliacao({ lojaId }) {
                                         [forma]: evento.target.value,
                                       }))
                                     }
-                                    disabled={[
-                                      "Cartão de crédito",
-                                      "Cartão de débito",
-                                      "PIX",
-                                    ].includes(forma)}
-                                    title={
-                                      ["Cartão de crédito", "Cartão de débito", "PIX"].includes(
-                                        forma
-                                      )
-                                        ? "Vem automático da PagSeguro — não precisa (nem dá) editar."
-                                        : undefined
-                                    }
                                     style={{ maxWidth: "120px" }}
                                   />
                                 </td>
@@ -1383,6 +1344,32 @@ function Conciliacao({ lojaId }) {
                                     : diferenca > 0
                                     ? `Falta ${formatarMoeda(diferenca)}`
                                     : `Sobra ${formatarMoeda(Math.abs(diferenca))}`}
+
+                                  {/* Pedido do usuário (13/08/2026): quando
+                                  Cartão/PIX não bater, mostra o valor real
+                                  da PagSeguro (maquininha/conta) aqui como
+                                  referência pra investigar a diferença. */}
+                                  {!bateu &&
+                                    temInformado &&
+                                    temSistema &&
+                                    ["Cartão de crédito", "Cartão de débito", "PIX"].includes(
+                                      forma
+                                    ) &&
+                                    resumo?.totais_brutos_por_forma_pagamento?.[forma] !=
+                                      null && (
+                                      <div
+                                        style={{
+                                          fontSize: "11px",
+                                          color: "#9fb0c4",
+                                          fontWeight: 400,
+                                        }}
+                                      >
+                                        PagSeguro:{" "}
+                                        {formatarMoeda(
+                                          resumo.totais_brutos_por_forma_pagamento[forma]
+                                        )}
+                                      </div>
+                                    )}
                                 </td>
                               </tr>
 
