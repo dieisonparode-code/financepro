@@ -240,6 +240,44 @@ function Conciliacao({ lojaId }) {
     return null;
   }
 
+  // BUG REAL corrigido (13/08/2026): o "Sistema" já reagia sozinho a trocar
+  // de fechamento (vem de totaisBrutosSistema, calculado a partir de
+  // grupoEscolhido), mas o "Informado" era um estado solto — trocar de
+  // data SEM clicar em "Conciliar agora" de novo deixava o Informado
+  // "grudado" com os valores do fechamento anterior, misturando dados de
+  // dois dias diferentes na mesma tabela. Isso é inaceitável num sistema
+  // financeiro. Agora, toda vez que a identidade do fechamento escolhido
+  // muda (dataChave), o Informado é resetado e recarregado com o que
+  // aquele fechamento específico já tiver salvo — nunca herda nada do
+  // fechamento anterior. Usa dataChave (não o objeto grupoEscolhido
+  // inteiro) como dependência de propósito: o objeto é substituído
+  // internamente (ex.: depois de ler uma foto) sem trocar de fechamento,
+  // e isso não pode disparar esse reset.
+  useEffect(() => {
+    if (!grupoEscolhido) {
+      setValoresInformados(valoresInformadosBase);
+      return;
+    }
+
+    const salvos = mesclarDosItens(grupoEscolhido, "valores_informados");
+    const novo = { ...valoresInformadosBase };
+
+    if (salvos) {
+      Object.entries(salvos).forEach(([forma, valor]) => {
+        if (valor != null) {
+          novo[forma] = Number(valor).toFixed(2);
+        }
+      });
+    }
+
+    setValoresInformados(novo);
+    setResumo(null);
+    setResumoSaipos(null);
+    setResultadoFoto(null);
+    setErro("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupoEscolhido?.dataChave]);
+
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
   // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
   // de escolher qual Fechamento de Caixa usar, um botão busca a PagSeguro
