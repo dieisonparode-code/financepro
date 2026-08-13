@@ -435,6 +435,13 @@ function ContasPagar({
           .filter((conta) => conta.status !== "pago")
           .sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento));
 
+  // Total pago HOJE — soma independente de qualquer busca/filtro ativo na
+  // tela, pra sempre refletir o dia real; soma sozinho conforme mais
+  // pagamentos forem lançados (não precisa recarregar a página).
+  const totalPagoHoje = contasPagasNormalizadas
+    .filter((conta) => conta.data_pagamento === dataFormatada(new Date()))
+    .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
+
   return (
     <section className="categorias-layout">
       {modo === "pagas" ? (
@@ -807,6 +814,23 @@ function ContasPagar({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {modo === "pagas" && (
+          <div
+            className="categoria-item"
+            style={{
+              marginTop: 12,
+              justifyContent: "space-between",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <strong>Total de contas pagas hoje:</strong>
+            <strong style={{ fontSize: "16px" }}>
+              {formatarMoeda(totalPagoHoje)}
+            </strong>
           </div>
         )}
       </article>
