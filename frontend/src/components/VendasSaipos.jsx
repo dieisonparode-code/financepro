@@ -366,10 +366,14 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
                                   : undefined
                               }
                             >
-                              {formatarMoeda(venda.valor_liquido)}
+                              {formatarMoeda(venda.valor_bruto)}
                             </strong>{" "}
                             <small style={{ color: "#9fb0c4", fontSize: "11px" }}>
-                              #{venda.codigo?.slice(-8)}
+                              (taxa{" "}
+                              {formatarMoeda(
+                                venda.valor_bruto - venda.valor_liquido
+                              )}
+                              ) #{venda.codigo?.slice(-8)}
                             </small>
                             <div
                               style={

@@ -536,8 +536,13 @@ function Conciliacao({ lojaId }) {
     }
   }
 
+  // Pedido do usuário (12/08/2026): pra conferência na Conciliação, os
+  // valores têm que vir CHEIOS (brutos, antes da taxa) — é isso que bate
+  // com o comprovante físico (a Saipos não desconta taxa de maquininha).
+  // O líquido (com taxa já descontada) continua só no Dashboard, que não
+  // é pra mexer.
   const formasPagamento = Object.entries(
-    resumo?.totais_por_forma_pagamento || {}
+    resumo?.totais_brutos_por_forma_pagamento || {}
   );
 
   // Sistema (Esperado) de cada forma de pagamento — PagSeguro (cartão/PIX)
@@ -735,8 +740,12 @@ function Conciliacao({ lojaId }) {
                 <span style={{ display: "inline-block", width: "20px" }}>
                   💰
                 </span>{" "}
-                Total recebido:{" "}
-                <strong>{formatarMoeda(resumo.total_recebido)}</strong>
+                Total vendido (bruto):{" "}
+                <strong>{formatarMoeda(resumo.total_bruto)}</strong>{" "}
+                <small style={{ color: "#9fb0c4" }}>
+                  (líquido {formatarMoeda(resumo.total_recebido)}, taxa{" "}
+                  {formatarMoeda(resumo.total_bruto - resumo.total_recebido)})
+                </small>
               </div>
 
               <div>
@@ -1131,12 +1140,16 @@ function Conciliacao({ lojaId }) {
                                     : undefined
                                 }
                               >
-                                {formatarMoeda(venda.valor_liquido)}
+                                {formatarMoeda(venda.valor_bruto)}
                               </strong>{" "}
                               <small
                                 style={{ color: "#9fb0c4", fontSize: "11px" }}
                               >
-                                #{venda.codigo?.slice(-8)}
+                                (taxa{" "}
+                                {formatarMoeda(
+                                  venda.valor_bruto - venda.valor_liquido
+                                )}
+                                ) #{venda.codigo?.slice(-8)}
                               </small>
                               <div
                                 style={
