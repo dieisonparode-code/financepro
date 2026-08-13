@@ -2929,6 +2929,21 @@ const statusCmv =
             {aprovacaoAtiva ? "ativa" : "desligada"}
           </button>
         )}
+
+        {/* Etiqueta de versão — pra confirmar com certeza qual versão do
+        app está rodando num aparelho, em vez de ter que supor se é cache
+        de navegador/PWA travado. */}
+        <small
+          style={{
+            display: "block",
+            textAlign: "center",
+            color: "#5b6b82",
+            fontSize: "10px",
+            padding: "6px 0 2px",
+          }}
+        >
+          v{typeof __COMMIT_SHA__ !== "undefined" ? __COMMIT_SHA__.slice(0, 7) : "dev"}
+        </small>
       </aside>
 
       <main className="main-content">

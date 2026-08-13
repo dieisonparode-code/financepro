@@ -4,6 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Etiqueta de versão visível no app (rodapé do menu lateral) — pra
+  // conseguir confirmar com certeza absoluta qual versão está rodando no
+  // aparelho de alguém, sem depender de suposição sobre cache de
+  // navegador/PWA. A Vercel já expõe o SHA do commit como variável de
+  // ambiente durante o build, sozinha.
+  define: {
+    __COMMIT_SHA__: JSON.stringify(
+      process.env.VERCEL_GIT_COMMIT_SHA || 'dev'
+    ),
+  },
   plugins: [
     react(),
     VitePWA({
