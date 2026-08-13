@@ -970,9 +970,21 @@ function ContasPagar({
                   </div>
                   <div>
                     <strong>Situação</strong>
-                    <div>
-                      {situacaoConta(detalheVisualizado).rotulo}
-                    </div>
+                    {detalheVisualizado.valor_pago_dinheiro ? (
+                      <div>
+                        Pago{" "}
+                        <strong style={{ color: "#16ca50" }}>
+                          {formatarMoeda(detalheVisualizado.valor_pago_dinheiro)}
+                        </strong>{" "}
+                        em dinheiro — pagar somente{" "}
+                        <strong style={{ color: "#ef4444" }}>
+                          {formatarMoeda(detalheVisualizado.valor)}
+                        </strong>{" "}
+                        (valor acima)
+                      </div>
+                    ) : (
+                      <div>{situacaoConta(detalheVisualizado).rotulo}</div>
+                    )}
                   </div>
                 </div>
               </div>
