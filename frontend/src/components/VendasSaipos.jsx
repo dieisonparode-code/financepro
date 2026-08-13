@@ -340,11 +340,23 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
               gap: "1rem",
             }}
           >
-            {agruparPorFormaPagamento(vendasPagSeguro).map((grupo) => (
+            {agruparPorFormaPagamento(vendasPagSeguro).map((grupo) => {
+              // Mesma correção da Conciliação: o contador não pode misturar
+              // pendente/cancelada com o que realmente efetivou (o valor em
+              // R$ já estava certo, só a contagem exibida estava errada).
+              const efetivadas = grupo.vendas.filter(
+                (venda) => !estaPendenteOuCancelada(venda)
+              ).length;
+              const naoEfetivadas = grupo.vendas.length - efetivadas;
+
+              return (
               <div key={grupo.forma}>
                 <div style={{ marginBottom: "10px" }}>
                   <strong style={{ color: "#16ca50" }}>{grupo.forma}</strong>{" "}
-                  <span>({grupo.vendas.length})</span>
+                  <span>
+                    ({efetivadas}
+                    {naoEfetivadas > 0 && ` · ${naoEfetivadas} pend./canc.`})
+                  </span>
                 </div>
 
                 <div className="categorias-lista">
@@ -393,7 +405,8 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </article>

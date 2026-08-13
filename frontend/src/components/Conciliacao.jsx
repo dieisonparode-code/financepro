@@ -1111,13 +1111,28 @@ function Conciliacao({ lojaId }) {
             }}
           >
             {agruparVendasPorFormaPagamento(resumo.ultimas_vendas).map(
-              (grupo) => (
+              (grupo) => {
+                // O contador tem que refletir só o que realmente
+                // efetivou — contar pendente/cancelada junto (mesmo que só
+                // na exibição do total) confunde, mesmo o valor em R$ já
+                // estando certo (esse nunca somou canceladas).
+                const efetivadas = grupo.vendas.filter(
+                  (venda) => !estaPendenteOuCancelada(venda)
+                ).length;
+                const naoEfetivadas = grupo.vendas.length - efetivadas;
+
+                return (
                 <div key={grupo.forma}>
                   <div style={{ marginBottom: "10px" }}>
                     <strong style={{ color: "#16ca50" }}>
                       {grupo.forma}
                     </strong>{" "}
-                    <span>({grupo.vendas.length})</span>
+                    <span>
+                      ({efetivadas}
+                      {naoEfetivadas > 0 &&
+                        ` · ${naoEfetivadas} pend./canc.`}
+                      )
+                    </span>
                   </div>
 
                   <div className="categorias-lista">
@@ -1169,7 +1184,8 @@ function Conciliacao({ lojaId }) {
                     })}
                   </div>
                 </div>
-              )
+                );
+              }
             )}
           </div>
         )}
