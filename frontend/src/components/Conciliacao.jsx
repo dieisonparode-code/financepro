@@ -803,38 +803,56 @@ function Conciliacao({ lojaId }) {
   // efeito abaixo também precisa desse valor pra pré-preencher o
   // Informado.
   const totaisBrutosSistema = useMemo(() => {
-    const totaisBrutos = { ...(resumo?.totais_brutos_por_forma_pagamento || {}) };
+    const totaisBrutos = {};
 
-    // iFood/Brendi (Pago Online), Voucher Parceiro, A prazo (funcionários),
-    // Vale, Cortesia e QUALQUER outra forma nova que a Saipos vier a
-    // reportar entram automático como "Sistema" — só Dinheiro fica sem
-    // "Sistema" automático (é físico, só o que o operador informar mesmo).
-    // Crédito/Débito/Pix de balcão a Saipos também reporta, mas quem manda
-    // nesses é a PagSeguro (já preenchido acima), então são ignorados aqui
-    // pra não somar em dobro.
+    // Pedido do usuário (13/08/2026): pro Cartão de crédito/débito/PIX, o
+    // "Sistema" agora vem do Esperado da própria Saipos (o que ela
+    // esperava vender), não mais do valor real recebido na PagSeguro. O
+    // Informado continua sendo o que o operador digita/lê da foto (o que
+    // realmente entrou) — então o confronto passa a ser "Saipos esperava
+    // vender X" × "realmente entrou Y", pegando direto se uma venda não
+    // caiu na maquininha, sem depender de PagSeguro nem de digitação
+    // extra. iFood/Brendi (Pago Online), Voucher Parceiro, A prazo
+    // (funcionários), Vale, Cortesia e qualquer forma nova entram do
+    // mesmo jeito — só Dinheiro fica sem "Sistema" automático (é físico,
+    // só o que o operador informar mesmo).
     if (resumoSaipos?.totais_por_forma_pagamento) {
       Object.entries(resumoSaipos.totais_por_forma_pagamento).forEach(
         ([nomeSaipos, valor]) => {
-          if (/pix/i.test(nomeSaipos)) return; // já vem da PagSeguro
-          if (nomeSaipos === "Crédito" || nomeSaipos === "Débito") return; // já vem da PagSeguro
-          const nomeConfronto = MAPA_SAIPOS_PARA_CONFRONTO[nomeSaipos] || nomeSaipos;
+          let nomeConfronto;
+
+          if (/pix/i.test(nomeSaipos)) {
+            // Saipos pode reportar Pix em mais de uma linha (ex.: "Pix
+            // Conta Bancária" + "Pix QrCode") — some tudo numa única
+            // categoria "PIX".
+            nomeConfronto = "PIX";
+          } else if (nomeSaipos === "Crédito") {
+            nomeConfronto = "Cartão de crédito";
+          } else if (nomeSaipos === "Débito") {
+            nomeConfronto = "Cartão de débito";
+          } else {
+            nomeConfronto = MAPA_SAIPOS_PARA_CONFRONTO[nomeSaipos] || nomeSaipos;
+          }
+
           if (nomeConfronto === "Dinheiro") return; // Dinheiro não tem Sistema automático
-          totaisBrutos[nomeConfronto] = Number(valor || 0);
+
+          totaisBrutos[nomeConfronto] =
+            (totaisBrutos[nomeConfronto] || 0) + Number(valor || 0);
         }
       );
     }
 
     // Valor manual informado pelo usuário só pra esse fechamento
     // específico (ex.: Dinheiro, que normalmente não tem "Sistema"
-    // automático) — sobrescreve o que vier de PagSeguro/Saipos. Recurso
-    // raro, usado só em algum caso pontual — hoje nenhum fechamento usa.
+    // automático) — sobrescreve o que vier da Saipos. Recurso raro, usado
+    // só em algum caso pontual.
     const sistemaManual = mesclarDosItens(grupoEscolhido, "sistema_manual");
     if (sistemaManual) {
       Object.assign(totaisBrutos, sistemaManual);
     }
 
     return totaisBrutos;
-  }, [resumo, resumoSaipos, grupoEscolhido]);
+  }, [resumoSaipos, grupoEscolhido]);
 
   // Pedido do usuário (12/08/2026): o Informado não deve começar em
   // branco — já vem pré-preenchido com o valor do Sistema (Esperado),
@@ -859,6 +877,33 @@ function Conciliacao({ lojaId }) {
       return mudou ? novo : anterior;
     });
   }, [totaisBrutosSistema]);
+
+  // Pedido do usuário (13/08/2026): pro Cartão de crédito/débito/PIX, o
+  // Informado tem que vir DIRETO da PagSeguro (valor real que entrou),
+  // nunca digitado/lido da foto — a Saipos já virou o "Sistema" (Esperado)
+  // acima, então esses 3 ficam automáticos nas duas pontas, sem depender
+  // de leitura de IA (que foi a causa de vários números errados hoje).
+  // SEMPRE sobrescreve (não só quando está em branco), porque esses 3 não
+  // têm mais nada pra o operador digitar.
+  useEffect(() => {
+    const totaisPagSeguro = resumo?.totais_brutos_por_forma_pagamento;
+    if (!totaisPagSeguro) return;
+
+    setValoresInformados((anterior) => {
+      const novo = { ...anterior };
+      let mudou = false;
+
+      ["Cartão de crédito", "Cartão de débito", "PIX"].forEach((forma) => {
+        const valorPagSeguro = Number(totaisPagSeguro[forma] || 0).toFixed(2);
+        if (novo[forma] !== valorPagSeguro) {
+          novo[forma] = valorPagSeguro;
+          mudou = true;
+        }
+      });
+
+      return mudou ? novo : anterior;
+    });
+  }, [resumo]);
 
   // Confronto Sistema × Informado calculado aqui (não só dentro da tabela)
   // pra poder mostrar um aviso no topo da tela quando tiver diferença,
@@ -1300,6 +1345,18 @@ function Conciliacao({ lojaId }) {
                                         ...anterior,
                                         [forma]: evento.target.value,
                                       }))
+                                    }
+                                    disabled={[
+                                      "Cartão de crédito",
+                                      "Cartão de débito",
+                                      "PIX",
+                                    ].includes(forma)}
+                                    title={
+                                      ["Cartão de crédito", "Cartão de débito", "PIX"].includes(
+                                        forma
+                                      )
+                                        ? "Vem automático da PagSeguro — não precisa (nem dá) editar."
+                                        : undefined
                                     }
                                     style={{ maxWidth: "120px" }}
                                   />
