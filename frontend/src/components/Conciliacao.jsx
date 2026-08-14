@@ -479,12 +479,19 @@ function Conciliacao({ lojaId }) {
       new Set(validos.flatMap((r) => r.formasNaoLidas || []))
     );
     const erro = validos.find((r) => r.erro_leitura);
+    const avisoSomaNaoBate = validos.find((r) => r.avisoSomaNaoBate)
+      ?.avisoSomaNaoBate;
 
     if (!algumSucesso && erro) {
       return { erro_leitura: erro.erro_leitura, debugRespostaIa: erro.debugRespostaIa };
     }
 
-    return { sucesso: algumSucesso, salvo: algumSalvo, formasNaoLidas };
+    return {
+      sucesso: algumSucesso,
+      salvo: algumSalvo,
+      formasNaoLidas,
+      avisoSomaNaoBate: avisoSomaNaoBate || null,
+    };
   }
 
   // Usa uma leitura já salva anteriormente, sem chamar a IA de novo.
@@ -665,7 +672,11 @@ function Conciliacao({ lojaId }) {
         .filter(([, valor]) => valor == null)
         .map(([forma]) => forma);
 
-      const resultadoOk = { sucesso: true, formasNaoLidas };
+      const resultadoOk = {
+        sucesso: true,
+        formasNaoLidas,
+        avisoSomaNaoBate: resultado.aviso_soma_nao_bate || null,
+      };
       if (!silencioso) setResultadoFoto(resultadoOk);
 
       // A coluna "Esperado" do próprio comprovante (Saipos já faz essa
@@ -1260,6 +1271,51 @@ function Conciliacao({ lojaId }) {
                 {resultadoFoto.formasNaoLidas?.length > 0 &&
                   ` Não consegui ler: ${resultadoFoto.formasNaoLidas.join(", ")} — preencha essa(s) manualmente.`}
               </>
+            )}
+          </div>
+        )}
+
+        {resultadoFoto?.avisoSomaNaoBate && (
+          <div
+            className="empty-state"
+            style={{ color: "#f59e0b", marginBottom: "10px" }}
+          >
+            ⚠️ A soma dos valores que a IA leu não bate com o TOTAL impresso
+            no próprio comprovante — confira os números manualmente antes de
+            confiar neles.
+            {resultadoFoto.avisoSomaNaoBate.em_caixa && (
+              <div style={{ marginTop: 4 }}>
+                Em caixa: soma leu{" "}
+                {formatarMoeda(
+                  resultadoFoto.avisoSomaNaoBate.em_caixa.soma_calculada
+                )}
+                , mas o comprovante mostra TOTAL{" "}
+                {formatarMoeda(
+                  resultadoFoto.avisoSomaNaoBate.em_caixa.total_impresso
+                )}{" "}
+                (diferença de{" "}
+                {formatarMoeda(
+                  resultadoFoto.avisoSomaNaoBate.em_caixa.diferenca
+                )}
+                ).
+              </div>
+            )}
+            {resultadoFoto.avisoSomaNaoBate.esperado && (
+              <div style={{ marginTop: 4 }}>
+                Esperado: soma leu{" "}
+                {formatarMoeda(
+                  resultadoFoto.avisoSomaNaoBate.esperado.soma_calculada
+                )}
+                , mas o comprovante mostra TOTAL{" "}
+                {formatarMoeda(
+                  resultadoFoto.avisoSomaNaoBate.esperado.total_impresso
+                )}{" "}
+                (diferença de{" "}
+                {formatarMoeda(
+                  resultadoFoto.avisoSomaNaoBate.esperado.diferenca
+                )}
+                ).
+              </div>
             )}
           </div>
         )}
