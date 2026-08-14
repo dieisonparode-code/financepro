@@ -53,6 +53,12 @@ export async function buscarLancamentos() {
   return requisicao("/lancamentos", { headers: await cabecalhoAutenticado() });
 }
 
+export async function baixarBackupCompleto() {
+  return requisicao("/backup/exportar", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarFotoLancamento(id) {
   return requisicao(`/lancamentos/${id}/foto`, {
     headers: await cabecalhoAutenticado(),

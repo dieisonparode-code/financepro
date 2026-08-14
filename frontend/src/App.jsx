@@ -44,6 +44,7 @@ import {
   editarDespesaRecorrente,
   excluirDespesaRecorrente,
   buscarHistoricoFornecedores,
+  baixarBackupCompleto,
   buscarClientes,
   criarCliente,
   atualizarCliente,
@@ -444,6 +445,7 @@ function FinanceApp() {
     "lojas",
     "usuarios",
     "auditoria",
+    "backup",
   ];
   const [menuMaisAberto, setMenuMaisAberto] = useState(() =>
     PAGINAS_MENU_MAIS.includes(searchParams.get("pagina") || "dashboard")
@@ -776,6 +778,34 @@ function FinanceApp() {
   useEffect(() => {
     carregarHistoricoFornecedores();
   }, []);
+
+  const [gerandoBackup, setGerandoBackup] = useState(false);
+  const [ultimoBackupGeradoEm, setUltimoBackupGeradoEm] = useState(null);
+
+  async function baixarBackup() {
+    setGerandoBackup(true);
+
+    try {
+      const backup = await baixarBackupCompleto();
+
+      const arquivo = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json",
+      });
+
+      const url = URL.createObjectURL(arquivo);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `financepro-backup-${hojeLocal()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      setUltimoBackupGeradoEm(new Date());
+    } catch (erro) {
+      alert(erro.message || "Não foi possível gerar o backup.");
+    } finally {
+      setGerandoBackup(false);
+    }
+  }
 
   async function adicionarDespesaRecorrente(dados) {
     await criarDespesaRecorrente(dados);
@@ -3129,6 +3159,15 @@ const statusCmv =
                       Log de Auditoria
                     </button>
                   )}
+
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "backup" ? "active" : ""}
+                      onClick={() => setPagina("backup")}
+                    >
+                      💾 Backup
+                    </button>
+                  )}
                 </div>
               )}
             </>
@@ -3812,6 +3851,55 @@ const statusCmv =
             carregando={carregandoFornecedores}
             lojas={lojas}
           />
+        )}
+
+        {pagina === "backup" && ehAdministrador && (
+          <section className="categorias-layout">
+            <article className="panel categoria-form-panel">
+              <div className="panel-header">
+                <div>
+                  <span className="eyebrow">Segurança</span>
+                  <h2>Backup dos dados</h2>
+                </div>
+              </div>
+
+              <p style={{ color: "#9fb0c4", fontSize: 13.5 }}>
+                Baixa um arquivo com todos os dados financeiros do sistema
+                (lançamentos, contas a pagar, categorias, clientes, lojas,
+                fechamentos de caixa, estoque, notas fiscais etc.) — uma
+                cópia extra de segurança, caso algo dê errado no Supabase ou
+                algum registro seja apagado por engano.
+              </p>
+
+              <p style={{ color: "#9fb0c4", fontSize: 13.5 }}>
+                As fotos anexadas (comprovantes, notas) <strong>não</strong>{" "}
+                entram nesse arquivo — deixaria o download gigante, e elas
+                continuam seguras no próprio Supabase. Isso não substitui um
+                backup do banco de dados em si.
+              </p>
+
+              <button
+                type="button"
+                className="primary-button"
+                onClick={baixarBackup}
+                disabled={gerandoBackup}
+              >
+                {gerandoBackup
+                  ? "Gerando backup..."
+                  : "💾 Baixar backup completo (JSON)"}
+              </button>
+
+              {ultimoBackupGeradoEm && (
+                <p style={{ color: "#16ca50", fontSize: 13, marginTop: 10 }}>
+                  ✅ Último backup baixado em{" "}
+                  {ultimoBackupGeradoEm.toLocaleString("pt-BR", {
+                    timeZone: "America/Sao_Paulo",
+                  })}
+                  .
+                </p>
+              )}
+            </article>
+          </section>
         )}
 
         {pagina === "clientes" && (

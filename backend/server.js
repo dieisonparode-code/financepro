@@ -307,6 +307,88 @@ app.get("/", function (req, res) {
   res.send("FinancePro API funcionando!");
 });
 
+// Pedido do usuário (14/08/2026): "backup/exportação de dados — hoje tudo
+// depende só do Supabase". Baixa um JSON com todas as tabelas principais,
+// SEM as fotos em base64 (deixaria o arquivo gigante e as fotos já ficam
+// seguras dentro do próprio Supabase) — é o que protege contra perder
+// lançamento/registro por engano, não substitui backup do banco em si.
+// Só administrador pode baixar (dado financeiro completo de todas as lojas).
+const CAMPOS_FOTO_PARA_REMOVER = [
+  "foto",
+  "foto_mercadoria",
+  "fotos_extra",
+  "comprovante_pagamento",
+];
+
+function removerFotosDoRegistro(registro) {
+  const copia = { ...registro };
+  CAMPOS_FOTO_PARA_REMOVER.forEach((campo) => {
+    if (campo in copia) {
+      copia[campo] = copia[campo] ? "(removido do backup)" : copia[campo];
+    }
+  });
+  return copia;
+}
+
+const TABELAS_BACKUP = [
+  "lancamentos",
+  "contas_pagar",
+  "categorias",
+  "clientes",
+  "lojas",
+  "formas_pagamento",
+  "despesas_recorrentes",
+  "fechamentos_caixa",
+  "fechamento_caixa_finalizacoes",
+  "fechamento_saipos",
+  "caixa_dinheiro_informado",
+  "insumos",
+  "movimentacoes_estoque",
+  "notas_fiscais",
+  "atendimentos_clientes",
+  "configuracoes",
+  "perfis",
+];
+
+app.get("/backup/exportar", verificarAdmin, async function (req, res) {
+  try {
+    const resultado = {};
+
+    for (const tabela of TABELAS_BACKUP) {
+      const { data, error } = await supabase.from(tabela).select("*");
+
+      if (error) {
+        resultado[tabela] = { erro: error.message };
+        continue;
+      }
+
+      resultado[tabela] = (data || []).map(removerFotosDoRegistro);
+    }
+
+    registrarAuditoria(
+      req,
+      "baixou backup completo dos dados",
+      "sistema",
+      null,
+      null
+    );
+
+    res.json({
+      gerado_em: new Date().toISOString(),
+      observacao:
+        "Backup sem fotos (removidas pra não deixar o arquivo gigante — elas continuam seguras no Supabase). Não substitui backup do banco de dados em si, é uma cópia de segurança dos registros.",
+      tabelas: resultado,
+    });
+  } catch (erro) {
+    console.error("Erro ao gerar backup:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível gerar o backup.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 const colunasListagem =
   "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
 
