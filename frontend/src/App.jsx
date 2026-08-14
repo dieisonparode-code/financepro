@@ -1519,6 +1519,102 @@ const statusCmv =
   
    
 
+  // Pedido do usuário (14/08/2026): previsão de DAS (Simples Nacional) só
+  // pra loja de Uberlândia — é a única com CNPJ próprio hoje (as outras 3
+  // são matriz/filiais de outro CNPJ, cálculo diferente que não fazemos
+  // aqui ainda). Anexo I (Comércio), confirmado pelo usuário. Tabela
+  // oficial vigente desde a LC 155/2016 (Jan/2018), sem mudança até
+  // 2026 — se a Receita reajustar as faixas/alíquotas no futuro, essa
+  // tabela precisa ser atualizada à mão.
+  const LOJA_ID_UBERLANDIA = 4;
+  const TABELA_SIMPLES_ANEXO_I = [
+    { ate: 180000, aliquota: 0.04, deduzir: 0 },
+    { ate: 360000, aliquota: 0.073, deduzir: 5940 },
+    { ate: 720000, aliquota: 0.095, deduzir: 13860 },
+    { ate: 1800000, aliquota: 0.107, deduzir: 22500 },
+    { ate: 3600000, aliquota: 0.143, deduzir: 87300 },
+    { ate: 4800000, aliquota: 0.19, deduzir: 378000 },
+  ];
+
+  const [mesImpostoSelecionado, setMesImpostoSelecionado] = useState(
+    hoje.slice(0, 7)
+  );
+
+  const previsaoImpostoUberlandia = useMemo(() => {
+    const [anoRef, mesRef] = mesImpostoSelecionado.split("-").map(Number);
+
+    if (!anoRef || !mesRef) return null;
+
+    // RBT12 = soma da receita bruta dos 12 MESES ANTERIORES ao mês
+    // escolhido (não inclui o próprio mês) — é assim que a Receita
+    // Federal define pra achar a alíquota efetiva (mesma regra do
+    // PGDAS-D).
+    function chaveMes(ano, mes) {
+      return `${ano}-${String(mes).padStart(2, "0")}`;
+    }
+
+    const mesesRbt12 = [];
+    let anoIter = anoRef;
+    let mesIter = mesRef;
+
+    for (let i = 0; i < 12; i++) {
+      mesIter -= 1;
+      if (mesIter === 0) {
+        mesIter = 12;
+        anoIter -= 1;
+      }
+      mesesRbt12.push(chaveMes(anoIter, mesIter));
+    }
+
+    const receitasUberlandia = lancamentos.filter(
+      (item) =>
+        item.tipo === "receita" &&
+        String(item.loja_id) === String(LOJA_ID_UBERLANDIA) &&
+        (item.status || "aprovado") === "aprovado"
+    );
+
+    const rbt12 = receitasUberlandia
+      .filter((item) => mesesRbt12.includes((item.data || "").slice(0, 7)))
+      .reduce((soma, item) => soma + Number(item.valor || 0), 0);
+
+    const faturamentoDoMes = receitasUberlandia
+      .filter(
+        (item) => (item.data || "").slice(0, 7) === mesImpostoSelecionado
+      )
+      .reduce((soma, item) => soma + Number(item.valor || 0), 0);
+
+    // RBT12 usa os últimos 12 meses ANTERIORES — se a loja tem menos de 12
+    // meses de histórico no sistema, o cálculo abaixo já reflete isso (só
+    // soma o que existir), o que pode SUBESTIMAR a faixa real se ela já
+    // faturava antes de usar o FinancePro — aviso disso na tela.
+    const faixa =
+      TABELA_SIMPLES_ANEXO_I.find((linha) => rbt12 <= linha.ate) ||
+      TABELA_SIMPLES_ANEXO_I[TABELA_SIMPLES_ANEXO_I.length - 1];
+
+    const aliquotaEfetiva =
+      rbt12 > 0
+        ? Math.max(
+            0,
+            (rbt12 * faixa.aliquota - faixa.deduzir) / rbt12
+          )
+        : faixa.aliquota;
+
+    const dasEstimado = faturamentoDoMes * aliquotaEfetiva;
+
+    return {
+      rbt12,
+      faturamentoDoMes,
+      faixa,
+      aliquotaEfetiva,
+      dasEstimado,
+      mesesComDados: mesesRbt12.filter((mesChave) =>
+        receitasUberlandia.some(
+          (item) => (item.data || "").slice(0, 7) === mesChave
+        )
+      ).length,
+    };
+  }, [lancamentos, mesImpostoSelecionado]);
+
   const rankingCategoriasRelatorio = useMemo(() => {
     const agrupadas = lancamentosRelatorio
       .filter((item) => item.tipo === "despesa")
@@ -4025,7 +4121,111 @@ const statusCmv =
             >
               Caixa
             </button>
+
+            <button
+              type="button"
+              className={tipoRelatorio === "impostos" ? "active" : ""}
+              onClick={() => setTipoRelatorio("impostos")}
+            >
+              💰 Impostos (Simples Nacional)
+            </button>
           </div>
+        )}
+
+        {pagina === "relatorios" && tipoRelatorio === "impostos" && (
+          <section className="panel report-print-area">
+            <div className="panel-header report-header">
+              <div>
+                <span className="eyebrow">X Calota Uberlândia</span>
+                <h2>Previsão de DAS (Simples Nacional — Anexo I)</h2>
+              </div>
+            </div>
+
+            <p style={{ color: "#9fb0c4", fontSize: 13.5 }}>
+              Cálculo só pra loja de Uberlândia, que tem CNPJ próprio (as
+              outras lojas são matriz/filiais de outro CNPJ). Usa a tabela
+              oficial do Simples Nacional, Anexo I, e o faturamento já
+              lançado neste sistema. É uma <strong>estimativa</strong> — não
+              substitui o cálculo oficial do contador/PGDAS-D, que pode
+              considerar sublimites, retenções, ISS ou outros fatores não
+              vistos aqui.
+            </p>
+
+            <div className="report-filters no-print">
+              <label>
+                Mês de apuração
+                <input
+                  type="month"
+                  value={mesImpostoSelecionado}
+                  onChange={(evento) =>
+                    setMesImpostoSelecionado(evento.target.value)
+                  }
+                />
+              </label>
+            </div>
+
+            {previsaoImpostoUberlandia && (
+              <>
+                {previsaoImpostoUberlandia.mesesComDados < 12 && (
+                  <div className="empty-state" style={{ color: "#f59e0b" }}>
+                    ⚠️ Esse cálculo só encontrou faturamento lançado em{" "}
+                    {previsaoImpostoUberlandia.mesesComDados} dos 12 meses
+                    anteriores a{" "}
+                    {mesImpostoSelecionado.split("-").reverse().join("/")}. Se
+                    a loja já faturava antes de usar o FinancePro, o RBT12
+                    abaixo pode estar SUBESTIMADO — confira com o contador.
+                  </div>
+                )}
+
+                <div className="reports-grid">
+                  <article className="panel report-card">
+                    <span>Faturamento do mês</span>
+                    <strong>
+                      {formatarMoeda(
+                        previsaoImpostoUberlandia.faturamentoDoMes
+                      )}
+                    </strong>
+                  </article>
+
+                  <article className="panel report-card">
+                    <span>RBT12 (últimos 12 meses)</span>
+                    <strong>
+                      {formatarMoeda(previsaoImpostoUberlandia.rbt12)}
+                    </strong>
+                  </article>
+
+                  <article className="panel report-card">
+                    <span>Alíquota efetiva</span>
+                    <strong>
+                      {(
+                        previsaoImpostoUberlandia.aliquotaEfetiva * 100
+                      ).toFixed(2)}
+                      %
+                    </strong>
+                    <small>
+                      Faixa: até{" "}
+                      {formatarMoeda(previsaoImpostoUberlandia.faixa.ate)} —
+                      alíquota nominal{" "}
+                      {(previsaoImpostoUberlandia.faixa.aliquota * 100).toFixed(
+                        2
+                      )}
+                      %
+                    </small>
+                  </article>
+
+                  <article
+                    className="panel report-card"
+                    style={{ borderColor: "#1476ff" }}
+                  >
+                    <span>DAS estimado do mês</span>
+                    <strong>
+                      {formatarMoeda(previsaoImpostoUberlandia.dasEstimado)}
+                    </strong>
+                  </article>
+                </div>
+              </>
+            )}
+          </section>
         )}
 
         {pagina === "relatorios" && tipoRelatorio === "financeiro" && (
