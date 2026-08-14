@@ -350,20 +350,31 @@ const TABELAS_BACKUP = [
   "perfis",
 ];
 
+async function gerarBackupCompleto() {
+  const resultado = {};
+
+  for (const tabela of TABELAS_BACKUP) {
+    const { data, error } = await supabase.from(tabela).select("*");
+
+    if (error) {
+      resultado[tabela] = { erro: error.message };
+      continue;
+    }
+
+    resultado[tabela] = (data || []).map(removerFotosDoRegistro);
+  }
+
+  return {
+    gerado_em: new Date().toISOString(),
+    observacao:
+      "Backup sem fotos (removidas pra não deixar o arquivo gigante — elas continuam seguras no Supabase). Não substitui backup do banco de dados em si, é uma cópia de segurança dos registros.",
+    tabelas: resultado,
+  };
+}
+
 app.get("/backup/exportar", verificarAdmin, async function (req, res) {
   try {
-    const resultado = {};
-
-    for (const tabela of TABELAS_BACKUP) {
-      const { data, error } = await supabase.from(tabela).select("*");
-
-      if (error) {
-        resultado[tabela] = { erro: error.message };
-        continue;
-      }
-
-      resultado[tabela] = (data || []).map(removerFotosDoRegistro);
-    }
+    const backup = await gerarBackupCompleto();
 
     registrarAuditoria(
       req,
@@ -373,12 +384,7 @@ app.get("/backup/exportar", verificarAdmin, async function (req, res) {
       null
     );
 
-    res.json({
-      gerado_em: new Date().toISOString(),
-      observacao:
-        "Backup sem fotos (removidas pra não deixar o arquivo gigante — elas continuam seguras no Supabase). Não substitui backup do banco de dados em si, é uma cópia de segurança dos registros.",
-      tabelas: resultado,
-    });
+    res.json(backup);
   } catch (erro) {
     console.error("Erro ao gerar backup:", erro.message);
 
@@ -388,6 +394,139 @@ app.get("/backup/exportar", verificarAdmin, async function (req, res) {
     });
   }
 });
+
+// Pedido do usuário (14/08/2026): backup automático todo dia às 5h da
+// manhã. Baixar direto pro notebook do usuário não é possível sem o
+// navegador aberto naquele horário — em vez disso, o servidor gera e
+// GUARDA o backup dentro do próprio sistema; o usuário entra na tela
+// Backup quando quiser e baixa qualquer um dos últimos gerados.
+app.get(
+  "/backup/automaticos",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("backups_automaticos")
+        .select("id, criado_em, tamanho_bytes")
+        .order("criado_em", { ascending: false })
+        .limit(30);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao listar backups automáticos:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível listar os backups automáticos.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/backup/automaticos/:id",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do backup inválido." });
+      }
+
+      const { data, error } = await supabase
+        .from("backups_automaticos")
+        .select("conteudo")
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(
+        req,
+        "baixou backup automático dos dados",
+        "sistema",
+        id,
+        null
+      );
+
+      res.json(data.conteudo);
+    } catch (erro) {
+      console.error("Erro ao buscar backup automático:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar esse backup.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+let ultimoDiaBackupAutomatico = null;
+
+async function rodarBackupAutomaticoDiario() {
+  const hojeStr = dataBrasilia(0);
+
+  if (ultimoDiaBackupAutomatico === hojeStr) {
+    return;
+  }
+
+  ultimoDiaBackupAutomatico = hojeStr;
+
+  try {
+    const backup = await gerarBackupCompleto();
+    const conteudoTexto = JSON.stringify(backup);
+    const tamanhoBytes = Buffer.byteLength(conteudoTexto, "utf8");
+
+    const { error: erroInsert } = await supabase
+      .from("backups_automaticos")
+      .insert([{ conteudo: backup, tamanho_bytes: tamanhoBytes }]);
+
+    if (erroInsert) {
+      throw erroInsert;
+    }
+
+    await supabase.from("log_auditoria").insert([
+      {
+        usuario_id: null,
+        usuario_nome: "Automação (Backup diário)",
+        acao: "gerou backup automático dos dados",
+        tabela_afetada: "sistema",
+        registro_id: null,
+        detalhes: `Backup gerado às 5h — ${(tamanhoBytes / 1024).toFixed(1)} KB.`,
+      },
+    ]);
+
+    // Não guarda backup pra sempre — mantém só os últimos 30 dias, pra
+    // tabela não crescer sem limite.
+    const trintaDiasAtras = new Date();
+    trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
+
+    await supabase
+      .from("backups_automaticos")
+      .delete()
+      .lt("criado_em", trintaDiasAtras.toISOString());
+  } catch (erro) {
+    console.error("Erro no backup automático diário:", erro.message);
+  }
+}
+
+// Confere a cada minuto se já é 5h da manhã (horário de Brasília) pra
+// gerar o backup automático do dia — mesmo padrão de checagem já usado
+// pela importação da Saipos e pelas Despesas Recorrentes.
+setInterval(function () {
+  const { hora, minuto } = horaBrasilia();
+
+  if (hora === 5 && minuto < 5) {
+    rodarBackupAutomaticoDiario();
+  }
+}, 60 * 1000);
 
 const colunasListagem =
   "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";

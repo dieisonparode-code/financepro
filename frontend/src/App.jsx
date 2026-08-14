@@ -45,6 +45,8 @@ import {
   excluirDespesaRecorrente,
   buscarHistoricoFornecedores,
   baixarBackupCompleto,
+  listarBackupsAutomaticos,
+  baixarBackupAutomatico,
   buscarClientes,
   criarCliente,
   atualizarCliente,
@@ -781,29 +783,72 @@ function FinanceApp() {
 
   const [gerandoBackup, setGerandoBackup] = useState(false);
   const [ultimoBackupGeradoEm, setUltimoBackupGeradoEm] = useState(null);
+  const [backupsAutomaticos, setBackupsAutomaticos] = useState([]);
+  const [carregandoBackupsAutomaticos, setCarregandoBackupsAutomaticos] =
+    useState(false);
+  const [baixandoBackupAutomaticoId, setBaixandoBackupAutomaticoId] =
+    useState(null);
+
+  function salvarArquivoJson(objeto, nomeArquivo) {
+    const arquivo = new Blob([JSON.stringify(objeto, null, 2)], {
+      type: "application/json",
+    });
+
+    const url = URL.createObjectURL(arquivo);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = nomeArquivo;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function baixarBackup() {
     setGerandoBackup(true);
 
     try {
       const backup = await baixarBackupCompleto();
-
-      const arquivo = new Blob([JSON.stringify(backup, null, 2)], {
-        type: "application/json",
-      });
-
-      const url = URL.createObjectURL(arquivo);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `financepro-backup-${hojeLocal()}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-
+      salvarArquivoJson(backup, `financepro-backup-${hojeLocal()}.json`);
       setUltimoBackupGeradoEm(new Date());
     } catch (erro) {
       alert(erro.message || "Não foi possível gerar o backup.");
     } finally {
       setGerandoBackup(false);
+    }
+  }
+
+  async function carregarBackupsAutomaticos() {
+    try {
+      setCarregandoBackupsAutomaticos(true);
+      const dados = await listarBackupsAutomaticos();
+      setBackupsAutomaticos(Array.isArray(dados) ? dados : []);
+    } catch (erro) {
+      console.error("Erro ao carregar backups automáticos:", erro);
+    } finally {
+      setCarregandoBackupsAutomaticos(false);
+    }
+  }
+
+  useEffect(() => {
+    if (pagina === "backup" && ehAdministrador) {
+      carregarBackupsAutomaticos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagina]);
+
+  async function baixarUmBackupAutomatico(backup) {
+    setBaixandoBackupAutomaticoId(backup.id);
+
+    try {
+      const conteudo = await baixarBackupAutomatico(backup.id);
+      const dataArquivo = (backup.criado_em || "").slice(0, 10);
+      salvarArquivoJson(
+        conteudo,
+        `financepro-backup-automatico-${dataArquivo}.json`
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível baixar esse backup.");
+    } finally {
+      setBaixandoBackupAutomaticoId(null);
     }
   }
 
@@ -3897,6 +3942,66 @@ const statusCmv =
                   })}
                   .
                 </p>
+              )}
+            </article>
+
+            <article className="panel categoria-lista-panel">
+              <div className="panel-header">
+                <div>
+                  <span className="eyebrow">Automático</span>
+                  <h2>Backups gerados às 5h da manhã</h2>
+                </div>
+              </div>
+
+              <p style={{ color: "#9fb0c4", fontSize: 13.5 }}>
+                Todo dia às 5h o sistema gera um backup sozinho e guarda
+                aqui — mantém os últimos 30 dias. Baixar direto pro
+                notebook automaticamente não é possível sem o navegador
+                aberto naquele horário, então é só entrar aqui quando
+                precisar e baixar o dia que quiser.
+              </p>
+
+              {carregandoBackupsAutomaticos ? (
+                <p>Carregando...</p>
+              ) : backupsAutomaticos.length === 0 ? (
+                <div className="empty-state">
+                  Nenhum backup automático gerado ainda — o primeiro sai na
+                  próxima passagem das 5h da manhã.
+                </div>
+              ) : (
+                <div className="categorias-lista">
+                  {backupsAutomaticos.map((backup) => (
+                    <div key={backup.id} className="categoria-item">
+                      <div className="categoria-identificacao">
+                        <div className="categoria-icone">💾</div>
+                        <div>
+                          <strong>
+                            {new Date(backup.criado_em).toLocaleString(
+                              "pt-BR",
+                              { timeZone: "America/Sao_Paulo" }
+                            )}
+                          </strong>
+                          <div>
+                            {backup.tamanho_bytes
+                              ? `${(backup.tamanho_bytes / 1024).toFixed(1)} KB`
+                              : "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={baixandoBackupAutomaticoId === backup.id}
+                        onClick={() => baixarUmBackupAutomatico(backup)}
+                      >
+                        {baixandoBackupAutomaticoId === backup.id
+                          ? "Baixando..."
+                          : "⬇️ Baixar"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </article>
           </section>

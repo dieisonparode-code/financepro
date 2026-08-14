@@ -59,6 +59,18 @@ export async function baixarBackupCompleto() {
   });
 }
 
+export async function listarBackupsAutomaticos() {
+  return requisicao("/backup/automaticos", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function baixarBackupAutomatico(id) {
+  return requisicao(`/backup/automaticos/${id}`, {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarFotoLancamento(id) {
   return requisicao(`/lancamentos/${id}/foto`, {
     headers: await cabecalhoAutenticado(),
