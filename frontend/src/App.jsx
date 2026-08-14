@@ -538,6 +538,27 @@ function FinanceApp() {
   const [dataInicialRelatorio, setDataInicialRelatorio] =
     useState(primeiroDiaMes);
   const [dataFinalRelatorio, setDataFinalRelatorio] = useState(hoje);
+  // Pedido do usuário (14/08/2026): relatório "fechado por mês" pronto pra
+  // mandar pro contador — em vez de escolher data inicial/final na mão,
+  // escolhe direto o mês (input type="month") e o sistema já calcula o
+  // primeiro e o último dia daquele mês sozinho.
+  const [mesRelatorioSelecionado, setMesRelatorioSelecionado] = useState(
+    hoje.slice(0, 7)
+  );
+
+  function selecionarMesRelatorio(mesAnoTexto) {
+    setMesRelatorioSelecionado(mesAnoTexto);
+
+    if (!mesAnoTexto) return;
+
+    const [ano, mes] = mesAnoTexto.split("-").map(Number);
+    const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
+
+    setDataInicialRelatorio(`${mesAnoTexto}-01`);
+    setDataFinalRelatorio(
+      `${mesAnoTexto}-${String(ultimoDiaDoMes).padStart(2, "0")}`
+    );
+  }
 
   const [tipoRelatorio, setTipoRelatorio] = useState("financeiro");
   const [dataRelatorioCaixa, setDataRelatorioCaixa] = useState(hoje);
@@ -2530,9 +2551,27 @@ const statusCmv =
     const escapar = (valor) =>
       `"${String(valor).replace(/"/g, '""')}"`;
 
+    // Pedido do usu\u00E1rio (14/08/2026): relat\u00F3rio pro contador tamb\u00E9m sai
+    // com o resumo por categoria no final (Impostos, Fornecedores etc.),
+    // n\u00E3o s\u00F3 a lista solta de lan\u00E7amentos.
+    const linhasResumo = [
+      [],
+      ["RESUMO DO PER\u00CDODO"],
+      ["Faturamento", Number(totaisRelatorio.receitas).toFixed(2).replace(".", ",")],
+      ["Despesas", Number(totaisRelatorio.despesas).toFixed(2).replace(".", ",")],
+      ["Resultado", Number(totaisRelatorio.saldo).toFixed(2).replace(".", ",")],
+      [],
+      ["DESPESAS POR CATEGORIA"],
+      ...rankingCategoriasRelatorio.map((item) => [
+        item.categoria,
+        Number(item.valor).toFixed(2).replace(".", ","),
+      ]),
+    ];
+
     const csv = [
       cabecalho.map(escapar).join(";"),
       ...linhas.map((linha) => linha.map(escapar).join(";")),
+      ...linhasResumo.map((linha) => linha.map(escapar).join(";")),
     ].join("\n");
 
     const arquivo = new Blob(["\uFEFF" + csv], {
@@ -2542,7 +2581,7 @@ const statusCmv =
     const url = URL.createObjectURL(arquivo);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `relatorio-${dataInicialRelatorio}-a-${dataFinalRelatorio}.csv`;
+    link.download = `relatorio-contador-${dataInicialRelatorio}-a-${dataFinalRelatorio}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -2595,8 +2634,35 @@ const statusCmv =
       47
     );
 
+    // Pedido do usuário (14/08/2026): relatório pronto pra mandar pro
+    // contador precisa mostrar despesas resumidas por categoria (é onde
+    // aparecem Impostos, Fornecedores etc.), não só a lista solta de
+    // lançamentos — facilita a vida de quem só quer o resumo do mês.
+    documento.setFontSize(12);
+    documento.setTextColor(20, 20, 20);
+    documento.text("Despesas por categoria", 14, 58);
+
     autoTable(documento, {
-      startY: 53,
+      startY: 62,
+      head: [["Categoria", "Valor", "% do total de despesas"]],
+      body: rankingCategoriasRelatorio.map((item) => [
+        item.categoria,
+        formatarMoeda(item.valor),
+        totaisRelatorio.despesas > 0
+          ? `${((item.valor / totaisRelatorio.despesas) * 100).toFixed(1)}%`
+          : "-",
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [239, 68, 68] },
+    });
+
+    const proximoY = documento.lastAutoTable.finalY + 8;
+
+    documento.setFontSize(12);
+    documento.text("Lançamentos do período", 14, proximoY);
+
+    autoTable(documento, {
+      startY: proximoY + 4,
       head: [
         [
           "Data",
@@ -2620,7 +2686,7 @@ const statusCmv =
     });
 
     documento.save(
-      `relatorio-${dataInicialRelatorio}-a-${dataFinalRelatorio}.pdf`
+      `relatorio-contador-${dataInicialRelatorio}-a-${dataFinalRelatorio}.pdf`
     );
   }
 
@@ -3998,6 +4064,17 @@ const statusCmv =
             </div>
 
             <div className="report-filters no-print">
+              <label>
+                Fechar por mês (pra mandar pro contador)
+                <input
+                  type="month"
+                  value={mesRelatorioSelecionado}
+                  onChange={(evento) =>
+                    selecionarMesRelatorio(evento.target.value)
+                  }
+                />
+              </label>
+
               <label>
                 Data inicial
                 <input
