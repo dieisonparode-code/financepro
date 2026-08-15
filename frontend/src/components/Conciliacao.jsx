@@ -22,6 +22,21 @@ const MAPA_SAIPOS_PARA_CONFRONTO = {
   Vale: "Vale",
   Cortesia: "Cortesia",
 };
+
+// Formas em que dá pra confiar no valor que REALMENTE caiu na PagSeguro
+// (resumo.totais_brutos_por_forma_pagamento, já buscado direto da conta) —
+// pra essas, "Real em conta" vira a régua oficial de bateu/não bateu, não
+// mais o "Sistema" (Saipos), porque a categoria que o operador escolhe no
+// PDV da Saipos na hora da venda pode vir errada (achamos um caso real,
+// 15/08/2026: venda PIX lançada como Cartão de crédito, inflando o Sistema
+// do Cartão e esvaziando o do PIX, sem prejuízo nenhum de verdade — o
+// dinheiro caiu certinho, só a categoria ficou errada). Pago Online
+// (iFood/Brendi), A prazo, Vale, Voucher e Cortesia não têm fonte bancária
+// própria no sistema hoje — continuam usando o Sistema (Saipos) como
+// antes. Dinheiro nunca teve "Sistema" automático (é físico), continua
+// igual.
+const FORMAS_COM_REAL_EM_CONTA = ["Cartão de crédito", "Cartão de débito", "PIX"];
+
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
 // Converte o horário de um registro (o momento em que um fechamento foi
@@ -875,34 +890,47 @@ function Conciliacao({ lojaId }) {
   }, [resumoSaipos, grupoEscolhido]);
 
   // Pedido do usuário (12/08/2026): o Informado não deve começar em
-  // branco — já vem pré-preenchido com o valor do Sistema (Esperado),
-  // o operador só ajusta se o valor real contado no fechamento for
-  // diferente. Só preenche o que ainda estiver em branco (não sobrescreve
-  // nada que já foi lido da foto ou digitado).
+  // branco — já vem pré-preenchido, o operador só ajusta se o valor real
+  // contado no fechamento for diferente. Só preenche o que ainda estiver
+  // em branco (não sobrescreve nada que já foi lido da foto ou digitado).
+  // Atualizado (15/08/2026): pra Crédito/Débito/PIX, prioriza o valor Real
+  // em conta (PagSeguro) em vez do Sistema (Saipos) — é a fonte mais
+  // confiável agora. As demais formas continuam pré-preenchendo do
+  // Sistema, como sempre foi.
   useEffect(() => {
-    const formasComSistema = Object.keys(totaisBrutosSistema);
-    if (formasComSistema.length === 0) return;
+    const totaisReaisConta = resumo?.totais_brutos_por_forma_pagamento || {};
+    const formas = new Set([
+      ...Object.keys(totaisBrutosSistema),
+      ...Object.keys(totaisReaisConta).filter((forma) =>
+        FORMAS_COM_REAL_EM_CONTA.includes(forma)
+      ),
+    ]);
+    if (formas.size === 0) return;
 
     setValoresInformados((anterior) => {
       let mudou = false;
       const novo = { ...anterior };
 
-      formasComSistema.forEach((forma) => {
+      formas.forEach((forma) => {
         if (novo[forma] === undefined || novo[forma] === "") {
-          novo[forma] = Number(totaisBrutosSistema[forma] || 0).toFixed(2);
+          const valorBase = FORMAS_COM_REAL_EM_CONTA.includes(forma)
+            ? totaisReaisConta[forma] ?? totaisBrutosSistema[forma]
+            : totaisBrutosSistema[forma];
+          novo[forma] = Number(valorBase || 0).toFixed(2);
           mudou = true;
         }
       });
 
       return mudou ? novo : anterior;
     });
-  }, [totaisBrutosSistema]);
+  }, [totaisBrutosSistema, resumo]);
 
-  // Confronto Sistema × Informado calculado aqui (não só dentro da tabela)
-  // pra poder mostrar um aviso no topo da tela quando tiver diferença,
-  // igual o aviso de CMV alto do Dashboard.
+  // Confronto Sistema/Real em conta × Informado calculado aqui (não só
+  // dentro da tabela) pra poder mostrar um aviso no topo da tela quando
+  // tiver diferença, igual o aviso de CMV alto do Dashboard.
   const confrontoCalculado = useMemo(() => {
     const totaisBrutos = totaisBrutosSistema;
+    const totaisReaisConta = resumo?.totais_brutos_por_forma_pagamento || {};
 
     // A lista de linhas é a união do que o operador informou (foto/OCR) com
     // o que a Saipos/PagSeguro reportou como Sistema — assim, se aparecer
@@ -916,14 +944,25 @@ function Conciliacao({ lojaId }) {
     const linhas = todasAsFormas.map((forma) => {
       const temSistema = forma in totaisBrutos;
       const valorSistema = totaisBrutos[forma] || 0;
+
+      const temRealConta =
+        FORMAS_COM_REAL_EM_CONTA.includes(forma) && forma in totaisReaisConta;
+      const valorRealConta = temRealConta ? totaisReaisConta[forma] : null;
+
+      // Base usada pra decidir bateu/não bateu: Real em conta quando
+      // existir (mais confiável), senão cai pro Sistema (Saipos) — mesmo
+      // comportamento de antes pra quem não tem Real em conta.
+      const temBase = temRealConta || temSistema;
+      const valorBase = temRealConta ? valorRealConta : valorSistema;
+
       const valorInformadoTexto = valoresInformados[forma] ?? "";
       const temInformado = valorInformadoTexto !== "";
       const valorInformado = temInformado
         ? Number(valorInformadoTexto.replace(",", "."))
         : null;
       const diferenca =
-        temInformado && temSistema
-          ? Number((valorSistema - valorInformado).toFixed(2))
+        temInformado && temBase
+          ? Number((valorBase - valorInformado).toFixed(2))
           : null;
       const bateu = diferenca != null && Math.abs(diferenca) < 0.01;
 
@@ -931,6 +970,9 @@ function Conciliacao({ lojaId }) {
         forma,
         valorSistema,
         temSistema,
+        valorRealConta,
+        temRealConta,
+        temBase,
         temInformado,
         diferenca,
         bateu,
@@ -938,14 +980,14 @@ function Conciliacao({ lojaId }) {
     });
 
     const diferencaTotal = linhas
-      .filter((linha) => linha.temInformado && linha.temSistema)
+      .filter((linha) => linha.temInformado && linha.temBase)
       .reduce((soma, linha) => soma + linha.diferenca, 0);
     const algumInformado = linhas.some(
-      (linha) => linha.temInformado && linha.temSistema
+      (linha) => linha.temInformado && linha.temBase
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [totaisBrutosSistema, valoresInformados]);
+  }, [totaisBrutosSistema, valoresInformados, resumo]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
@@ -1334,7 +1376,7 @@ function Conciliacao({ lojaId }) {
             >
               <div>
                 <span className="eyebrow">Confronto</span>
-                <h2>Sistema × Informado, por forma de pagamento</h2>
+                <h2>Sistema / Real em conta × Informado, por forma de pagamento</h2>
               </div>
             </div>
 
@@ -1344,13 +1386,14 @@ function Conciliacao({ lojaId }) {
 
               return (
                 <>
-                  <div className="table-wrapper">
+                  <div className="table-wrapper tabela-responsiva">
                     <table>
                       <thead>
                         <tr>
                           <th>Forma de pagamento</th>
                           <th>Sistema</th>
                           <th>Informado</th>
+                          <th>Real em conta</th>
                           <th>Diferença</th>
                         </tr>
                       </thead>
@@ -1360,19 +1403,25 @@ function Conciliacao({ lojaId }) {
                             forma,
                             valorSistema,
                             temSistema,
+                            valorRealConta,
+                            temRealConta,
+                            temBase,
                             temInformado,
                             diferenca,
                             bateu,
                           }) => (
                             <Fragment key={forma}>
                               <tr>
-                                <td style={{ color: "#16ca50", fontWeight: 700 }}>
+                                <td
+                                  data-label="Forma de pagamento"
+                                  style={{ color: "#16ca50", fontWeight: 700 }}
+                                >
                                   {forma}
                                 </td>
-                                <td>
+                                <td data-label="Sistema">
                                   {temSistema ? formatarMoeda(valorSistema) : "—"}
                                 </td>
-                                <td>
+                                <td data-label="Informado">
                                   <input
                                     type="text"
                                     inputMode="decimal"
@@ -1387,10 +1436,26 @@ function Conciliacao({ lojaId }) {
                                     style={{ maxWidth: "120px" }}
                                   />
                                 </td>
+                                {/* Pedido do usuário (15/08/2026): valor que
+                                REALMENTE caiu na PagSeguro — só existe pra
+                                Cartão de crédito/débito/PIX (ver
+                                FORMAS_COM_REAL_EM_CONTA). É essa coluna que
+                                agora decide bateu/não bateu pra essas 3
+                                formas, não mais o Sistema (Saipos), porque a
+                                categoria escolhida no PDV pode vir errada. */}
                                 <td
+                                  data-label="Real em conta"
+                                  style={{ fontWeight: temRealConta ? 700 : 400 }}
+                                >
+                                  {temRealConta
+                                    ? formatarMoeda(valorRealConta)
+                                    : "—"}
+                                </td>
+                                <td
+                                  data-label="Diferença"
                                   style={{
                                     color:
-                                      !temInformado || !temSistema
+                                      !temInformado || !temBase
                                         ? undefined
                                         : bateu
                                         ? "#16ca50"
@@ -1400,7 +1465,7 @@ function Conciliacao({ lojaId }) {
                                     fontWeight: 700,
                                   }}
                                 >
-                                  {!temSistema
+                                  {!temBase
                                     ? "(sem comparação ainda)"
                                     : !temInformado
                                     ? "—"
@@ -1409,32 +1474,6 @@ function Conciliacao({ lojaId }) {
                                     : diferenca > 0
                                     ? `Falta ${formatarMoeda(diferenca)}`
                                     : `Sobra ${formatarMoeda(Math.abs(diferenca))}`}
-
-                                  {/* Pedido do usuário (13/08/2026): quando
-                                  Cartão/PIX não bater, mostra o valor real
-                                  da PagSeguro (maquininha/conta) aqui como
-                                  referência pra investigar a diferença. */}
-                                  {!bateu &&
-                                    temInformado &&
-                                    temSistema &&
-                                    ["Cartão de crédito", "Cartão de débito", "PIX"].includes(
-                                      forma
-                                    ) &&
-                                    resumo?.totais_brutos_por_forma_pagamento?.[forma] !=
-                                      null && (
-                                      <div
-                                        style={{
-                                          fontSize: "11px",
-                                          color: "#9fb0c4",
-                                          fontWeight: 400,
-                                        }}
-                                      >
-                                        PagSeguro:{" "}
-                                        {formatarMoeda(
-                                          resumo.totais_brutos_por_forma_pagamento[forma]
-                                        )}
-                                      </div>
-                                    )}
                                 </td>
                               </tr>
 
@@ -1445,12 +1484,12 @@ function Conciliacao({ lojaId }) {
                               caixa" — avisa na hora em vez de só mostrar o
                               número. */}
                               {forma === "Dinheiro" &&
-                                temSistema &&
+                                temBase &&
                                 temInformado &&
                                 !bateu && (
                                   <tr>
                                     <td
-                                      colSpan={4}
+                                      colSpan={5}
                                       style={{
                                         color: "#ffb020",
                                         fontSize: "12px",

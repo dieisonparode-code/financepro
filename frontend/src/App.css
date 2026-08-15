@@ -630,6 +630,96 @@ td {
   .categoria-item { align-items: flex-start; flex-direction: column; }
   .modal-actions { flex-direction: column-reverse; }
   .modal-actions button { width: 100%; }
+
+  /* Revisão mobile-first (15/08/2026) — telas mais usadas no celular
+     (Conciliação, Contas a Pagar) tinham botão/checkbox pequeno demais
+     pro dedo e tabela que sempre rolava de lado. Ver .tabela-responsiva
+     e .toque-alvo abaixo. */
+  .primary-button,
+  .secondary-button,
+  .edit-button,
+  .delete-button,
+  .approve-button,
+  .reject-button {
+    min-height: 44px;
+  }
+}
+
+/* Tabela que vira "cartões" empilhados no celular em vez de rolar de
+   lado — cada <td> precisa de um data-label="Nome da coluna" pra virar
+   o rótulo à esquerda. Usada por enquanto só no confronto da
+   Conciliação (frontend/src/components/Conciliacao.jsx); dá pra aplicar
+   em outras tabelas depois, uma de cada vez. */
+@media (max-width: 700px) {
+  .tabela-responsiva table {
+    min-width: 0;
+  }
+
+  .tabela-responsiva thead {
+    display: none;
+  }
+
+  .tabela-responsiva tbody tr {
+    display: block;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(95, 135, 180, .16);
+  }
+
+  .tabela-responsiva tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .tabela-responsiva td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: none;
+  }
+
+  .tabela-responsiva td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: #9fb0c4;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  .tabela-responsiva td[colspan] {
+    display: block;
+  }
+
+  .tabela-responsiva td[colspan]::before {
+    content: none;
+  }
+
+  .tabela-responsiva td input {
+    max-width: 140px !important;
+    text-align: right;
+  }
+}
+
+/* Área de toque maior em volta de um checkbox pequeno (ex.: seleção em
+   lote em Contas a Pagar) — o quadradinho continua do mesmo tamanho
+   visual, mas o dedo acerta numa área bem maior ao redor dele. */
+.toque-alvo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -13px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.toque-alvo input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
 }
 /* CORREÇÃO DO MODAL DE RECEITAS E DESPESAS */
 

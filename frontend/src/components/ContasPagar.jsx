@@ -840,12 +840,18 @@ function ContasPagar({
                 <div className="categoria-item" key={conta.id}>
                   <div className="categoria-identificacao">
                     {modo === "pendentes" && (
-                      <input
-                        type="checkbox"
-                        checked={selecionadas.includes(conta.id)}
-                        onChange={() => alternarSelecao(conta.id)}
-                        style={{ width: 20, height: 20, flexShrink: 0 }}
-                      />
+                      // 15/08/2026: checkbox em si continua pequeno
+                      // visualmente, mas o "label" ao redor dá uma área
+                      // de toque de 44x44 pro dedo acertar (antes eram só
+                      // os 20x20 do quadradinho, fácil de errar no
+                      // celular). Ver .toque-alvo em App.css.
+                      <label className="toque-alvo">
+                        <input
+                          type="checkbox"
+                          checked={selecionadas.includes(conta.id)}
+                          onChange={() => alternarSelecao(conta.id)}
+                        />
+                      </label>
                     )}
 
                     <div className="categoria-icone">
