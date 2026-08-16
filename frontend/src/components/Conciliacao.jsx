@@ -1359,7 +1359,7 @@ function Conciliacao({ lojaId }) {
             >
               <div>
                 <span className="eyebrow">Confronto</span>
-                <h2>Sistema / Real em conta × Informado, por forma de pagamento</h2>
+                <h2>Esperado / Real em conta × Informado, por forma de pagamento</h2>
               </div>
             </div>
 
@@ -1374,7 +1374,7 @@ function Conciliacao({ lojaId }) {
                       <thead>
                         <tr>
                           <th>Forma de pagamento</th>
-                          <th>Sistema</th>
+                          <th>Esperado</th>
                           <th>Informado</th>
                           <th>Real em conta</th>
                           <th>Diferença</th>
@@ -1401,7 +1401,7 @@ function Conciliacao({ lojaId }) {
                                 >
                                   {forma}
                                 </td>
-                                <td data-label="Sistema">
+                                <td data-label="Esperado">
                                   {temSistema ? formatarMoeda(valorSistema) : "—"}
                                 </td>
                                 <td data-label="Informado">
@@ -1531,6 +1531,29 @@ function Conciliacao({ lojaId }) {
                         : `Diferença final total: sobra ${formatarMoeda(Math.abs(diferencaTotal))}`}
                     </div>
                     </div>
+                  )}
+
+                  {/* Pedido do usuário (16/08/2026): explicar que uma
+                  diferença numa forma isolada (ex: vendeu no débito mas o
+                  operador lançou como crédito na Saipos) é normal e não
+                  significa dinheiro sumindo — só o total no final é que
+                  confirma se faltou dinheiro de verdade ou foi só erro de
+                  categoria na hora de lançar a venda. */}
+                  {algumInformado && (
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--texto-secundario, #9aa0ac)",
+                        marginTop: "8px",
+                        textAlign: "right",
+                      }}
+                    >
+                      💡 Diferença numa forma isolada (ex: Crédito sobrando e
+                      Débito faltando) pode ser só erro de categoria na hora
+                      de lançar a venda — não significa dinheiro sumindo. O
+                      que decide se faltou dinheiro de verdade é a{" "}
+                      <strong>Diferença final total</strong> acima.
+                    </p>
                   )}
                 </>
               );
