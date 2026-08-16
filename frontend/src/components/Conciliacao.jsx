@@ -385,6 +385,39 @@ function Conciliacao({ lojaId }) {
     }));
   }
 
+  // BUG REAL corrigido (16/08/2026): antes disso, escolher uma data só
+  // marcava "grupoEscolhido" — a busca de verdade (PagSeguro + Saipos +
+  // foto) só rodava se o operador clicasse "✅ Conciliar agora" DEPOIS,
+  // num segundo passo manual. resumo/resumoSaipos são estado só de sessão
+  // (não salvo no banco), então reabrir um fechamento já conciliado antes
+  // (numa aba nova, depois de recarregar a página, etc) sem clicar
+  // "Conciliar agora" de novo deixava o Esperado do Cartão de crédito/
+  // débito/PIX (que só vem da Saipos/PagSeguro ao vivo, nunca salvo) em
+  // "—", enquanto os outros campos (Vale, A prazo, Pago Online — que TÊM
+  // um valor salvo no banco de uma leitura anterior) continuavam
+  // aparecendo normal. Resultado: tela pela metade, sem nenhum aviso do
+  // porquê. Agora a busca dispara sozinha ao escolher a data, sem
+  // depender do operador lembrar do segundo clique — só uma vez por data
+  // nessa sessão (não fica rebuscando à toa se já tem os dados).
+  useEffect(() => {
+    if (!grupoEscolhido) return;
+
+    const chave = grupoEscolhido.dataChave;
+    const jaTemSaipos = Object.prototype.hasOwnProperty.call(
+      resumoSaiposPorData,
+      chave
+    );
+    const jaTemPagSeguro = Object.prototype.hasOwnProperty.call(
+      resumoPorData,
+      chave
+    );
+
+    if (!jaTemSaipos || !jaTemPagSeguro) {
+      conciliarAgora();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupoEscolhido?.dataChave]);
+
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
   // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
   // de escolher qual Fechamento de Caixa usar, um botão busca a PagSeguro
@@ -1593,11 +1626,15 @@ function Conciliacao({ lojaId }) {
                               uma retirada do caixa que esqueceram de
                               registrar no botão "Pago com dinheiro do
                               caixa" — avisa na hora em vez de só mostrar o
-                              número. */}
+                              número. Só a partir de R$15,00 de diferença
+                              (pedido do usuário, 16/08/2026) — abaixo
+                              disso costuma ser só arredondamento/troco,
+                              não vale a pena interromper com aviso. */}
                               {forma === "Dinheiro" &&
                                 temBase &&
                                 temInformado &&
-                                !bateu && (
+                                !bateu &&
+                                Math.abs(diferenca) > 15 && (
                                   <tr>
                                     <td
                                       colSpan={5}
