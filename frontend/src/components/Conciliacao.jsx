@@ -132,6 +132,12 @@ function Conciliacao({ lojaId }) {
   const [erro, setErro] = useState("");
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [resultadoFoto, setResultadoFoto] = useState(null);
+  // Pedido do usuário (16/08/2026): "Esperado" não pode nunca ficar
+  // travado em "—" pra sempre só porque a IA não conseguiu ler algum
+  // número da foto (ex: Dinheiro sem Abertura/Vendas legível). Esses dois
+  // estados controlam a edição manual inline do Esperado, forma por forma.
+  const [editandoEsperado, setEditandoEsperado] = useState(null);
+  const [valorEsperadoDigitado, setValorEsperadoDigitado] = useState("");
   // Pedido do usuário (12/08/2026): só as formas que TODO fechamento tem
   // (cartão, pix, dinheiro) ficam fixas aqui. As outras (A prazo, Pago
   // Online, Vale, Voucher Parceiro, Cortesia, ou qualquer forma nova) só
@@ -799,6 +805,67 @@ function Conciliacao({ lojaId }) {
     }
   }
 
+  // Salva um valor de "Esperado" digitado na mão pelo operador — usado
+  // quando a leitura automática da foto não conseguiu ler aquele número
+  // (ex: Dinheiro sem Abertura/Vendas legível) ou leu errado. Mesmo
+  // caminho de gravação já usado pela leitura por IA (sistema_manual),
+  // só que a origem do valor agora é o teclado, não a IA — assim o
+  // "Esperado" nunca fica travado em "—" pra sempre.
+  async function salvarEsperadoManual(forma) {
+    if (!grupoEscolhido || !grupoEscolhido.itens?.length) return;
+
+    const valorNumero = Number(valorEsperadoDigitado.replace(",", "."));
+    if (!Number.isFinite(valorNumero)) {
+      alert("Digite um valor válido (ex: 150,00).");
+      return;
+    }
+
+    const idAlvo = grupoEscolhido.itens[0].id;
+    const sistemaAtual = mesclarDosItens(grupoEscolhido, "sistema_manual") || {};
+    const valoresAtuais = mesclarDosItens(grupoEscolhido, "valores_informados") || {};
+
+    try {
+      const salvo = await salvarValoresInformadosFechamento(idAlvo, valoresAtuais, {
+        ...sistemaAtual,
+        [forma]: valorNumero,
+      });
+
+      setFechamentosDisponiveis((anteriores) =>
+        anteriores.map((item) =>
+          item.id === idAlvo
+            ? {
+                ...item,
+                valores_informados: salvo.valores_informados,
+                sistema_manual: salvo.sistema_manual,
+              }
+            : item
+        )
+      );
+
+      setGrupoEscolhido((anterior) =>
+        anterior
+          ? {
+              ...anterior,
+              itens: anterior.itens.map((item) =>
+                item.id === idAlvo
+                  ? {
+                      ...item,
+                      valores_informados: salvo.valores_informados,
+                      sistema_manual: salvo.sistema_manual,
+                    }
+                  : item
+              ),
+            }
+          : anterior
+      );
+
+      setEditandoEsperado(null);
+      setValorEsperadoDigitado("");
+    } catch (erroSalvar) {
+      alert(erroSalvar.message || "Não foi possível salvar o valor.");
+    }
+  }
+
   async function verFotoSelecionada(id) {
     if (!id) return;
 
@@ -1402,7 +1469,78 @@ function Conciliacao({ lojaId }) {
                                   {forma}
                                 </td>
                                 <td data-label="Esperado">
-                                  {temSistema ? formatarMoeda(valorSistema) : "—"}
+                                  {editandoEsperado === forma ? (
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "4px",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoFocus
+                                        placeholder="0,00"
+                                        value={valorEsperadoDigitado}
+                                        onChange={(evento) =>
+                                          setValorEsperadoDigitado(evento.target.value)
+                                        }
+                                        style={{ maxWidth: "90px" }}
+                                      />
+                                      <button
+                                        type="button"
+                                        title="Salvar"
+                                        onClick={() => salvarEsperadoManual(forma)}
+                                      >
+                                        ✅
+                                      </button>
+                                      <button
+                                        type="button"
+                                        title="Cancelar"
+                                        onClick={() => {
+                                          setEditandoEsperado(null);
+                                          setValorEsperadoDigitado("");
+                                        }}
+                                      >
+                                        ✖️
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                      }}
+                                    >
+                                      {temSistema ? formatarMoeda(valorSistema) : "—"}
+                                      <button
+                                        type="button"
+                                        title={
+                                          temSistema
+                                            ? "Corrigir manualmente"
+                                            : "Informar manualmente (a leitura automática não achou esse valor)"
+                                        }
+                                        onClick={() => {
+                                          setEditandoEsperado(forma);
+                                          setValorEsperadoDigitado(
+                                            temSistema ? valorSistema.toFixed(2) : ""
+                                          );
+                                        }}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          cursor: "pointer",
+                                          fontSize: "12px",
+                                          opacity: 0.7,
+                                          padding: 0,
+                                        }}
+                                      >
+                                        ✏️
+                                      </button>
+                                    </span>
+                                  )}
                                 </td>
                                 <td data-label="Informado">
                                   <input
