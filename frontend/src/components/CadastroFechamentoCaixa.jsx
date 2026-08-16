@@ -28,6 +28,17 @@ const tiposFechamento = [
     corVerde: true,
     semCapture: true,
   },
+  // Pedido do usuário (16/08/2026): arquivar foto das comandas canceladas
+  // do turno — só evidência/auditoria (prova de que o cancelamento foi
+  // legítimo), igual ao padrão já usado em Notas Fiscais: NÃO lê valor
+  // por IA, NÃO gera despesa/conta a pagar, é só anexar/guardar.
+  {
+    valor: "comandas_canceladas",
+    rotulo: "Comandas Canceladas",
+    icone: "🚫",
+    semCapture: true,
+    ajuda: "Foto de cada comanda cancelada do turno — pode tirar quantas precisar, cada uma vira um registro separado.",
+  },
 ];
 
 function rotuloTipo(tipo) {

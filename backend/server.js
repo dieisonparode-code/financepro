@@ -2501,11 +2501,12 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
         "venda_prazo",
         "funcionario",
         "pago_dinheiro_caixa",
+        "comandas_canceladas",
       ].includes(dados.tipo)
     ) {
       return res.status(400).json({
         erro:
-          "Tipo inválido. Use caixa, boy, cozinha, venda_prazo, funcionario ou pago_dinheiro_caixa.",
+          "Tipo inválido. Use caixa, boy, cozinha, venda_prazo, funcionario, pago_dinheiro_caixa ou comandas_canceladas.",
       });
     }
 
