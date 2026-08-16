@@ -3030,6 +3030,66 @@ app.post(
   }
 );
 
+// Pedido do usuário (16/08/2026): quando um lançamento saiu errado no
+// PDV da Saipos (ex: venda categorizada na forma de pagamento errada) e
+// o fechamento já foi finalizado, hoje não tinha como o operador voltar
+// lá pra corrigir — a lista "Fechamento em aberto" só mostra o que
+// entrou DEPOIS da última finalização, e a consulta do último caixa
+// fechado é propositalmente só-leitura (ver "👁️ Consulta — só pra ver,
+// nada aqui pode ser editado ou excluído" no frontend). Essa rota reabre
+// o último fechamento finalizado — apaga só o REGISTRO de finalização
+// (não mexe nas fotos/lançamentos em si), fazendo os registros daquela
+// janela voltarem a aparecer em "Fechamento em aberto", editáveis/
+// excluíveis de novo, prontos pro operador corrigir e finalizar de novo.
+// Só admin: pedido explícito do usuário ("somente no meu usuário").
+app.delete(
+  "/fechamento-caixa-finalizacoes/:id",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      const { data: apagado, error } = await supabase
+        .from("fechamento_caixa_finalizacoes")
+        .delete()
+        .eq("id", id)
+        .select("id, criado_em")
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!apagado) {
+        return res.status(404).json({
+          erro: "Finalização não encontrada (já pode ter sido reaberta antes).",
+        });
+      }
+
+      registrarAuditoria(
+        req,
+        "reabriu fechamento de caixa (finalização apagada)",
+        "fechamento_caixa_finalizacoes",
+        id,
+        `Finalização de ${apagado.criado_em} reaberta pra correção`
+      );
+
+      res.json({ ok: true, id });
+    } catch (erro) {
+      console.error("Erro ao reabrir fechamento de caixa:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível reabrir esse fechamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 const SAIPOS_DATA_API_BASE = "https://data.saipos.io/v1";
 
 // A API de Dados da Saipos às vezes responde 502/503/504 (fila cheia,

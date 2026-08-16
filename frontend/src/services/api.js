@@ -498,6 +498,16 @@ export async function finalizarFechamentoCaixa() {
   });
 }
 
+// Só admin: reabre o último fechamento de caixa finalizado (apaga só a
+// marca de "finalizado", não mexe nas fotos/lançamentos) pra deixar o
+// operador corrigir um lançamento equivocado e fechar de novo.
+export async function reabrirFechamentoCaixa(id) {
+  return requisicao(`/fechamento-caixa-finalizacoes/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function lerValorFechamentoCaixa(foto) {
   return requisicao("/fechamentos-caixa/ler-foto", {
     method: "POST",

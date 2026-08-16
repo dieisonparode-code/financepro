@@ -60,6 +60,7 @@ import {
   excluirFechamentoCaixa,
   buscarFinalizacoesFechamentoCaixa,
   finalizarFechamentoCaixa,
+  reabrirFechamentoCaixa,
   lerValorFechamentoCaixa,
   trocarFotoFechamentoCaixa,
   buscarLojas,
@@ -2694,6 +2695,32 @@ const statusCmv =
     }
   }
 
+  // Pedido do usuário (16/08/2026): só admin, reabre o ÚLTIMO fechamento
+  // de caixa finalizado — apaga a marca de "finalizado" (não mexe em
+  // fotos/lançamentos), fazendo aqueles registros voltarem pra
+  // "Fechamento em aberto", editáveis/excluíveis de novo. Usado quando um
+  // lançamento saiu errado (ex: venda categorizada errado no PDV da
+  // Saipos) e o operador precisa corrigir e fechar de novo.
+  async function reabrirFechamentoCaixaHandler(id) {
+    if (
+      !window.confirm(
+        "Reabrir esse fechamento de caixa pra correção? Ele volta pra 'Fechamento em aberto', editável de novo, até ser finalizado outra vez."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await reabrirFechamentoCaixa(id);
+
+      setFinalizacoesFechamentoCaixa((anteriores) =>
+        anteriores.filter((item) => item.id !== id)
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível reabrir esse fechamento.");
+    }
+  }
+
   function exportarRelatorioCSV() {
     const cabecalho = [
       "Data",
@@ -4030,6 +4057,7 @@ const statusCmv =
             lerValorFoto={lerValorFechamentoCaixa}
             finalizacoes={finalizacoesFechamentoCaixa}
             finalizarFechamento={finalizarFechamentoCaixaHandler}
+            reabrirFechamento={reabrirFechamentoCaixaHandler}
             ehAdministrador={ehAdministrador}
             trocarFoto={trocarFotoFechamentoCaixaHandler}
             lojaId={

@@ -161,6 +161,7 @@ function CadastroFechamentoCaixa({
   lerValorFoto,
   finalizacoes = [],
   finalizarFechamento,
+  reabrirFechamento,
   lojaId = null,
   ehAdministrador = false,
   trocarFoto,
@@ -172,6 +173,7 @@ function CadastroFechamentoCaixa({
   const [trocandoFoto, setTrocandoFoto] = useState(false);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
   const [finalizando, setFinalizando] = useState(false);
+  const [reabrindo, setReabrindo] = useState(false);
   const [rascunhoDiaria, setRascunhoDiaria] = useState(null);
   // Pedido do usuário (12/08/2026): botão pra consultar o último caixa já
   // fechado (o lote que entrou na última "Finalizar Fechamento de Caixa")
@@ -225,6 +227,7 @@ function CadastroFechamentoCaixa({
   const penultimaFinalizacao = finalizacoesOrdenadas[1]
     ? new Date(finalizacoesOrdenadas[1].criado_em).getTime()
     : null;
+  const ultimaFinalizacaoRegistro = finalizacoesOrdenadas[0] || null;
 
   const registrosDoUltimoCaixaFechado =
     ultimaFinalizacao != null
@@ -587,6 +590,41 @@ function CadastroFechamentoCaixa({
         {mostrarUltimoCaixaFechado && (
           <div className="empty-state" style={{ marginBottom: 12 }}>
             <strong>👁️ Consulta — só pra ver, nada aqui pode ser editado ou excluído.</strong>
+
+            {/* Pedido do usuário (16/08/2026): quando um lançamento saiu
+            errado (ex: venda categorizada errado no PDV da Saipos) e o
+            fechamento já foi finalizado, só admin consegue reabrir pra
+            corrigir — some da lista "só-leitura" acima e volta pra
+            "Fechamento em aberto", editável de novo. */}
+            {ehAdministrador && ultimaFinalizacaoRegistro && (
+              <div style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={reabrindo}
+                  onClick={async () => {
+                    setReabrindo(true);
+                    try {
+                      await reabrirFechamento?.(ultimaFinalizacaoRegistro.id);
+                      setMostrarUltimoCaixaFechado(false);
+                    } finally {
+                      setReabrindo(false);
+                    }
+                  }}
+                >
+                  {reabrindo
+                    ? "Reabrindo..."
+                    : "🔓 Reabrir este fechamento pra corrigir (só admin)"}
+                </button>
+                <div>
+                  <small className="foto-ajuda">
+                    Volta esses registros pra "Fechamento em aberto" —
+                    editáveis/excluíveis de novo — até você finalizar mais
+                    uma vez.
+                  </small>
+                </div>
+              </div>
+            )}
 
             {registrosDoUltimoCaixaFechado.length === 0 ? (
               <div>Nenhum registro encontrado no último caixa fechado.</div>
