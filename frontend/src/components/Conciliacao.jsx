@@ -889,41 +889,24 @@ function Conciliacao({ lojaId }) {
     return totaisBrutos;
   }, [resumoSaipos, grupoEscolhido]);
 
-  // Pedido do usuário (12/08/2026): o Informado não deve começar em
-  // branco — já vem pré-preenchido, o operador só ajusta se o valor real
-  // contado no fechamento for diferente. Só preenche o que ainda estiver
-  // em branco (não sobrescreve nada que já foi lido da foto ou digitado).
-  // Atualizado (15/08/2026): pra Crédito/Débito/PIX, prioriza o valor Real
-  // em conta (PagSeguro) em vez do Sistema (Saipos) — é a fonte mais
-  // confiável agora. As demais formas continuam pré-preenchendo do
-  // Sistema, como sempre foi.
-  useEffect(() => {
-    const totaisReaisConta = resumo?.totais_brutos_por_forma_pagamento || {};
-    const formas = new Set([
-      ...Object.keys(totaisBrutosSistema),
-      ...Object.keys(totaisReaisConta).filter((forma) =>
-        FORMAS_COM_REAL_EM_CONTA.includes(forma)
-      ),
-    ]);
-    if (formas.size === 0) return;
-
-    setValoresInformados((anterior) => {
-      let mudou = false;
-      const novo = { ...anterior };
-
-      formas.forEach((forma) => {
-        if (novo[forma] === undefined || novo[forma] === "") {
-          const valorBase = FORMAS_COM_REAL_EM_CONTA.includes(forma)
-            ? totaisReaisConta[forma] ?? totaisBrutosSistema[forma]
-            : totaisBrutosSistema[forma];
-          novo[forma] = Number(valorBase || 0).toFixed(2);
-          mudou = true;
-        }
-      });
-
-      return mudou ? novo : anterior;
-    });
-  }, [totaisBrutosSistema, resumo]);
+  // REMOVIDO (16/08/2026, a pedido do usuário): esse useEffect pré-
+  // preenchia o "Informado" com o próprio valor de referência (Real em
+  // conta pra Crédito/Débito/PIX, Sistema pras demais) sempre que o campo
+  // estivesse em branco — inclusive antes da foto terminar de ser lida
+  // (a leitura da foto/IA demora ~10-12s e roda em paralelo com a busca
+  // da PagSeguro, que é bem mais rápida). Na prática isso comparava a
+  // PagSeguro com ela mesma e sempre dava "✅ Bateu", mascarando qualquer
+  // divergência real — foi exatamente o caso relatado pelo usuário
+  // (Cartão de crédito/débito/PIX "bateram" sozinhos, mesmo com o
+  // Esperado do comprovante físico bem diferente). O "Informado" agora só
+  // vem de duas fontes de verdade: a leitura automática da foto do
+  // fechamento (coluna "Em caixa" do comprovante, ver
+  // conferirFotoDataUrl acima) ou o próprio operador digitando na hora —
+  // nunca mais um valor "chutado" igual à referência só pra não ficar em
+  // branco. Fechamentos que já tinham sido lidos/salvos ANTES dessa
+  // mudança continuam com o valor antigo (possivelmente o "chute")
+  // guardado no banco — precisam clicar "🔄 Ler foto de novo" pra
+  // corrigir.
 
   // Confronto Sistema/Real em conta × Informado calculado aqui (não só
   // dentro da tabela) pra poder mostrar um aviso no topo da tela quando
