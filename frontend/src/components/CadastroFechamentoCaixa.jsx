@@ -763,7 +763,15 @@ function CadastroFechamentoCaixa({
                     </div>
 
                     <div>
-                      <strong>{infoTipo?.rotulo || registro.tipo}</strong>
+                      <strong>
+                        {infoTipo?.rotulo || registro.tipo}
+                        {registro.valor != null && (
+                          <span> · {formatarMoeda(registro.valor)}</span>
+                        )}
+                        {registro.nome_pessoa && (
+                          <span> · {registro.nome_pessoa}</span>
+                        )}
+                      </strong>
                       <div>{formatarDataHora(registro.criado_em)}</div>
                     </div>
                   </div>
