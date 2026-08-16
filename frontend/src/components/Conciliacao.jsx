@@ -720,32 +720,22 @@ function Conciliacao({ lojaId }) {
         });
       }
 
-      // Pedido do usuário (12/08/2026): o Esperado do Dinheiro tem que
-      // bater na fórmula clássica de caixa físico — Abertura + Vendas em
-      // dinheiro − Retiradas do turno (cada "Pago com dinheiro do caixa"
-      // já registrado). Sobrescreve o "Esperado" lido bruto da tabela
-      // CONFERÊNCIA (que é só uma célula, mais exposta a erro de leitura)
-      // por esse cálculo, composto de números que também são lidos da
-      // mesma foto + dado que o próprio sistema já tem (retiradas).
-      if (resultado.abertura_caixa != null && resultado.vendas_dinheiro != null) {
-        const dataChave = grupoEscolhido?.dataChave;
-        const somaRetiradas = dataChave
-          ? retiradasCaixa
-              .filter((item) => hojeDoRegistro(item.criado_em) === dataChave)
-              .reduce(
-                (soma, item) => soma + Number(item.valor_pago_dinheiro || 0),
-                0
-              )
-          : 0;
-
-        sistemaLidoDaFoto.Dinheiro = Number(
-          (
-            Number(resultado.abertura_caixa) +
-            Number(resultado.vendas_dinheiro) -
-            somaRetiradas
-          ).toFixed(2)
-        );
-      }
+      // REMOVIDO (16/08/2026, a pedido do usuário): a fórmula clássica de
+      // caixa físico (Abertura + Vendas em dinheiro − Retiradas) sobrescrevia
+      // o Esperado do Dinheiro que já vinha certinho da própria tabela
+      // CONFERÊNCIA (a mesma fonte confiável usada por TODAS as outras
+      // formas). O problema: essa fórmula depende de ler "Abertura (+)" de
+      // outra seção da foto (CAIXA:), separada da tabela — bug real
+      // encontrado (16/08/2026): a IA confundiu esse valor com o horário
+      // "Abertura: 15/08/2026 17:14:49" impresso perto do topo do
+      // comprovante (mesma palavra, seção diferente), calculando um
+      // Esperado de Dinheiro de R$1.487,22 quando o próprio papel já dizia
+      // R$261,19 na tabela CONFERÊNCIA. Uma leitura a mais = uma chance a
+      // mais de erro. Dinheiro agora usa a MESMA fonte simples e confiável
+      // das outras formas: o valor "Esperado" já impresso na tabela
+      // CONFERÊNCIA (sistemaLidoDaFoto.Dinheiro já veio preenchido daí,
+      // acima). Retiradas continuam registradas no sistema normalmente,
+      // só não entram mais nessa conta — eram usadas só pra essa fórmula.
 
       // Salva a leitura no fechamento pra não precisar (nem poder) ler de
       // novo por engano nas próximas vezes — só sobrescreve se o operador
