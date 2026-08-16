@@ -161,7 +161,17 @@ const TRES_DIAS_MS = 3 * 24 * 60 * 60 * 1000;
 // dinheiro do caixa" (12/08/2026) usa o mesmo rascunho — é sempre 100% em
 // dinheiro (sem a pergunta de dividir) e já entra direto em Contas Pagas
 // quando o fechamento é finalizado.
-const TIPOS_COM_VALOR_CONFERIDO = ["boy", "cozinha", "pago_dinheiro_caixa"];
+// Pedido do usuário (16/08/2026): Venda a Prazo Funcionário passou a ler
+// o valor da foto também (igual Diária Boy/Cozinha), só pra mostrar o
+// valor na lista — o valor real que vira Contas a Receber continua vindo
+// automático da importação da Saipos, essa leitura aqui não alimenta
+// nada além da própria exibição.
+const TIPOS_COM_VALOR_CONFERIDO = [
+  "boy",
+  "cozinha",
+  "pago_dinheiro_caixa",
+  "venda_prazo",
+];
 
 function CadastroFechamentoCaixa({
   registros = [],
@@ -885,6 +895,12 @@ function CadastroFechamentoCaixa({
               <div style={{ margin: "8px 0 16px", color: "#22c55e", fontWeight: 700 }}>
                 💰 Vai direto pra Contas Pagas — 100% pago em dinheiro do
                 caixa, sem "a pagar".
+              </div>
+            ) : rascunhoDiaria.tipo === "venda_prazo" ? (
+              <div style={{ margin: "8px 0 16px", color: "#9aa0ac" }}>
+                💡 Esse valor é só pra exibição — a Venda a Prazo Funcionário
+                de verdade continua indo automático pra Contas a Receber
+                quando a Saipos for importada.
               </div>
             ) : (
               <>

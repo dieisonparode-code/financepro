@@ -4293,7 +4293,7 @@ app.post(
       // certeza aqui.
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de pagamento de diária (de um entregador/boy ou de um funcionário de cozinha) de uma hamburgueria. Pode ter o pagamento dividido em mais de uma forma (parte em dinheiro, parte em Pix, etc) — extraia o VALOR TOTAL PAGO, somando tudo se houver mais de um valor. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45}. Se não conseguir ler nenhum valor, use {"valor": null}.',
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria — pode ser um comprovante de pagamento de diária (de um entregador/boy ou de um funcionário de cozinha) ou um comprovante de venda a prazo pra funcionário. Pode ter o valor dividido em mais de uma forma (parte em dinheiro, parte em Pix, etc) — extraia o VALOR TOTAL, somando tudo se houver mais de um valor. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45}. Se não conseguir ler nenhum valor, use {"valor": null}.',
         8192
       );
 
