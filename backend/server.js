@@ -3543,14 +3543,38 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
           return;
         }
 
-        const sufixo = canal ? `_cobrado_entrega_${canal}` : "_balcao";
+        // Pedido do usuário (17/08/2026): "A prazo (funcionários)" vinha
+        // tudo somado num lançamento só por dia ("Vendas A prazo
+        // (funcionários) (balcão)"), sem dizer QUAL funcionário — a
+        // Saipos manda o nome de quem comprou em venda.customer.name
+        // (confirmado testando com dado real, 17/08/2026: "fabio
+        // fucionario q"). Agora separa um lançamento por funcionário por
+        // dia, em vez de juntar todo mundo — o nome vem no
+        // fornecedor/descrição, não precisa mais adivinhar quem foi.
+        const ehVendaPrazoFuncionario = nomeCadastro === "Funcionário";
+        const nomeFuncionario = ehVendaPrazoFuncionario
+          ? (venda.customer?.name || "").trim() || "Não identificado"
+          : null;
+        const nomeFuncionarioSlug = nomeFuncionario
+          ? nomeFuncionario.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+          : "";
+
+        const sufixo = ehVendaPrazoFuncionario
+          ? `_funcionario_${nomeFuncionarioSlug}${canal ? `_${canal}` : ""}`
+          : canal
+          ? `_cobrado_entrega_${canal}`
+          : "_balcao";
         chave = `${nomeSaipos}${sufixo}`;
-        rotulo = canal
+        rotulo = ehVendaPrazoFuncionario
+          ? `A prazo — ${nomeFuncionario}${canal ? ` (cobrado na entrega — ${canal})` : ""}`
+          : canal
           ? `${nomeSaipos} (cobrado na entrega — ${canal})`
           : `${nomeSaipos} (balcão)`;
-        canalSlug = `${nomeSaipos.toLowerCase().replace(/[^a-z0-9]+/g, "_")}${
-          canal ? `_entrega_${canal.toLowerCase().replace(/[^a-z0-9]+/g, "_")}` : "_balcao"
-        }`;
+        canalSlug = ehVendaPrazoFuncionario
+          ? `funcionario_${nomeFuncionarioSlug}${canal ? `_entrega_${canal.toLowerCase().replace(/[^a-z0-9]+/g, "_")}` : ""}`
+          : `${nomeSaipos.toLowerCase().replace(/[^a-z0-9]+/g, "_")}${
+              canal ? `_entrega_${canal.toLowerCase().replace(/[^a-z0-9]+/g, "_")}` : "_balcao"
+            }`;
         nomeParaCadastro = nomeCadastro;
       }
 
