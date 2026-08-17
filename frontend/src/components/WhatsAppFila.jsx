@@ -80,9 +80,17 @@ function WhatsAppFila({
       return;
     }
 
-    const valorTexto = campoDoItem(item.id, "valor", "");
+    // BUG REAL corrigido (17/08/2026): valor acima de R$1.000 no formato
+    // brasileiro (ex: "4.180,68") só trocava a vírgula, sobrava o ponto
+    // de milhar e virava número inválido. Só tira o ponto quando tem
+    // vírgula também.
+    const valorTexto = String(campoDoItem(item.id, "valor", ""));
     const valorNumero = valorTexto
-      ? Number(String(valorTexto).replace(",", "."))
+      ? Number(
+          valorTexto.includes(",")
+            ? valorTexto.replace(/\./g, "").replace(",", ".")
+            : valorTexto
+        )
       : 0;
     const lojaEscolhida =
       campoDoItem(item.id, "loja_id", "") || item.loja_id || lojaPadrao || "";

@@ -287,7 +287,16 @@ function ContasPagar({
   }
 
   async function salvarValorEditado(conta, valorDigitado) {
-    const novoValor = Number(String(valorDigitado).replace(",", "."));
+    // BUG REAL corrigido (17/08/2026): valor acima de R$1.000 no formato
+    // brasileiro (ex: "6.520,16") só trocava a vírgula, sobrava o ponto
+    // de milhar e virava número inválido. Só tira o ponto quando tem
+    // vírgula também.
+    const textoValor = String(valorDigitado);
+    const novoValor = Number(
+      textoValor.includes(",")
+        ? textoValor.replace(/\./g, "").replace(",", ".")
+        : textoValor
+    );
 
     if (!Number.isFinite(novoValor) || novoValor <= 0) {
       alert("Digite um valor válido maior que zero.");

@@ -838,7 +838,15 @@ function Conciliacao({ lojaId }) {
   async function salvarEsperadoManual(forma) {
     if (!grupoEscolhido || !grupoEscolhido.itens?.length) return;
 
-    const valorNumero = Number(valorEsperadoDigitado.replace(",", "."));
+    // BUG REAL corrigido (17/08/2026): valor acima de R$1.000 digitado no
+    // formato brasileiro (ex: "4.180,68") só trocava a vírgula, sobrava o
+    // ponto de milhar e virava número inválido. Só tira o ponto quando
+    // tem vírgula também.
+    const valorNumero = Number(
+      valorEsperadoDigitado.includes(",")
+        ? valorEsperadoDigitado.replace(/\./g, "").replace(",", ".")
+        : valorEsperadoDigitado
+    );
     if (!Number.isFinite(valorNumero)) {
       alert("Digite um valor válido (ex: 150,00).");
       return;
@@ -1031,8 +1039,14 @@ function Conciliacao({ lojaId }) {
 
       const valorInformadoTexto = valoresInformados[forma] ?? "";
       const temInformado = valorInformadoTexto !== "";
+      // BUG REAL corrigido (17/08/2026): mesmo problema do ponto de
+      // milhar — só tira o ponto quando também tem vírgula.
       const valorInformado = temInformado
-        ? Number(valorInformadoTexto.replace(",", "."))
+        ? Number(
+            valorInformadoTexto.includes(",")
+              ? valorInformadoTexto.replace(/\./g, "").replace(",", ".")
+              : valorInformadoTexto
+          )
         : null;
       const diferenca =
         temInformado && temBase

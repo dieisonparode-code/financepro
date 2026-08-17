@@ -110,9 +110,22 @@ function ContasReceber({
     }
   }
 
+  // BUG REAL corrigido (17/08/2026): valor acima de R$1.000 no formato
+  // brasileiro (ex: "4.180,68") só trocava a vírgula, sobrava o ponto de
+  // milhar e virava número inválido. Só tira o ponto quando tem vírgula
+  // também.
+  function paraNumeroBr(texto) {
+    const valorTexto = String(texto);
+    return Number(
+      valorTexto.includes(",")
+        ? valorTexto.replace(/\./g, "").replace(",", ".")
+        : valorTexto
+    );
+  }
+
   const taxaCalculada = useMemo(() => {
-    const bruto = Number(String(calcBruto).replace(",", "."));
-    const recebido = Number(String(calcRecebido).replace(",", "."));
+    const bruto = paraNumeroBr(calcBruto);
+    const recebido = paraNumeroBr(calcRecebido);
 
     if (!bruto || bruto <= 0 || !recebido || recebido < 0) {
       return null;
