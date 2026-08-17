@@ -828,6 +828,14 @@ function Conciliacao({ lojaId }) {
             anterior
               ? {
                   ...anterior,
+                  // BUG REAL corrigido (17/08/2026): a data de abertura
+                  // lida agora do papel pode ser diferente da data em
+                  // que esse fechamento estava agrupado até aqui (ex:
+                  // foto enviada só depois das 5h do dia seguinte). Se
+                  // mudou, o "dataChave" do grupo já selecionado tem que
+                  // acompanhar — senão a tela continua buscando Saipos/
+                  // PagSeguro no dia errado até a página ser recarregada.
+                  dataChave: salvo.data_abertura_turno || anterior.dataChave,
                   itens: anterior.itens.map((item) =>
                     item.id === salvarEm
                       ? {
