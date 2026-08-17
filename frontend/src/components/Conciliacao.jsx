@@ -733,22 +733,23 @@ function Conciliacao({ lojaId }) {
       };
       if (!silencioso) setResultadoFoto(resultadoOk);
 
-      // A coluna "Esperado" do próprio comprovante (Saipos já faz essa
-      // conta pra cada forma, inclusive Dinheiro) alimenta o "Sistema" da
-      // conciliação — exceto Crédito/Débito/PIX, que continuam vindo da
-      // PagSeguro (fonte mais confiável pra essas 3, é quem realmente
-      // recebeu o dinheiro).
+      // BUG REAL corrigido (17/08/2026): até aqui, Crédito/Débito/PIX
+      // ficavam de fora dessa leitura de propósito — o "Esperado" deles
+      // vinha só da API de vendas da Saipos (search_sales), uma conta
+      // SEPARADA da que a própria maquininha/POS já faz e imprime na
+      // tabela CONFERÊNCIA do comprovante físico. São duas contas
+      // diferentes dentro da própria Saipos, quase nunca batem exato —
+      // foi isso que causou o "Esperado não bate com o da Saipos" (o
+      // Esperado mostrado NUNCA vinha do papel pra essas 3 formas). Como
+      // quem já decide "bateu/não bateu" pro Crédito/Débito/PIX é a
+      // coluna "Real em conta" (PagSeguro, mais abaixo), não faz sentido
+      // o Esperado ter uma fonte diferente de todo o resto — agora TODAS
+      // as formas usam a mesma fonte única: a coluna "Esperado" já
+      // impressa na tabela CONFERÊNCIA do comprovante.
       const sistemaLidoDaFoto = {};
       if (resultado.esperado) {
         Object.entries(resultado.esperado).forEach(([forma, valor]) => {
           if (valor == null) return;
-          if (
-            forma === "Cartão de crédito" ||
-            forma === "Cartão de débito" ||
-            /pix/i.test(forma)
-          ) {
-            return;
-          }
           sistemaLidoDaFoto[forma] = valor;
         });
       }
