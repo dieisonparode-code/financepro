@@ -216,9 +216,16 @@ function Conciliacao({ lojaId }) {
   // Pedido do usuário: um fechamento pode ter 2 fotos (Foto 1 / Foto 2),
   // que salvam como 2 registros separados no banco mas são o MESMO
   // fechamento físico — antes apareciam como 2 botões distintos, confuso.
-  // Agora agrupa pela data do turno (mesma regra de corte 5h usada pra
-  // buscar PagSeguro/Saipos, e que na prática coincide com a data de
-  // ABERTURA do caixa) e mostra um botão só por dia.
+  // Agrupa primeiro pela proximidade de horário de ENVIO (hojeDoRegistro,
+  // corte 5h — bom pra saber QUAIS fotos são do mesmo fechamento, já que
+  // costumam ser enviadas juntas). BUG REAL corrigido (17/08/2026): esse
+  // horário de envio virou também a data usada pra buscar Saipos/
+  // PagSeguro — só que se a foto for enviada bem depois do fechamento
+  // físico (ex: só de manhã seguinte, já passado das 5h), o sistema
+  // buscava dinheiro no dia ERRADO. Agora, se algum item do grupo já tem
+  // a data de abertura real lida do papel (data_abertura_turno, via
+  // "Ler foto de novo"), essa data manda de verdade — só usa a de envio
+  // como estimativa pra quem ainda não foi lido.
   const todosOsGrupos = useMemo(() => {
     const mapa = new Map();
 
@@ -229,12 +236,18 @@ function Conciliacao({ lojaId }) {
     });
 
     return Array.from(mapa.entries())
-      .map(([dataChave, itens]) => ({
-        dataChave,
-        itens: itens.sort(
-          (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
-        ),
-      }))
+      .map(([chaveEnvio, itens]) => {
+        const dataAberturaReal = itens.find(
+          (item) => item.data_abertura_turno
+        )?.data_abertura_turno;
+
+        return {
+          dataChave: dataAberturaReal || chaveEnvio,
+          itens: itens.sort(
+            (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
+          ),
+        };
+      })
       .sort((a, b) => (a.dataChave < b.dataChave ? 1 : -1));
   }, [fechamentosDisponiveis]);
 
@@ -793,7 +806,8 @@ function Conciliacao({ lojaId }) {
             Object.keys(sistemaLidoDaFoto).length > 0
               ? sistemaLidoDaFoto
               : undefined,
-            ordemLidaDaFoto.length > 0 ? ordemLidaDaFoto : undefined
+            ordemLidaDaFoto.length > 0 ? ordemLidaDaFoto : undefined,
+            resultado.data_abertura || undefined
           );
 
           setFechamentosDisponiveis((anteriores) =>
@@ -804,6 +818,7 @@ function Conciliacao({ lojaId }) {
                     valores_informados: salvo.valores_informados,
                     sistema_manual: salvo.sistema_manual,
                     ordem_formas_pagamento: salvo.ordem_formas_pagamento,
+                    data_abertura_turno: salvo.data_abertura_turno,
                   }
                 : item
             )
@@ -820,6 +835,7 @@ function Conciliacao({ lojaId }) {
                           valores_informados: salvo.valores_informados,
                           sistema_manual: salvo.sistema_manual,
                           ordem_formas_pagamento: salvo.ordem_formas_pagamento,
+                          data_abertura_turno: salvo.data_abertura_turno,
                         }
                       : item
                   ),

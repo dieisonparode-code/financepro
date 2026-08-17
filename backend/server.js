@@ -2434,7 +2434,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento, data_abertura_turno";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -2598,11 +2598,29 @@ app.put(
         atualizacao.ordem_formas_pagamento = ordemNova;
       }
 
+      // BUG REAL corrigido (17/08/2026): o sistema agrupava/buscava
+      // Saipos e PagSeguro pela data de quando a FOTO foi enviada
+      // (criado_em), não pela data real de abertura do caixa impressa
+      // no comprovante — se a foto fosse enviada bem depois do
+      // fechamento físico, o sistema procurava dinheiro no dia errado.
+      // Só aceita formato AAAA-MM-DD (já validado antes de chegar aqui).
+      const dataAberturaNova =
+        typeof req.body?.data_abertura === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(req.body.data_abertura)
+          ? req.body.data_abertura
+          : null;
+
+      if (dataAberturaNova) {
+        atualizacao.data_abertura_turno = dataAberturaNova;
+      }
+
       const { data, error } = await supabase
         .from("fechamentos_caixa")
         .update(atualizacao)
         .eq("id", id)
-        .select("id, valores_informados, sistema_manual, ordem_formas_pagamento")
+        .select(
+          "id, valores_informados, sistema_manual, ordem_formas_pagamento, data_abertura_turno"
+        )
         .single();
 
       if (error) {
@@ -4450,7 +4468,7 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. A seção "CONFERÊNCIA" tem 4 colunas: Forma de Pagamento / Esperado / Em caixa / Diferença — lista TODAS as formas de pagamento, uma por linha — releia a imagem com atenção e liste TODAS as linhas dessa seção, mesmo as que tiverem letra pequena, valor baixo (ex: R$0,01 a R$50,00), estiverem borradas ou a foto estiver de cabeça para baixo. É comum ter 6 a 10 linhas diferentes (Dinheiro, Crédito, Débito, Funcionários/A prazo, Pago Online, Pix, Vale, Voucher, Cortesia, variantes TEF) — NÃO PARE de listar após achar só 4 ou 5, continue procurando o resto da tabela até o fim. Pra CADA linha, leia os DOIS números: a coluna "Esperado" (quanto o sistema esperava) E a coluna "Em caixa" (quanto realmente tinha/bateu) — são números DIFERENTES, não confunda um com o outro, releia com cuidado qual coluna é qual. IMPORTANTE — normalize os nomes exatamente assim, agrupando/somando quando houver mais de uma linha do mesmo grupo (soma tanto o Esperado quanto o Em caixa de cada linha do grupo): linhas "Crédito", "Cartão de Crédito", "TEF Crédito", "TEF-Crédito" → some tudo numa categoria "Cartão de crédito". Linhas "Débito", "Cartão de Débito", "TEF Débito", "TEF-Débito" → some tudo numa categoria "Cartão de débito". QUALQUER linha com "Pix" no nome (Pix, Pix cnpj, Pix na máquina, Pix na maquininha, TEF-PIX, TEF - PIX, Pix na Entrega, Pix Conta Bancária, etc) → some tudo numa categoria "PIX". Linhas "Funcionário", "Funcionários", "A prazo", "A prazo (funcionários)" → some tudo numa categoria "A prazo". QUALQUER linha com "Pago Online" no nome (Pago Online, Pago Online Aiqfome, Pago Online iFood, Pago Online via..., etc) → SOME tudo (Esperado com Esperado, Em caixa com Em caixa) numa ÚNICA categoria "Pago Online" no JSON final — é MUITO comum ter 2 ou mais linhas de "Pago Online" na mesma foto (uma por plataforma: iFood, Aiqfome, Brendi, etc), e TODAS elas têm que virar UMA SÓ linha somada, nunca vira 2 linhas "Pago Online" nem escolhe só uma delas e ignora a outra. Exemplo: se a foto tem "Pago Online 1.144,12 / 1.144,10" numa linha e "Pago Online via... 1.514,88 / 1.514,80" em outra linha, o resultado tem que ser UMA categoria "Pago Online" com esperado 2.659,00 (1.144,12+1.514,88) e em_caixa 2.658,90 (1.144,10+1.514,80) — nunca devolva só uma das duas nem devolva "Pago Online" duas vezes. Linhas "Voucher" ou "Voucher Parceiro" → some numa categoria "Voucher Parceiro". "Dinheiro", "Vale" e "Cortesia" mantenha os nomes como estão, sem combinar com nada. Não pule nenhuma forma de pagamento que aparecer no comprovante — se aparecer uma forma diferente das listadas aqui, inclua com o nome mais parecido possível dessa lista. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)", e da seção "FATURAMENTO:" o valor de "Vendas/Dinheiro" (é normalmente a primeira linha logo depois de "TOTAL FATURADO:"). Extraia TAMBÉM a linha "TOTAL" que fica no final da própria tabela CONFERÊNCIA (os dois números dela, Esperado e Em caixa) — ela é a soma de tudo que está impresso ali, serve de conferência independente. Responda com os campos "total_esperado_impresso" e "total_em_caixa_impresso" com esses dois números exatamente como estão impressos nessa linha TOTAL (não calcule você mesma, copie os números impressos). ATENÇÃO — isso é um confronto financeiro real, um valor errado é PIOR do que não ter valor nenhum: se você identificar o NOME de uma categoria mas não conseguir ler com confiança real um dos dois números (ou os dois) dessa linha (foto borrada, cortada, ilegível), ainda assim inclua essa categoria na lista, mas use null no número que não tiver certeza — NUNCA invente ou arrisque um número que você não tem certeza de ter lido corretamente. Só coloque um número quando realmente conseguir ler os dígitos na imagem. IMPORTANTE — essa foto pode ser de OUTRA página do comprovante (ex: canais de venda, entregadores, ticket médio, retiradas de caixa) que NÃO tem a tabela "CONFERÊNCIA" nenhuma: nesse caso, NÃO invente formas de pagamento nem números — responda com "categorias": [] (lista vazia). Só liste categorias se a tabela CONFERÊNCIA realmente estiver visível nessa foto. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "esperado": 515.54, "em_caixa": 517.60}, {"nome": "Vale", "esperado": 11.28, "em_caixa": null}, ...], "abertura_caixa": 387.50, "vendas_dinheiro": 370.04, "total_esperado_impresso": 6396.44, "total_em_caixa_impresso": 6448.24}. Se não achar abertura_caixa, vendas_dinheiro ou os totais impressos, use null nesses campos.',
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. A seção "CONFERÊNCIA" tem 4 colunas: Forma de Pagamento / Esperado / Em caixa / Diferença — lista TODAS as formas de pagamento, uma por linha — releia a imagem com atenção e liste TODAS as linhas dessa seção, mesmo as que tiverem letra pequena, valor baixo (ex: R$0,01 a R$50,00), estiverem borradas ou a foto estiver de cabeça para baixo. É comum ter 6 a 10 linhas diferentes (Dinheiro, Crédito, Débito, Funcionários/A prazo, Pago Online, Pix, Vale, Voucher, Cortesia, variantes TEF) — NÃO PARE de listar após achar só 4 ou 5, continue procurando o resto da tabela até o fim. Pra CADA linha, leia os DOIS números: a coluna "Esperado" (quanto o sistema esperava) E a coluna "Em caixa" (quanto realmente tinha/bateu) — são números DIFERENTES, não confunda um com o outro, releia com cuidado qual coluna é qual. IMPORTANTE — normalize os nomes exatamente assim, agrupando/somando quando houver mais de uma linha do mesmo grupo (soma tanto o Esperado quanto o Em caixa de cada linha do grupo): linhas "Crédito", "Cartão de Crédito", "TEF Crédito", "TEF-Crédito" → some tudo numa categoria "Cartão de crédito". Linhas "Débito", "Cartão de Débito", "TEF Débito", "TEF-Débito" → some tudo numa categoria "Cartão de débito". QUALQUER linha com "Pix" no nome (Pix, Pix cnpj, Pix na máquina, Pix na maquininha, TEF-PIX, TEF - PIX, Pix na Entrega, Pix Conta Bancária, etc) → some tudo numa categoria "PIX". Linhas "Funcionário", "Funcionários", "A prazo", "A prazo (funcionários)" → some tudo numa categoria "A prazo". QUALQUER linha com "Pago Online" no nome (Pago Online, Pago Online Aiqfome, Pago Online iFood, Pago Online via..., etc) → SOME tudo (Esperado com Esperado, Em caixa com Em caixa) numa ÚNICA categoria "Pago Online" no JSON final — é MUITO comum ter 2 ou mais linhas de "Pago Online" na mesma foto (uma por plataforma: iFood, Aiqfome, Brendi, etc), e TODAS elas têm que virar UMA SÓ linha somada, nunca vira 2 linhas "Pago Online" nem escolhe só uma delas e ignora a outra. Exemplo: se a foto tem "Pago Online 1.144,12 / 1.144,10" numa linha e "Pago Online via... 1.514,88 / 1.514,80" em outra linha, o resultado tem que ser UMA categoria "Pago Online" com esperado 2.659,00 (1.144,12+1.514,88) e em_caixa 2.658,90 (1.144,10+1.514,80) — nunca devolva só uma das duas nem devolva "Pago Online" duas vezes. Linhas "Voucher" ou "Voucher Parceiro" → some numa categoria "Voucher Parceiro". "Dinheiro", "Vale" e "Cortesia" mantenha os nomes como estão, sem combinar com nada. Não pule nenhuma forma de pagamento que aparecer no comprovante — se aparecer uma forma diferente das listadas aqui, inclua com o nome mais parecido possível dessa lista. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)", e da seção "FATURAMENTO:" o valor de "Vendas/Dinheiro" (é normalmente a primeira linha logo depois de "TOTAL FATURADO:"). Extraia TAMBÉM a DATA DE ABERTURA do caixa — geralmente aparece perto do topo do comprovante numa linha "Abertura: DD/MM/AAAA HH:MM:SS" (é uma DATA/HORÁRIO, bem diferente do valor em R$ "Abertura (+)" da seção CAIXA — não confunda os dois "Abertura" que existem no mesmo comprovante, um é quando o caixa abriu, o outro é quanto dinheiro tinha na abertura). Responda essa data no campo "data_abertura" no formato "AAAA-MM-DD". Essa data de abertura é a data OFICIAL do turno inteiro, mesmo o fechamento tendo acontecido já na madrugada do dia seguinte. Extraia TAMBÉM a linha "TOTAL" que fica no final da própria tabela CONFERÊNCIA (os dois números dela, Esperado e Em caixa) — ela é a soma de tudo que está impresso ali, serve de conferência independente. Responda com os campos "total_esperado_impresso" e "total_em_caixa_impresso" com esses dois números exatamente como estão impressos nessa linha TOTAL (não calcule você mesma, copie os números impressos). ATENÇÃO — isso é um confronto financeiro real, um valor errado é PIOR do que não ter valor nenhum: se você identificar o NOME de uma categoria mas não conseguir ler com confiança real um dos dois números (ou os dois) dessa linha (foto borrada, cortada, ilegível), ainda assim inclua essa categoria na lista, mas use null no número que não tiver certeza — NUNCA invente ou arrisque um número que você não tem certeza de ter lido corretamente. Só coloque um número quando realmente conseguir ler os dígitos na imagem. IMPORTANTE — essa foto pode ser de OUTRA página do comprovante (ex: canais de venda, entregadores, ticket médio, retiradas de caixa) que NÃO tem a tabela "CONFERÊNCIA" nenhuma: nesse caso, NÃO invente formas de pagamento nem números — responda com "categorias": [] (lista vazia). Só liste categorias se a tabela CONFERÊNCIA realmente estiver visível nessa foto. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "esperado": 515.54, "em_caixa": 517.60}, {"nome": "Vale", "esperado": 11.28, "em_caixa": null}, ...], "abertura_caixa": 387.50, "vendas_dinheiro": 370.04, "total_esperado_impresso": 6396.44, "total_em_caixa_impresso": 6448.24, "data_abertura": "2026-08-15"}. Se não achar abertura_caixa, vendas_dinheiro, os totais impressos ou a data de abertura, use null nesses campos.',
         2048,
         // Voltado pro Sonnet (14/08/2026): Haiku era mais rápido (~1-2s
         // contra ~10-12s), mas achamos um caso real onde ele leu cada
@@ -4587,6 +4605,16 @@ app.post(
         totalEmCaixaImpresso
       );
 
+      // Só aceita a data de abertura se vier no formato certo — um valor
+      // qualquer aqui (data errada) atrapalharia MUITO mais do que ajudar,
+      // já que ela passa a decidir onde o fechamento é agrupado e onde o
+      // sistema busca Saipos/PagSeguro.
+      const dataAberturaLida =
+        typeof dadosLidos.data_abertura === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(dadosLidos.data_abertura)
+          ? dadosLidos.data_abertura
+          : null;
+
       res.json({
         valores,
         esperado,
@@ -4598,6 +4626,7 @@ app.post(
           dadosLidos.vendas_dinheiro != null
             ? Number(dadosLidos.vendas_dinheiro)
             : null,
+        data_abertura: dataAberturaLida,
         aviso_soma_nao_bate:
           avisoEsperado || avisoEmCaixa
             ? { esperado: avisoEsperado, em_caixa: avisoEmCaixa }

@@ -466,12 +466,18 @@ export async function salvarValoresInformadosFechamento(
   id,
   valores,
   sistema,
-  ordem
+  ordem,
+  dataAbertura
 ) {
   return requisicao(`/fechamentos-caixa/${id}/valores-informados`, {
     method: "PUT",
     headers: await cabecalhoAutenticado(),
-    body: JSON.stringify({ valores, sistema, ordem }),
+    body: JSON.stringify({
+      valores,
+      sistema,
+      ordem,
+      data_abertura: dataAbertura,
+    }),
   });
 }
 
