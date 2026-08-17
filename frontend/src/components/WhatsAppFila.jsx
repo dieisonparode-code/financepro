@@ -14,6 +14,16 @@ const OPCOES_CLASSIFICACAO = [
     rotulo: "🥩 Despesa — Matéria-Prima",
     destino: "despesa",
   },
+  {
+    valor: "conta_pagar",
+    rotulo: "📄 Conta a Pagar (boleto, ainda não pago)",
+    destino: "conta_pagar",
+  },
+  {
+    valor: "Despesas Diversas",
+    rotulo: "💸 Despesa já paga (outra)",
+    destino: "despesa",
+  },
 ];
 
 function formatarDataHora(dataIso) {
@@ -34,6 +44,7 @@ function WhatsAppFila({
   lojaPadrao = null,
   criarFechamento,
   criarDespesa,
+  criarContaPagar,
   removerItem,
 }) {
   // Estado de edição por item (id → campos escolhidos), pra cada card da
@@ -79,13 +90,35 @@ function WhatsAppFila({
     setSalvandoId(item.id);
 
     try {
+      const observacao = `Classificado a partir da fila do WhatsApp (legenda original: "${item.legenda_recebida || ""}").`;
+
       if (opcao.destino === "fechamento") {
         await criarFechamento({
           tipo: opcao.valor,
           foto: item.foto,
           loja_id: lojaEscolhida || null,
           valor: valorNumero || null,
-          observacao: `Classificado a partir da fila do WhatsApp (legenda original: "${item.legenda_recebida || ""}").`,
+          observacao,
+        });
+      } else if (opcao.destino === "conta_pagar") {
+        const vencimento = campoDoItem(item.id, "vencimento", "");
+
+        if (!vencimento) {
+          alert("Escolhe a data de vencimento antes de confirmar.");
+          setSalvandoId(null);
+          return;
+        }
+
+        await criarContaPagar({
+          descricao:
+            campoDoItem(item.id, "fornecedor", "") ||
+            "Boleto recebido via WhatsApp",
+          fornecedor: campoDoItem(item.id, "fornecedor", ""),
+          valor: valorNumero,
+          data_vencimento: vencimento,
+          foto: item.foto,
+          loja_id: lojaEscolhida || null,
+          observacao,
         });
       } else {
         await criarDespesa({
@@ -97,7 +130,7 @@ function WhatsAppFila({
           data: hojeISO(),
           foto: item.foto,
           loja_id: lojaEscolhida || null,
-          observacao: `Classificado a partir da fila do WhatsApp (legenda original: "${item.legenda_recebida || ""}").`,
+          observacao,
         });
       }
 
@@ -242,7 +275,8 @@ function WhatsAppFila({
                       style={{ maxWidth: 120 }}
                     />
 
-                    {opcao?.destino === "despesa" && (
+                    {(opcao?.destino === "despesa" ||
+                      opcao?.destino === "conta_pagar") && (
                       <input
                         type="text"
                         placeholder="Fornecedor (opcional)"
@@ -252,6 +286,18 @@ function WhatsAppFila({
                           atualizarCampo(item.id, "fornecedor", evento.target.value)
                         }
                         style={{ maxWidth: 180 }}
+                      />
+                    )}
+
+                    {opcao?.destino === "conta_pagar" && (
+                      <input
+                        type="date"
+                        disabled={salvandoEsse}
+                        value={campoDoItem(item.id, "vencimento", "")}
+                        onChange={(evento) =>
+                          atualizarCampo(item.id, "vencimento", evento.target.value)
+                        }
+                        style={{ maxWidth: 150 }}
                       />
                     )}
 

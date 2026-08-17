@@ -4140,6 +4140,7 @@ const statusCmv =
             lojaPadrao={vePermissaoTotal ? null : perfil?.loja_id || null}
             criarFechamento={adicionarFechamentoCaixa}
             criarDespesa={criarDespesaDoWhatsapp}
+            criarContaPagar={adicionarContaPagar}
             removerItem={removerItemWhatsappFilaHandler}
           />
         )}

@@ -5528,6 +5528,27 @@ function normalizarTextoWhatsapp(texto) {
     .toLowerCase();
 }
 
+// Pedido do usuário (17/08/2026): dá pra digitar a data de vencimento
+// direto na legenda (ex: "a pagar 22/02/2026") — mais confiável que
+// depender só da IA ler a data impressa no boleto. Aceita DD/MM/AAAA,
+// DD-MM-AAAA e DD.MM.AAAA, com ano de 2 ou 4 dígitos.
+function extrairDataDaLegendaWhatsapp(legenda) {
+  const encontrado = (legenda || "").match(
+    /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/
+  );
+  if (!encontrado) return null;
+
+  const [, diaTexto, mesTexto, anoTexto] = encontrado;
+  const dia = Number(diaTexto);
+  const mes = Number(mesTexto);
+  let ano = Number(anoTexto);
+  if (ano < 100) ano += 2000;
+
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return null;
+
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
 // Legenda → categoria de despesa (pedido do usuário, 17/08/2026): cada
 // uma dessas palavras na legenda da foto vira uma despesa de verdade,
 // lida por IA (valor + fornecedor), igual o botão "Ler nota
@@ -5614,6 +5635,97 @@ app.post(
           .json({ ok: true, destino: "fechamento_caixa", tipo, id: data.id });
       }
 
+      // Conta a Pagar (boleto/nota AINDA NÃO paga) — pedido do usuário
+      // (17/08/2026): legenda com "boleto" ou "a pagar", SEM a palavra
+      // "pago" junto, vira uma Conta a Pagar pendente (não desconta do
+      // saldo agora, só quando alguém marcar como paga de verdade). A
+      // data de vencimento vem da própria legenda se tiver escrita (ex:
+      // "a pagar 22/02/2026" — mais confiável), senão a IA tenta ler
+      // direto do boleto.
+      const ehPago = /\bpago\b/.test(legendaNormalizada);
+      const ehBoleto =
+        !ehPago &&
+        (/\bboleto\b/.test(legendaNormalizada) ||
+          legendaNormalizada.includes("a pagar"));
+
+      if (ehBoleto) {
+        const dataDigitada = extrairDataDaLegendaWhatsapp(legenda);
+
+        let valorLido = null;
+        let fornecedorLido = "";
+        let vencimentoLido = null;
+        try {
+          const textoResposta = await lerImagemComIA(
+            foto,
+            'Essa é a foto de um boleto ou nota de uma conta a pagar de uma hamburgueria (ainda NÃO paga). Extraia: o VALOR TOTAL a pagar (normalmente perto de "TOTAL" ou "VALOR DO DOCUMENTO"), o nome do FORNECEDOR/emissor/beneficiário (se estiver visível), e a DATA DE VENCIMENTO impressa (se houver mais de uma data, use a de vencimento do pagamento, não a de emissão). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "vencimento": "AAAA-MM-DD ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
+            8192
+          );
+          const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+          const dadosLidos = JSON.parse(
+            jsonEncontrado ? jsonEncontrado[0] : textoResposta
+          );
+          valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
+          fornecedorLido = dadosLidos.fornecedor || "";
+          vencimentoLido = dadosLidos.vencimento || null;
+        } catch (erroLeitura) {
+          console.error(
+            "Erro ao ler boleto (WhatsApp):",
+            erroLeitura.message
+          );
+        }
+
+        const vencimentoFinal = dataDigitada || vencimentoLido;
+
+        if (!vencimentoFinal) {
+          const { data, error } = await supabase
+            .from("whatsapp_fila")
+            .insert([
+              {
+                loja_id: lojaId,
+                foto,
+                legenda_recebida: `${legenda || ""} (não consegui ler a data de vencimento — classifique na mão)`,
+                remetente: remetente || "",
+              },
+            ])
+            .select("id")
+            .single();
+
+          if (error) throw error;
+
+          return res.status(201).json({ ok: true, destino: "fila", id: data.id });
+        }
+
+        const dadosPreparados = prepararContaPagar({
+          loja_id: lojaId,
+          descricao: fornecedorLido || "Boleto recebido via WhatsApp",
+          fornecedor: fornecedorLido,
+          valor: valorLido || 0,
+          data_vencimento: vencimentoFinal,
+          foto,
+          observacao: `${dataDigitada ? "Vencimento digitado na legenda." : "Vencimento lido automaticamente da foto — confira."}${origemTexto}`,
+        });
+
+        const { data, error } = await supabase
+          .from("contas_pagar")
+          .insert([dadosPreparados])
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        registrarAuditoria(
+          req,
+          "criou (via WhatsApp)",
+          "contas_pagar",
+          data.id,
+          `R$ ${(valorLido || 0).toFixed(2)}, vencimento ${vencimentoFinal} — legenda recebida: "${legenda || ""}"`
+        );
+
+        return res
+          .status(201)
+          .json({ ok: true, destino: "conta_pagar", id: data.id });
+      }
+
       // Despesas (vale/reforma/compras/matéria-prima)
       const chaveCategoria = Object.keys(CATEGORIAS_DESPESA_WHATSAPP).find(
         (chave) => legendaNormalizada.includes(chave)
@@ -5680,6 +5792,75 @@ app.post(
         return res
           .status(201)
           .json({ ok: true, destino: "lancamento", categoria, id: data.id });
+      }
+
+      // Despesa já paga GENÉRICA — pedido do usuário (17/08/2026): "pago"
+      // em QUALQUER nota (mesmo sem palavra de categoria específica, ou
+      // combinado com "boleto pago") desconta do saldo na hora. Lê valor
+      // e fornecedor da foto, categoria fica "Despesas Diversas" (editável
+      // depois, igual qualquer lançamento).
+      if (ehPago) {
+        let valorLido = null;
+        let fornecedorLido = "";
+        try {
+          const textoResposta = await lerImagemComIA(
+            foto,
+            'Essa é a foto de uma nota fiscal ou comprovante de despesa JÁ PAGA de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+            8192
+          );
+          const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+          const dadosLidos = JSON.parse(
+            jsonEncontrado ? jsonEncontrado[0] : textoResposta
+          );
+          valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
+          fornecedorLido = dadosLidos.fornecedor || "";
+        } catch (erroLeitura) {
+          console.error(
+            "Erro ao ler despesa paga genérica (WhatsApp):",
+            erroLeitura.message
+          );
+        }
+
+        const dadosPreparados = prepararLancamento({
+          tipo: "despesa",
+          descricao: fornecedorLido || "Despesa recebida via WhatsApp",
+          categoria: "Despesas Diversas",
+          fornecedor: fornecedorLido,
+          valor: valorLido || 0,
+          data: hoje,
+          foto,
+          loja_id: lojaId,
+          observacao: `Valor lido automaticamente — confira antes de aprovar.${origemTexto}`,
+        });
+
+        const novoLancamento = {
+          id: Date.now(),
+          ...dadosPreparados,
+          status: "aprovado",
+        };
+
+        const { data, error } = await supabase
+          .from("lancamentos")
+          .insert([novoLancamento])
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        registrarAuditoria(
+          req,
+          "criou (via WhatsApp)",
+          "lancamentos",
+          data.id,
+          `Despesas Diversas: R$ ${(valorLido || 0).toFixed(2)} — legenda recebida: "${legenda || ""}"`
+        );
+
+        return res.status(201).json({
+          ok: true,
+          destino: "lancamento",
+          categoria: "Despesas Diversas",
+          id: data.id,
+        });
       }
 
       // Legenda não reconhecida (ou sem legenda) — cai na fila pra
