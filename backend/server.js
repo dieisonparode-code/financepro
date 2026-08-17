@@ -3924,6 +3924,25 @@ async function senhaAdminConfirmada(email, senha) {
   }
 }
 
+function diaSeguinteStr(dataStr) {
+  const data = new Date(`${dataStr}T00:00:00`);
+  data.setDate(data.getDate() + 1);
+  return data.toISOString().slice(0, 10);
+}
+
+// BUG REAL corrigido (17/08/2026): a busca da PagSeguro ("Real em conta"
+// na Conciliação) ia só até 23:59:59 do próprio dia — mas um fechamento
+// de caixa aberto de tarde e fechado depois da meia-noite (ex.: aberto
+// 17:14 de um dia, fechado 00:34 do dia seguinte) tem vendas de cartão
+// caindo na PagSeguro já DEPOIS da meia-noite, com timestamp do dia
+// seguinte. Essas vendas ficavam de fora da busca — "Real em conta"
+// aparecia bem menor que o Esperado, parecendo que faltou dinheiro de
+// verdade quando na real só faltou olhar a madrugada. Mesma regra de
+// corte (5h da manhã) já usada pra agrupar fechamento por turno
+// (hojeDoRegistro/dataBrasilia no resto do sistema) — a janela de busca
+// agora vai de 05:00 do dia escolhido até 04:59:59 do dia seguinte, pra
+// cobrir o turno inteiro sem faltar nem duplicar (o dia seguinte busca a
+// partir de 05:00 dele, não de 00:00, então não há sobreposição).
 function calcularPeriodoPagSeguro(dataInicio, dataFim) {
   const hojeBrasilia = agoraBrasilia().toISOString().slice(0, 10);
 
@@ -3936,14 +3955,14 @@ function calcularPeriodoPagSeguro(dataInicio, dataFim) {
     const agoraComMargem = new Date(agoraBrasilia().getTime() - 60 * 1000);
 
     return {
-      dataInicioCompleta: `${dataInicio}T00:00:00`,
+      dataInicioCompleta: `${dataInicio}T05:00:00`,
       dataFimCompleta: agoraComMargem.toISOString().slice(0, 19),
     };
   }
 
   return {
-    dataInicioCompleta: `${dataInicio}T00:00:00`,
-    dataFimCompleta: `${dataFim}T23:59:59`,
+    dataInicioCompleta: `${dataInicio}T05:00:00`,
+    dataFimCompleta: `${diaSeguinteStr(dataFim)}T04:59:59`,
   };
 }
 
