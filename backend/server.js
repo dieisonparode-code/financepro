@@ -2434,7 +2434,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -2569,6 +2569,16 @@ app.put(
           ? req.body.sistema
           : null;
 
+      // Pedido do usuário (17/08/2026): a ordem das formas de pagamento
+      // na tela de Conciliação tem que seguir exatamente a ordem impressa
+      // no comprovante da Saipos (topo → base) — guardada à parte num
+      // array (não no JSON de "sistema", que não garante ordem de
+      // chaves ao salvar/reler do banco).
+      const ordemNova =
+        Array.isArray(req.body?.ordem) && req.body.ordem.length > 0
+          ? req.body.ordem
+          : null;
+
       const atualizacao = { valores_informados: valores };
 
       if (sistemaNovo) {
@@ -2584,11 +2594,15 @@ app.put(
         };
       }
 
+      if (ordemNova) {
+        atualizacao.ordem_formas_pagamento = ordemNova;
+      }
+
       const { data, error } = await supabase
         .from("fechamentos_caixa")
         .update(atualizacao)
         .eq("id", id)
-        .select("id, valores_informados, sistema_manual")
+        .select("id, valores_informados, sistema_manual, ordem_formas_pagamento")
         .single();
 
       if (error) {

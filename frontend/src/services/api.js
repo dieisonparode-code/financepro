@@ -462,11 +462,16 @@ export async function finalizarConciliacaoFechamento(id) {
   });
 }
 
-export async function salvarValoresInformadosFechamento(id, valores, sistema) {
+export async function salvarValoresInformadosFechamento(
+  id,
+  valores,
+  sistema,
+  ordem
+) {
   return requisicao(`/fechamentos-caixa/${id}/valores-informados`, {
     method: "PUT",
     headers: await cabecalhoAutenticado(),
-    body: JSON.stringify({ valores, sistema }),
+    body: JSON.stringify({ valores, sistema, ordem }),
   });
 }
 

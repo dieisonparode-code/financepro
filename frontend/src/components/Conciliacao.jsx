@@ -754,6 +754,17 @@ function Conciliacao({ lojaId }) {
         });
       }
 
+      // Pedido do usuário (17/08/2026): a ordem das linhas na tela de
+      // Conciliação tem que seguir a mesma ordem impressa na tabela
+      // CONFERÊNCIA do comprovante (de cima pra baixo) — se a Saipos
+      // mudar a ordem impressa um dia, a tela acompanha sozinha na
+      // próxima leitura. "resultado.esperado" já vem do backend na ordem
+      // que a IA leu a tabela (topo → base), então só precisa guardar
+      // essa mesma ordem de chaves.
+      const ordemLidaDaFoto = resultado.esperado
+        ? Object.keys(resultado.esperado)
+        : [];
+
       // REMOVIDO (16/08/2026, a pedido do usuário): a fórmula clássica de
       // caixa físico (Abertura + Vendas em dinheiro − Retiradas) sobrescrevia
       // o Esperado do Dinheiro que já vinha certinho da própria tabela
@@ -781,7 +792,8 @@ function Conciliacao({ lojaId }) {
             resultado.valores,
             Object.keys(sistemaLidoDaFoto).length > 0
               ? sistemaLidoDaFoto
-              : undefined
+              : undefined,
+            ordemLidaDaFoto.length > 0 ? ordemLidaDaFoto : undefined
           );
 
           setFechamentosDisponiveis((anteriores) =>
@@ -791,6 +803,7 @@ function Conciliacao({ lojaId }) {
                     ...item,
                     valores_informados: salvo.valores_informados,
                     sistema_manual: salvo.sistema_manual,
+                    ordem_formas_pagamento: salvo.ordem_formas_pagamento,
                   }
                 : item
             )
@@ -806,6 +819,7 @@ function Conciliacao({ lojaId }) {
                           ...item,
                           valores_informados: salvo.valores_informados,
                           sistema_manual: salvo.sistema_manual,
+                          ordem_formas_pagamento: salvo.ordem_formas_pagamento,
                         }
                       : item
                   ),
@@ -1019,9 +1033,28 @@ function Conciliacao({ lojaId }) {
     // uma forma de pagamento nova só no Sistema (ainda sem foto lida ou não
     // reconhecida na foto), ela mesmo assim aparece na tabela já com o
     // valor esperado preenchido.
-    const todasAsFormas = Array.from(
+    const formasUnicas = Array.from(
       new Set([...Object.keys(valoresInformados), ...Object.keys(totaisBrutos)])
     );
+
+    // Pedido do usuário (17/08/2026): a ordem das linhas segue a mesma
+    // ordem impressa na tabela CONFERÊNCIA do comprovante da Saipos (de
+    // cima pra baixo) — guardada em ordem_formas_pagamento na última
+    // leitura de foto. Se a Saipos mudar a ordem impressa, a próxima
+    // leitura de foto atualiza sozinha. Forma nova que não estava na
+    // ordem salva (ex: acabou de ser lida, ainda sem "Ler foto de novo")
+    // vai pro final, na ordem que apareceu.
+    const ordemSalva = mesclarDosItens(grupoEscolhido, "ordem_formas_pagamento");
+    const todasAsFormas = ordemSalva
+      ? [...formasUnicas].sort((a, b) => {
+          const posA = ordemSalva.indexOf(a);
+          const posB = ordemSalva.indexOf(b);
+          if (posA === -1 && posB === -1) return 0;
+          if (posA === -1) return 1;
+          if (posB === -1) return -1;
+          return posA - posB;
+        })
+      : formasUnicas;
 
     const linhas = todasAsFormas.map((forma) => {
       const temSistema = forma in totaisBrutos;
@@ -1075,7 +1108,7 @@ function Conciliacao({ lojaId }) {
     );
 
     return { linhas, diferencaTotal, algumInformado };
-  }, [totaisBrutosSistema, valoresInformados, resumo]);
+  }, [totaisBrutosSistema, valoresInformados, resumo, grupoEscolhido]);
 
   const temDiferencaNoConfronto =
     confrontoCalculado.algumInformado &&
