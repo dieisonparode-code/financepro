@@ -145,11 +145,6 @@ function formatarMoeda(valor) {
   });
 }
 
-// Fallback só usado se NUNCA houve nenhuma finalização ainda (ex.: recém
-// publicado) — a partir da primeira finalização, o corte deixa de ser por
-// horas e passa a ser só "depois da última finalização".
-const OITO_HORAS_MS = 8 * 60 * 60 * 1000;
-
 // Teto de segurança: mesmo sem finalizar, depois de 3 dias o registro sai
 // da lista "em aberto" sozinho (pedido do usuário) — pra não acumular pra
 // sempre se alguém esquecer de clicar em Finalizar.
@@ -233,7 +228,16 @@ function CadastroFechamentoCaixa({
         return criadoEm > ultimaFinalizacao;
       }
 
-      return Date.now() - criadoEm < OITO_HORAS_MS;
+      // BUG REAL corrigido (17/08/2026): antes disso, sem nenhuma
+      // finalização (seja porque é a primeira vez, seja porque acabou de
+      // REABRIR um fechamento antigo pra corrigir) só entrava aqui quem
+      // foi criado nas últimas 8h — um fechamento reaberto de ontem (ou
+      // de 2 dias atrás, dentro do teto de 3 dias) simplesmente sumia da
+      // lista "Fechamento em aberto" sem nenhum aviso, mesmo tendo acabado
+      // de ser reaberto de propósito pra corrigir. O teto de 3 dias
+      // (checado acima) já é suficiente pra não acumular pra sempre —
+      // não precisa de mais essa trava de 8h em cima.
+      return true;
     })
     // Ordem crescente por data — a mais antiga primeiro, descendo até a
     // mais recente (pedido do usuário).
