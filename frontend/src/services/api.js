@@ -516,6 +516,21 @@ export async function lerValorFechamentoCaixa(foto) {
   });
 }
 
+// Fila de fotos do WhatsApp que o robô não conseguiu classificar sozinho
+// (legenda não reconhecida) — só admin.
+export async function buscarWhatsappFila() {
+  return requisicao("/whatsapp-fila", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function removerItemWhatsappFila(id) {
+  return requisicao(`/whatsapp-fila/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarLojas() {
   return requisicao("/lojas", { headers: await cabecalhoAutenticado() });
 }

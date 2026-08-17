@@ -1,0 +1,15 @@
+{
+  "name": "financepro-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "Robo que fica de olho num grupo de WhatsApp e manda fotos com legenda pro FinancePro classificar sozinho.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

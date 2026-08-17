@@ -63,6 +63,8 @@ import {
   reabrirFechamentoCaixa,
   lerValorFechamentoCaixa,
   trocarFotoFechamentoCaixa,
+  buscarWhatsappFila,
+  removerItemWhatsappFila,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -93,6 +95,7 @@ import LogAuditoria from "./components/LogAuditoria";
 import VendasSaipos from "./components/VendasSaipos";
 import Conciliacao from "./components/Conciliacao";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
+import WhatsAppFila from "./components/WhatsAppFila";
 import NotasFiscais from "./components/NotasFiscais";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -508,6 +511,9 @@ function FinanceApp() {
 
   const [notasFiscais, setNotasFiscais] = useState([]);
   const [carregandoNotasFiscais, setCarregandoNotasFiscais] = useState(true);
+
+  const [whatsappFila, setWhatsappFila] = useState([]);
+  const [carregandoWhatsappFila, setCarregandoWhatsappFila] = useState(true);
 
   const [clientes, setClientes] = useState([]);
   const [carregandoClientes, setCarregandoClientes] = useState(true);
@@ -1028,6 +1034,40 @@ function FinanceApp() {
   async function removerNotaFiscal(id) {
     await excluirNotaFiscal(id);
     setNotasFiscais((anteriores) => anteriores.filter((item) => item.id !== id));
+  }
+
+  // Fila do WhatsApp (17/08/2026) — só admin, mesma regra da rota no
+  // backend (verificarAdmin). Não busca pra quem não é admin, pra não
+  // gerar erro 403 à toa no console de todo mundo.
+  useEffect(() => {
+    if (!ehAdministrador) {
+      setCarregandoWhatsappFila(false);
+      return;
+    }
+
+    async function carregarWhatsappFila() {
+      try {
+        setCarregandoWhatsappFila(true);
+        const dados = await buscarWhatsappFila();
+        setWhatsappFila(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar fila do WhatsApp:", erro);
+      } finally {
+        setCarregandoWhatsappFila(false);
+      }
+    }
+
+    carregarWhatsappFila();
+  }, [ehAdministrador]);
+
+  async function removerItemWhatsappFilaHandler(id) {
+    await removerItemWhatsappFila(id);
+    setWhatsappFila((anteriores) => anteriores.filter((item) => item.id !== id));
+  }
+
+  async function criarDespesaDoWhatsapp(dados) {
+    const salvo = await criarLancamento(dados);
+    setLancamentos((anteriores) => [salvo, ...anteriores]);
   }
 
   useEffect(() => {
@@ -3146,6 +3186,16 @@ const statusCmv =
             </button>
           )}
 
+          {ehAdministrador && (
+            <button
+              className={pagina === "whatsapp-fila" ? "active" : ""}
+              onClick={() => setPagina("whatsapp-fila")}
+            >
+              📲 Fila WhatsApp
+              {whatsappFila.length > 0 ? ` (${whatsappFila.length})` : ""}
+            </button>
+          )}
+
           {temPermissaoFechamento("vendas_saipos") && (
             <button
               className={pagina === "vendas-saipos" ? "active" : ""}
@@ -4079,6 +4129,18 @@ const statusCmv =
             adicionarNota={adicionarNotaFiscal}
             removerNota={removerNotaFiscal}
             buscarFoto={buscarFotoNotaFiscal}
+          />
+        )}
+
+        {pagina === "whatsapp-fila" && ehAdministrador && (
+          <WhatsAppFila
+            itens={whatsappFila}
+            carregando={carregandoWhatsappFila}
+            lojas={lojas}
+            lojaPadrao={vePermissaoTotal ? null : perfil?.loja_id || null}
+            criarFechamento={adicionarFechamentoCaixa}
+            criarDespesa={criarDespesaDoWhatsapp}
+            removerItem={removerItemWhatsappFilaHandler}
           />
         )}
 

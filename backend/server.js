@@ -5500,6 +5500,264 @@ async function rodarGeracaoDespesasRecorrentes() {
   }
 }
 
+// ===== Integração WhatsApp (17/08/2026) =====
+// O "robô" que fica de olho no grupo de WhatsApp roda separado (num
+// computador local, não é um usuário logado de verdade) — por isso não
+// usa o mesmo login/permissão de todo mundo, usa um token secreto fixo
+// (WHATSAPP_BOT_TOKEN no .env) só pra essa rota.
+function verificarTokenWhatsapp(req, res, next) {
+  const token = req.headers["x-whatsapp-token"];
+
+  if (!process.env.WHATSAPP_BOT_TOKEN) {
+    return res.status(500).json({
+      erro: "WHATSAPP_BOT_TOKEN não configurado no servidor.",
+    });
+  }
+
+  if (!token || token !== process.env.WHATSAPP_BOT_TOKEN) {
+    return res.status(401).json({ erro: "Token inválido." });
+  }
+
+  next();
+}
+
+function normalizarTextoWhatsapp(texto) {
+  return (texto || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+// Legenda → categoria de despesa (pedido do usuário, 17/08/2026): cada
+// uma dessas palavras na legenda da foto vira uma despesa de verdade,
+// lida por IA (valor + fornecedor), igual o botão "Ler nota
+// automaticamente" já faz manualmente em Despesas.
+const CATEGORIAS_DESPESA_WHATSAPP = {
+  vale: "Vale",
+  reforma: "Reforma",
+  compras: "Compras",
+  "materia prima": "Matéria-Prima",
+};
+
+app.post(
+  "/integracoes/whatsapp/foto",
+  verificarTokenWhatsapp,
+  async function (req, res) {
+    try {
+      const { foto, legenda, loja_id, remetente } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({ erro: "Envie a foto." });
+      }
+
+      const legendaNormalizada = normalizarTextoWhatsapp(legenda);
+      const lojaId = loja_id ? Number(loja_id) : null;
+      const hoje = new Date().toLocaleDateString("en-CA", {
+        timeZone: "America/Sao_Paulo",
+      });
+      const origemTexto = remetente
+        ? ` Recebido via WhatsApp de ${remetente}.`
+        : " Recebido via WhatsApp.";
+
+      // Diária Boy/Cozinha
+      const ehBoy = /\bboy\b/.test(legendaNormalizada);
+      const ehCozinha = /\bcozinha\b/.test(legendaNormalizada);
+
+      if (ehBoy || ehCozinha) {
+        const tipo = ehBoy ? "boy" : "cozinha";
+
+        let valorLido = null;
+        try {
+          const textoResposta = await lerImagemComIA(
+            foto,
+            'Essa é a foto de um comprovante de pagamento de diária (de um entregador/boy ou de um funcionário de cozinha) de uma hamburgueria. Pode ter o pagamento dividido em mais de uma forma (parte em dinheiro, parte em Pix, etc) — extraia o VALOR TOTAL PAGO, somando tudo se houver mais de um valor. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45}. Se não conseguir ler nenhum valor, use {"valor": null}.',
+            8192
+          );
+          const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+          const dadosLidos = JSON.parse(
+            jsonEncontrado ? jsonEncontrado[0] : textoResposta
+          );
+          valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
+        } catch (erroLeitura) {
+          console.error(
+            "Erro ao ler valor da diária (WhatsApp):",
+            erroLeitura.message
+          );
+        }
+
+        const dadosPreparados = prepararFechamentoCaixa({
+          loja_id: lojaId,
+          tipo,
+          foto,
+          valor: valorLido,
+          observacao: `Valor lido automaticamente — confira antes de fechar o caixa.${origemTexto}`,
+        });
+
+        const { data, error } = await supabase
+          .from("fechamentos_caixa")
+          .insert([dadosPreparados])
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        registrarAuditoria(
+          req,
+          "criou (via WhatsApp)",
+          "fechamentos_caixa",
+          data.id,
+          `${tipo}, legenda recebida: "${legenda || ""}"`
+        );
+
+        return res
+          .status(201)
+          .json({ ok: true, destino: "fechamento_caixa", tipo, id: data.id });
+      }
+
+      // Despesas (vale/reforma/compras/matéria-prima)
+      const chaveCategoria = Object.keys(CATEGORIAS_DESPESA_WHATSAPP).find(
+        (chave) => legendaNormalizada.includes(chave)
+      );
+
+      if (chaveCategoria) {
+        const categoria = CATEGORIAS_DESPESA_WHATSAPP[chaveCategoria];
+
+        let valorLido = null;
+        let fornecedorLido = "";
+        try {
+          const textoResposta = await lerImagemComIA(
+            foto,
+            'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+            8192
+          );
+          const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+          const dadosLidos = JSON.parse(
+            jsonEncontrado ? jsonEncontrado[0] : textoResposta
+          );
+          valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
+          fornecedorLido = dadosLidos.fornecedor || "";
+        } catch (erroLeitura) {
+          console.error(
+            "Erro ao ler valor da despesa (WhatsApp):",
+            erroLeitura.message
+          );
+        }
+
+        const dadosPreparados = prepararLancamento({
+          tipo: "despesa",
+          descricao: categoria,
+          categoria,
+          fornecedor: fornecedorLido,
+          valor: valorLido || 0,
+          data: hoje,
+          foto,
+          loja_id: lojaId,
+          observacao: `Valor lido automaticamente — confira antes de aprovar.${origemTexto}`,
+        });
+
+        const novoLancamento = {
+          id: Date.now(),
+          ...dadosPreparados,
+          status: "aprovado",
+        };
+
+        const { data, error } = await supabase
+          .from("lancamentos")
+          .insert([novoLancamento])
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        registrarAuditoria(
+          req,
+          "criou (via WhatsApp)",
+          "lancamentos",
+          data.id,
+          `${categoria}: R$ ${(valorLido || 0).toFixed(2)} — legenda recebida: "${legenda || ""}"`
+        );
+
+        return res
+          .status(201)
+          .json({ ok: true, destino: "lancamento", categoria, id: data.id });
+      }
+
+      // Legenda não reconhecida (ou sem legenda) — cai na fila pra
+      // classificar na mão, em vez de se perder ou de arriscar cair no
+      // lugar errado.
+      const { data, error } = await supabase
+        .from("whatsapp_fila")
+        .insert([
+          {
+            loja_id: lojaId,
+            foto,
+            legenda_recebida: legenda || "",
+            remetente: remetente || "",
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json({ ok: true, destino: "fila", id: data.id });
+    } catch (erro) {
+      console.error("Erro ao processar foto do WhatsApp:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível processar a foto.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get("/whatsapp-fila", verificarAdmin, async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("whatsapp_fila")
+      .select("*")
+      .order("criado_em", { ascending: false });
+
+    if (error) throw error;
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar fila do WhatsApp:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar a fila do WhatsApp.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/whatsapp-fila/:id", verificarAdmin, async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ erro: "ID inválido." });
+    }
+
+    const { error } = await supabase
+      .from("whatsapp_fila")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
+
+    res.json({ ok: true });
+  } catch (erro) {
+    console.error("Erro ao remover item da fila do WhatsApp:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível remover esse item da fila.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 // Confere a cada minuto se já é a hora certa (06:00–06:04, horário de
 // Brasília) de gerar as contas a pagar do mês a partir das despesas
 // recorrentes ativas.
