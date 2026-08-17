@@ -2266,6 +2266,20 @@ app.post(
         throw error;
       }
 
+      // BUG REAL corrigido (17/08/2026): a Conta a Pagar só nascia da
+      // automação que roda uma vez por dia de madrugada (05h) — cadastrar
+      // uma despesa recorrente nova em qualquer outro horário deixava ela
+      // "no molde" até o dia seguinte, sem opção de clicar/pagar. Agora já
+      // gera a conta a pagar do mês atual na hora, assim que cadastra.
+      try {
+        await gerarContaPagarDeRecorrenteSeNecessario(data, dataBrasilia(0));
+      } catch (erroGeracao) {
+        console.error(
+          "Erro ao gerar conta a pagar imediata da nova recorrência:",
+          erroGeracao.message
+        );
+      }
+
       registrarAuditoria(
         req,
         "criou",
@@ -5483,12 +5497,102 @@ setInterval(function () {
 
 let ultimoDiaGeradoDespesasRecorrentes = null;
 
-// Despesas Recorrentes (12/08/2026) — todo dia confere se a Conta a Pagar
-// desse mês já existe pra cada despesa recorrente ativa; se não existir
-// ainda, cria sozinha (idempotente — marca no observacao qual recorrência
-// e qual mês geraram essa conta, pra nunca duplicar mesmo rodando todo
-// dia). Roda de novo todo dia (não só uma vez por mês) pra pegar despesas
-// recorrentes cadastradas DEPOIS do dia 1 daquele mês.
+// Quantos dias ANTES do vencimento a Conta a Pagar já deve aparecer —
+// pedido do usuário (17/08/2026): dá tempo de se organizar pro pagamento,
+// sem sumir de vista, mas também sem lotar a lista com contas que só
+// vencem daqui a semanas.
+const DIAS_ANTECEDENCIA_RECORRENTE = 5;
+
+// Gera a Conta a Pagar do mês de "hojeStr" pra UMA despesa recorrente, se
+// ainda não existir e se já estiver dentro da antecedência (ou já
+// atrasada) — usado tanto pela rotina diária quanto na hora de cadastrar
+// uma recorrência nova (pra não esperar até o próximo dia 05h se o
+// vencimento desse mês já passou ou está pertinho). Idempotente: marca no
+// observacao qual recorrência e qual mês geraram essa conta, pra nunca
+// duplicar.
+async function gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr) {
+  const [ano, mes] = hojeStr.split("-").map(Number);
+  const anoMes = `${ano}-${String(mes).padStart(2, "0")}`;
+  const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
+
+  const marcador = `[RECORRENTE:${recorrente.id}:${anoMes}]`;
+
+  const { data: existentes, error: erroBusca } = await supabase
+    .from("contas_pagar")
+    .select("id")
+    .ilike("observacao", `%${marcador}%`)
+    .limit(1);
+
+  if (erroBusca) {
+    throw erroBusca;
+  }
+
+  if (existentes && existentes.length > 0) {
+    return null;
+  }
+
+  const dia = Math.min(
+    Number(recorrente.dia_vencimento || 1),
+    ultimoDiaDoMes
+  );
+  const dataVencimento = `${ano}-${String(mes).padStart(2, "0")}-${String(
+    dia
+  ).padStart(2, "0")}`;
+
+  // Só gera se já estiver dentro da antecedência (ou já atrasada) — se o
+  // vencimento ainda está longe, nem cria ainda, a rotina diária tenta de
+  // novo amanhã.
+  const dataLimiteGeracao = new Date(`${dataVencimento}T00:00:00`);
+  dataLimiteGeracao.setDate(
+    dataLimiteGeracao.getDate() - DIAS_ANTECEDENCIA_RECORRENTE
+  );
+  const dataLimiteStr = dataLimiteGeracao.toISOString().slice(0, 10);
+
+  if (hojeStr < dataLimiteStr) {
+    return null;
+  }
+
+  const dadosConta = {
+    descricao: recorrente.descricao,
+    fornecedor: recorrente.fornecedor || "",
+    valor: Number(recorrente.valor || 0),
+    data_vencimento: dataVencimento,
+    observacao: `${marcador} Gerado automaticamente (despesa recorrente).${
+      recorrente.observacao ? " " + recorrente.observacao : ""
+    }`,
+    foto: "",
+    loja_id: recorrente.loja_id,
+  };
+
+  const { data: contaCriada, error: erroConta } = await supabase
+    .from("contas_pagar")
+    .insert([dadosConta])
+    .select("id")
+    .single();
+
+  if (erroConta) {
+    throw erroConta;
+  }
+
+  await supabase.from("log_auditoria").insert([
+    {
+      usuario_id: null,
+      usuario_nome: "Automação (Despesas Recorrentes)",
+      acao: "criou",
+      tabela_afetada: "contas_pagar",
+      registro_id: String(contaCriada.id),
+      detalhes: `Gerado automaticamente a partir da despesa recorrente #${recorrente.id} (${recorrente.descricao}), vencimento ${dataVencimento}.`,
+    },
+  ]);
+
+  return contaCriada;
+}
+
+// Pedido do usuário (16/08/2026, apelidado "despesa recorrente"): todo
+// dia confere se a Conta a Pagar desse mês já existe pra cada despesa
+// recorrente ativa, dentro da antecedência configurada; se não existir
+// ainda, cria sozinha. Roda de novo todo dia (não só uma vez por mês) pra
+// pegar despesas recorrentes cadastradas a qualquer momento.
 async function rodarGeracaoDespesasRecorrentes() {
   const hojeStr = dataBrasilia(0);
 
@@ -5508,69 +5612,9 @@ async function rodarGeracaoDespesasRecorrentes() {
       throw error;
     }
 
-    const [ano, mes] = hojeStr.split("-").map(Number);
-    const anoMes = `${ano}-${String(mes).padStart(2, "0")}`;
-    const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
-
     for (const recorrente of recorrentes || []) {
       try {
-        const marcador = `[RECORRENTE:${recorrente.id}:${anoMes}]`;
-
-        const { data: existentes, error: erroBusca } = await supabase
-          .from("contas_pagar")
-          .select("id")
-          .ilike("observacao", `%${marcador}%`)
-          .limit(1);
-
-        if (erroBusca) {
-          throw erroBusca;
-        }
-
-        if (existentes && existentes.length > 0) {
-          continue;
-        }
-
-        const dia = Math.min(
-          Number(recorrente.dia_vencimento || 1),
-          ultimoDiaDoMes
-        );
-        const dataVencimento = `${ano}-${String(mes).padStart(
-          2,
-          "0"
-        )}-${String(dia).padStart(2, "0")}`;
-
-        const dadosConta = {
-          descricao: recorrente.descricao,
-          fornecedor: recorrente.fornecedor || "",
-          valor: Number(recorrente.valor || 0),
-          data_vencimento: dataVencimento,
-          observacao: `${marcador} Gerado automaticamente (despesa recorrente).${
-            recorrente.observacao ? " " + recorrente.observacao : ""
-          }`,
-          foto: "",
-          loja_id: recorrente.loja_id,
-        };
-
-        const { data: contaCriada, error: erroConta } = await supabase
-          .from("contas_pagar")
-          .insert([dadosConta])
-          .select("id")
-          .single();
-
-        if (erroConta) {
-          throw erroConta;
-        }
-
-        await supabase.from("log_auditoria").insert([
-          {
-            usuario_id: null,
-            usuario_nome: "Automação (Despesas Recorrentes)",
-            acao: "criou",
-            tabela_afetada: "contas_pagar",
-            registro_id: String(contaCriada.id),
-            detalhes: `Gerado automaticamente a partir da despesa recorrente #${recorrente.id} (${recorrente.descricao}), vencimento ${dataVencimento}.`,
-          },
-        ]);
+        await gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr);
       } catch (erroRecorrente) {
         console.error(
           `Erro ao gerar conta a pagar da recorrência #${recorrente.id}:`,
