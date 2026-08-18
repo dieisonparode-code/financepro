@@ -2274,6 +2274,23 @@ const statusCmv =
     }
   }
 
+  // Pedido do usuário (18/08/2026): admin conseguir excluir, direto da
+  // tela Contas Pagas, uma despesa que apareceu ali (ex: lançada
+  // automática via WhatsApp) sem precisar ir até a tela Despesas. Mesma
+  // exclusão de sempre — se o lançamento for de um mês já encerrado, o
+  // backend rejeita e pede senha, então avisa em vez de travar calado.
+  async function removerDespesaDeContasPagas(id) {
+    try {
+      await excluirLancamento(id);
+      setLancamentos((anteriores) => anteriores.filter((item) => item.id !== id));
+    } catch (erro) {
+      alert(
+        erro.message ||
+          "Não foi possível excluir — se for de um mês já encerrado, exclua pela tela Despesas (pede sua senha)."
+      );
+    }
+  }
+
   function pedirConfirmacaoExclusao(id) {
     setConfirmandoExclusao(id);
     setSenhaExclusaoMesEncerrado("");
@@ -3937,6 +3954,7 @@ const statusCmv =
             editarConta={editarContaPagar}
             marcarComoPaga={pagarContaPagar}
             removerConta={removerContaPagar}
+            removerDespesa={removerDespesaDeContasPagas}
             ehAdministrador={ehAdministrador}
             lojas={lojas}
             vePermissaoTotal={vePermissaoTotal}

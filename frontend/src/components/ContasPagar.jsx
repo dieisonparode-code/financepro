@@ -161,6 +161,7 @@ function ContasPagar({
   modo = "pendentes",
   aoConfirmarPagamento,
   ehAdministrador = false,
+  removerDespesa,
 }) {
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
@@ -459,6 +460,23 @@ function ContasPagar({
       }
     } catch (erro) {
       alert(erro.message || "Não foi possível excluir a conta.");
+    }
+  }
+
+  // Pedido do usuário (18/08/2026): admin conseguir excluir, direto
+  // daqui, uma despesa que apareceu em Contas Pagas (ex: lançada
+  // automática via WhatsApp) sem precisar ir na tela Despesas.
+  async function confirmarExclusaoDespesa(conta) {
+    const confirmar = window.confirm(
+      `Excluir a despesa "${conta.descricao}"? Isso desfaz o valor lançado no saldo.`
+    );
+
+    if (!confirmar) return;
+
+    try {
+      await removerDespesa(conta._idOriginal);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível excluir a despesa.");
     }
   }
 
@@ -1074,6 +1092,22 @@ function ContasPagar({
                         )}
                       </>
                     )}
+
+                    {/* Pedido do usuário (18/08/2026): despesa que
+                    apareceu aqui (ex: lançada automática via WhatsApp)
+                    também precisa de opção de excluir — só admin, mesma
+                    regra sensível de acima. */}
+                    {conta._origem === "despesa" &&
+                      ehAdministrador &&
+                      removerDespesa && (
+                        <button
+                          type="button"
+                          className="delete-button"
+                          onClick={() => confirmarExclusaoDespesa(conta)}
+                        >
+                          Excluir
+                        </button>
+                      )}
                   </div>
                 </div>
               );
