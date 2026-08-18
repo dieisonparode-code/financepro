@@ -15,8 +15,25 @@ $processo = Start-Process -FilePath "cmd.exe" `
   -WindowStyle Hidden `
   -PassThru
 
+# Desenha um iconezinho "FP" (mesmas cores da logo do FinancePro — fundo
+# azul, letras brancas) na hora, sem precisar de nenhum arquivo de imagem
+# separado.
+$bitmap = New-Object System.Drawing.Bitmap(32, 32)
+$grafico = [System.Drawing.Graphics]::FromImage($bitmap)
+$grafico.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$corFundo = [System.Drawing.Color]::FromArgb(255, 37, 99, 235)  # azul FinancePro
+$pincelFundo = New-Object System.Drawing.SolidBrush($corFundo)
+$grafico.FillEllipse($pincelFundo, 0, 0, 32, 32)
+$fonte = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$pincelTexto = [System.Drawing.Brushes]::White
+$formatoTexto = New-Object System.Drawing.StringFormat
+$formatoTexto.Alignment = [System.Drawing.StringAlignment]::Center
+$formatoTexto.LineAlignment = [System.Drawing.StringAlignment]::Center
+$grafico.DrawString("FP", $fonte, $pincelTexto, (New-Object System.Drawing.RectangleF(0, 0, 32, 32)), $formatoTexto)
+$grafico.Dispose()
+
 $icone = New-Object System.Windows.Forms.NotifyIcon
-$icone.Icon = [System.Drawing.SystemIcons]::Application
+$icone.Icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
 $icone.Text = "FinancePro WhatsApp - Ativo"
 $icone.Visible = $true
 
