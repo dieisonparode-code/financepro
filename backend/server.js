@@ -2892,7 +2892,7 @@ app.post(
         let consultaDiarias = supabase
           .from("fechamentos_caixa")
           .select(
-            "id, tipo, foto, valor, valor_pago_dinheiro, nome_pessoa, criado_em"
+            "id, tipo, foto, valor, valor_pago_dinheiro, nome_pessoa, criado_em, loja_id"
           )
           .in("tipo", Object.keys(NOMES_DIARIA_PARA_CONTA_PAGAR))
           .lte("criado_em", data.criado_em);
@@ -2942,7 +2942,11 @@ app.post(
               fornecedor: "",
               observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}) — parte paga em dinheiro na hora.`,
               foto: diaria.foto || "",
-              loja_id: null,
+              // BUG REAL corrigido (17/08/2026): vinha sempre null, mesmo
+              // a diária tendo loja própria — a despesa gerada ficava
+              // sem loja, some do Dashboard quando filtra por loja
+              // específica (só aparecia em "Todas as lojas").
+              loja_id: diaria.loja_id || null,
               forma_pagamento_id: null,
               pago_em_dinheiro: true,
               status: "aprovado",
@@ -3025,7 +3029,9 @@ app.post(
                 ? `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Valor lido da foto — confira antes de pagar.`
                 : `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${diaria.id}). Preencha o valor antes de pagar.`,
             foto: diaria.foto || "",
-            loja_id: null,
+            // BUG REAL corrigido (17/08/2026): mesma coisa da despesa
+            // acima — vinha sempre null, contas ficavam sem loja.
+            loja_id: diaria.loja_id || null,
           };
 
           const { data: contaCriada, error: erroConta } = await supabase

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -25,6 +25,19 @@ function DespesasRecorrentes({
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
+  // BUG REAL corrigido (17/08/2026): o campo Loja só pegava o valor de
+  // "lojaPadrao" (o seletor do topo) na primeira vez que a tela abria —
+  // se o usuário trocasse a loja no topo DEPOIS de já estar nessa
+  // página, o formulário continuava com "Loja" em branco por dentro,
+  // mesmo mostrando visualmente o nome certo. Cadastrar assim salvava
+  // loja_id nulo, e a despesa gerada some do Dashboard quando filtra por
+  // uma loja específica. Agora acompanha o seletor do topo sempre que
+  // muda, contanto que não esteja editando um cadastro existente.
+  useEffect(() => {
+    if (editandoId) return;
+    setLojaId(lojaPadrao ? String(lojaPadrao) : "");
+  }, [lojaPadrao, editandoId]);
+
   function limparFormulario() {
     setDescricao("");
     setFornecedor("");
@@ -50,6 +63,18 @@ function DespesasRecorrentes({
 
     if (!descricao.trim() || !valor || !diaVencimento) {
       alert("Preencha descrição, valor e dia do vencimento.");
+      return;
+    }
+
+    // BUG REAL corrigido (17/08/2026): o campo "Loja" aqui do formulário
+    // é diferente do seletor de loja lá em cima da tela — ficava em
+    // branco por padrão sempre que "Todas as lojas" estava selecionado
+    // no topo, e ninguém percebia (a Conta a Pagar gerada nascia sem
+    // loja, e o Dashboard filtrado numa loja específica escondia ela
+    // sozinha, sem erro nenhum). Agora obriga escolher, se tiver mais de
+    // uma loja cadastrada.
+    if (lojas.length > 0 && !lojaId) {
+      alert("Escolha a loja dessa despesa recorrente.");
       return;
     }
 
@@ -188,8 +213,9 @@ function DespesasRecorrentes({
               <select
                 value={lojaId}
                 onChange={(evento) => setLojaId(evento.target.value)}
+                required
               >
-                <option value="">Sem loja específica</option>
+                <option value="">Escolha a loja...</option>
                 {lojas.map((loja) => (
                   <option key={loja.id} value={loja.id}>
                     {loja.nome}
