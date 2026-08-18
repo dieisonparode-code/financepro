@@ -608,12 +608,13 @@ export default function DashboardPremium({
           classe="azul"
           titulo="Saldo"
           valor={formatarMoeda(saldo)}
-          bruto={totalTaxas > 0 ? formatarMoeda(saldoBruto) : null}
-          taxa={
-            totalTaxas > 0
-              ? `${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`
-              : null
-          }
+          // Pedido do usuário (18/08/2026): não é pra sumir com a linha de
+          // Bruto/Taxas quando não há taxa nenhuma desde o ajuste do saldo —
+          // é pra continuar aparecendo, só que com o valor certo (mesma base
+          // de R$ 106.430,13 do Saldo de cima), em vez do número do mês
+          // inteiro que não tinha relação nenhuma com o saldo novo.
+          bruto={formatarMoeda(saldoBruto)}
+          taxa={`${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`}
           emDinheiro={dinheiroEmCaixa !== 0 ? formatarMoeda(dinheiroEmCaixa) : null}
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
