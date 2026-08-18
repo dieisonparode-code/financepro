@@ -32,7 +32,11 @@ const axios = require("axios");
 const BACKEND_URL = process.env.BACKEND_URL;
 const WHATSAPP_BOT_TOKEN = process.env.WHATSAPP_BOT_TOKEN;
 const LOJA_ID = process.env.LOJA_ID || "";
-const GRUPO_ID = process.env.GRUPO_ID || "";
+// BUG REAL corrigido (18/08/2026): comparar sem .trim() fazia o grupo
+// certo ser rejeitado como "diferente" quando sobrava espaço/quebra de
+// linha invisível colado no .env (bem comum copiando e colando um ID) —
+// os dois pareciam idênticos no terminal mas nunca batiam de verdade.
+const GRUPO_ID = (process.env.GRUPO_ID || "").trim();
 
 if (!BACKEND_URL || !WHATSAPP_BOT_TOKEN) {
   console.error(
@@ -96,7 +100,7 @@ async function iniciar() {
           console.error("Não consegui listar os grupos:", erro.message);
         }
       } else {
-        console.log(`👂 Escutando o grupo ${GRUPO_ID}...`);
+        console.log(`👂 Escutando o grupo "${GRUPO_ID}" (${GRUPO_ID.length} caracteres)...`);
       }
     }
   });
@@ -115,7 +119,7 @@ async function iniciar() {
 async function processarMensagem(sock, mensagem) {
   if (!mensagem.message || mensagem.key.fromMe) return;
 
-  const remoteJid = mensagem.key.remoteJid || "";
+  const remoteJid = (mensagem.key.remoteJid || "").trim();
   if (!remoteJid.endsWith("@g.us")) return; // só grupos
 
   const imageMessage =
