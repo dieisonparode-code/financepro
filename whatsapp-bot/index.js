@@ -126,16 +126,20 @@ async function processarMensagem(sock, mensagem) {
     mensagem.message.imageMessage ||
     mensagem.message.viewOnceMessageV2?.message?.imageMessage;
 
+  // Em vez de exigir a string inteira idêntica (frágil — LID vs PN,
+  // sufixo diferente etc. já causaram falso "diferente" nesse teste),
+  // compara só a parte numérica antes do "@" — muito mais robusto.
+  const idNumericoConfigurado = GRUPO_ID.split("@")[0];
+  const idNumericoRecebido = remoteJid.split("@")[0];
+  const bateGrupo = idNumericoRecebido === idNumericoConfigurado;
+
   // Log de depuração: mostra QUALQUER mensagem de grupo que chegar (foto
-  // ou não, do grupo configurado ou não) — ajuda a descobrir se o
-  // problema é mensagem não chegando ou GRUPO_ID errado no .env.
-  // JSON.stringify revela caractere escondido que uma foto do terminal
-  // não mostra (ex: dois espaços, ou um caractere invisível no meio).
+  // ou não, do grupo configurado ou não).
   console.log(
-    `👀 Mensagem vista — remoteJid=${JSON.stringify(remoteJid)} (${remoteJid.length} car.) | GRUPO_ID configurado=${JSON.stringify(GRUPO_ID)} (${GRUPO_ID.length} car.) | bate? ${remoteJid === GRUPO_ID ? "SIM" : "NÃO"} — tem foto? ${imageMessage ? "sim" : "não"}`
+    `👀 Mensagem vista — grupo=${JSON.stringify(remoteJid)} | configurado=${JSON.stringify(GRUPO_ID)} | id numérico bate? ${bateGrupo ? "SIM" : "NÃO"} (recebido="${idNumericoRecebido}" vs configurado="${idNumericoConfigurado}") — tem foto? ${imageMessage ? "sim" : "não"}`
   );
 
-  if (GRUPO_ID && remoteJid !== GRUPO_ID) return; // só o grupo configurado
+  if (GRUPO_ID && !bateGrupo) return; // só o grupo configurado
 
   if (!imageMessage) return; // só processa foto
 
