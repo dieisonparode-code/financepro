@@ -77,6 +77,21 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
+// Pedido do usuário (18/08/2026): mostrar não só a data, mas o horário
+// exato em que a conta foi paga/lançada no sistema (nunca a data de uma
+// nota/comprovante). `horarioIso` vem de `pago_em`/`created_at`.
+function formatarDataHora(horarioIso, dataFallback) {
+  if (!horarioIso) return formatarData(dataFallback);
+  const data = new Date(horarioIso);
+  if (Number.isNaN(data.getTime())) return formatarData(dataFallback);
+  const dataFormatada = data.toLocaleDateString("pt-BR");
+  const horaFormatada = data.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${dataFormatada} às ${horaFormatada}`;
+}
+
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -491,7 +506,15 @@ function ContasPagar({
       ? [
           ...contas
             .filter((conta) => conta.status === "pago")
-            .map((conta) => ({ ...conta, _origem: "contas_pagar" })),
+            .map((conta) => ({
+              ...conta,
+              _origem: "contas_pagar",
+              // Pedido do usuário (18/08/2026): ordem/exibição da lista
+              // usa o horário real do pagamento no sistema, não a data da
+              // nota. Contas pagas antes dessa mudança não têm pago_em
+              // (fica null e cai no fallback por data, sem horário).
+              _horario: conta.pago_em || null,
+            })),
           ...despesas.map((despesa) => ({
             id: `despesa-${despesa.id}`,
             _origem: "despesa",
@@ -506,6 +529,7 @@ function ContasPagar({
             loja_id: despesa.loja_id,
             foto: null,
             tem_foto: despesa.tem_foto,
+            _horario: despesa.created_at || null,
           })),
         ]
       : [];
@@ -533,9 +557,19 @@ function ContasPagar({
               ? true
               : pagamentoDentroDaJanelaPadrao(conta.data_pagamento);
           })
-          .sort((a, b) =>
-            (b.data_pagamento || "").localeCompare(a.data_pagamento || "")
-          )
+          .sort((a, b) => {
+            // Ordem de pagamento real no sistema (horário exato), não a
+            // data da nota. Registros antigos sem _horario caem por
+            // último dentro do mesmo dia (usando só a data como reforço).
+            if (a._horario && b._horario) {
+              return b._horario.localeCompare(a._horario);
+            }
+            if (a._horario) return -1;
+            if (b._horario) return 1;
+            return (b.data_pagamento || "").localeCompare(
+              a.data_pagamento || ""
+            );
+          })
       : contas
           .filter((conta) => conta.status !== "pago")
           .sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento));
@@ -919,7 +953,10 @@ function ContasPagar({
                           formatarMoeda(conta.valor)
                         )}
                         {modo === "pagas" && conta.data_pagamento
-                          ? ` — pago em ${formatarData(conta.data_pagamento)}`
+                          ? ` — pago em ${formatarDataHora(
+                              conta._horario,
+                              conta.data_pagamento
+                            )}`
                           : ` — vence em ${formatarData(
                               conta.data_vencimento
                             )}`}

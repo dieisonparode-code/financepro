@@ -2111,7 +2111,13 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       return res.json(contaAtual);
     }
 
-    const dataPagamento = new Date().toISOString().slice(0, 10);
+    const agora = new Date();
+    const dataPagamento = agora.toISOString().slice(0, 10);
+    // Pedido do usuário (18/08/2026): guarda o HORÁRIO exato do
+    // pagamento (não só a data) — usado pra ordenar/mostrar a lista de
+    // Contas Pagas na ordem real de quando cada uma foi paga no
+    // sistema, não da data impressa em nenhuma nota/comprovante.
+    const pagoEm = agora.toISOString();
 
     // Pagar uma conta a pagar precisa dar baixa de verdade no saldo — cria
     // a despesa correspondente, do jeito que o usuário pediu: "toda conta
@@ -2147,6 +2153,7 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       .update({
         status: "pago",
         data_pagamento: dataPagamento,
+        pago_em: pagoEm,
         lancamento_id: despesaCriada.id,
       })
       .eq("id", id)
