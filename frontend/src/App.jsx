@@ -1506,6 +1506,26 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
         );
       }, 0);
 
+    // Mesma coisa, mas em valor bruto (sem descontar taxa de cartão/iFood/
+    // etc.) — só pra mostrar "Bruto R$ X — Taxas R$ Y" embaixo do valor
+    // principal do card. Tem que usar a mesma base (desde 18/08/2026), senão
+    // esse detalhe mostra um número de outro período, sem nenhuma relação
+    // com o Saldo de cima.
+    const receitasRecebidasBrutoDesdeAjusteSaldo = lancamentosAprovados
+      .filter((item) => item.tipo === "receita" && item.data > SALDO_INICIAL_DATA)
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (aindaPendente) {
+          return total;
+        }
+
+        return total + Number(item.valor || 0);
+      }, 0);
+
     const despesasDesdeAjusteSaldo = lancamentosAprovados
       .filter((item) => item.tipo === "despesa" && item.data > SALDO_INICIAL_DATA)
       .reduce((total, item) => total + Number(item.valor || 0), 0);
@@ -1514,14 +1534,19 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       SALDO_INICIAL_VALOR +
       receitasRecebidasDesdeAjusteSaldo -
       despesasDesdeAjusteSaldo;
-    const saldoBruto = receitasRecebidasBruto - despesas;
-    const totalTaxas = receitasRecebidasBruto - receitasRecebidas;
+    const saldoBruto =
+      SALDO_INICIAL_VALOR +
+      receitasRecebidasBrutoDesdeAjusteSaldo -
+      despesasDesdeAjusteSaldo;
+    const totalTaxas =
+      receitasRecebidasBrutoDesdeAjusteSaldo -
+      receitasRecebidasDesdeAjusteSaldo;
     // Percentual médio de taxa sobre o que já caiu (mistura cartão, iFood,
     // Brendi, etc. — cada um com sua própria taxa cadastrada) — usado só
     // pra mostrar "Taxa X%" ao lado do valor no card de Saldo.
     const percentualTaxas =
-      receitasRecebidasBruto > 0
-        ? (totalTaxas / receitasRecebidasBruto) * 100
+      receitasRecebidasBrutoDesdeAjusteSaldo > 0
+        ? (totalTaxas / receitasRecebidasBrutoDesdeAjusteSaldo) * 100
         : 0;
     const cmvPercentual =
       receitas > 0 ? (cmvValor / receitas) * 100 : 0;
