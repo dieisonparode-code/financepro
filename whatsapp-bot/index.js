@@ -129,8 +129,10 @@ async function processarMensagem(sock, mensagem) {
   // Log de depuração: mostra QUALQUER mensagem de grupo que chegar (foto
   // ou não, do grupo configurado ou não) — ajuda a descobrir se o
   // problema é mensagem não chegando ou GRUPO_ID errado no .env.
+  // JSON.stringify revela caractere escondido que uma foto do terminal
+  // não mostra (ex: dois espaços, ou um caractere invisível no meio).
   console.log(
-    `👀 Mensagem vista no grupo ${remoteJid}${remoteJid === GRUPO_ID ? " (É O GRUPO CONFIGURADO)" : " (grupo diferente do GRUPO_ID configurado)"} — tem foto? ${imageMessage ? "sim" : "não"}`
+    `👀 Mensagem vista — remoteJid=${JSON.stringify(remoteJid)} (${remoteJid.length} car.) | GRUPO_ID configurado=${JSON.stringify(GRUPO_ID)} (${GRUPO_ID.length} car.) | bate? ${remoteJid === GRUPO_ID ? "SIM" : "NÃO"} — tem foto? ${imageMessage ? "sim" : "não"}`
   );
 
   if (GRUPO_ID && remoteJid !== GRUPO_ID) return; // só o grupo configurado
