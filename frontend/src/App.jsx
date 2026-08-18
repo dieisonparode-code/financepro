@@ -353,6 +353,15 @@ function criarFormularioInicial(tipo = "receita") {
     data: hojeLocal(),
   };
 }
+// Pedido do usuário (18/08/2026): o saldo real da conta nessa data era
+// R$ 106.430,13. É o ponto de partida fixo do card "Saldo" do Dashboard —
+// a partir daqui, toda venda recebida soma e toda despesa (incluindo
+// contas a pagar que forem pagas, que já viram despesa lançada) desconta
+// automaticamente, sem precisar mexer em nada. Lançamentos de antes dessa
+// data não entram de novo na conta porque já estão embutidos nesse valor.
+const SALDO_INICIAL_VALOR = 106430.13;
+const SALDO_INICIAL_DATA = "2026-08-18";
+
 function App() {
   return (
     <BrowserRouter>
@@ -1470,7 +1479,41 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     // usuário: Fluxo de Caixa é mais "otimista" (conta tudo que entrou),
     // Saldo é mais conservador (só o que já é dinheiro de verdade agora).
     const fluxoCaixa = receitas - despesas;
-    const saldo = fluxoCaixa - receitasPendentesLiquido;
+
+    // Pedido do usuário (18/08/2026): o saldo real da conta hoje é
+    // R$ 106.430,13 — esse é o ponto de partida fixo do card "Saldo" do
+    // Dashboard a partir de agora. Diferente do resto do card (que
+    // recalcula tudo com base só no mês/loja escolhidos no filtro), o
+    // Saldo soma/desconta automaticamente TODO lançamento (receita
+    // recebida entra, despesa sai) com data DEPOIS de hoje, sem filtrar
+    // por mês nem por loja — é o saldo real da empresa, não um recorte.
+    // Lançamentos antigos (antes de hoje) não entram nessa conta porque
+    // já estão embutidos no valor de R$ 106.430,13 informado.
+    const receitasRecebidasDesdeAjusteSaldo = lancamentosAprovados
+      .filter((item) => item.tipo === "receita" && item.data > SALDO_INICIAL_DATA)
+      .reduce((total, item) => {
+        const aindaPendente =
+          item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
+          item.status_conciliacao !== "conciliado";
+
+        if (aindaPendente) {
+          return total;
+        }
+
+        return (
+          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
+        );
+      }, 0);
+
+    const despesasDesdeAjusteSaldo = lancamentosAprovados
+      .filter((item) => item.tipo === "despesa" && item.data > SALDO_INICIAL_DATA)
+      .reduce((total, item) => total + Number(item.valor || 0), 0);
+
+    const saldo =
+      SALDO_INICIAL_VALOR +
+      receitasRecebidasDesdeAjusteSaldo -
+      despesasDesdeAjusteSaldo;
     const saldoBruto = receitasRecebidasBruto - despesas;
     const totalTaxas = receitasRecebidasBruto - receitasRecebidas;
     // Percentual médio de taxa sobre o que já caiu (mistura cartão, iFood,
@@ -1498,7 +1541,7 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       margemPercentual,
       dinheiroEmCaixa: dinheiroEmCaixaFiltrado - despesasEmDinheiro,
     };
-  }, [lancamentosDashboard, dinheiroEmCaixaFiltrado]);
+  }, [lancamentosDashboard, lancamentosAprovados, dinheiroEmCaixaFiltrado]);
 
   const despesasPorCategoria = useMemo(() => {
   const agrupadas = lancamentosAprovados
