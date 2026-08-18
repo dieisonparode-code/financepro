@@ -1375,13 +1375,17 @@ const lancamentosDashboard = useMemo(() => {
 
 // Soma só os fechamentos de dinheiro DAQUELA loja — nunca de todas
 // juntas, senão o dinheiro físico de uma loja aparece misturado com o
-// das outras (é um total acumulado "desde sempre", não filtra por mês).
+// das outras. Pedido do usuário (18/08/2026): zerado a partir de hoje —
+// só conta fechamento confirmado DEPOIS da data-base do Saldo (antes
+// somava "desde sempre", o que não tinha mais relação com o valor real
+// de hoje).
 const dinheiroEmCaixaFiltrado = useMemo(() => {
   return registrosDinheiroInformado
     .filter(
       (registro) =>
-        lojaDashboard === "todas" ||
-        String(registro.loja_id || "") === String(lojaDashboard)
+        (lojaDashboard === "todas" ||
+          String(registro.loja_id || "") === String(lojaDashboard)) &&
+        registro.criado_em > SALDO_INICIAL_DATA
     )
     .reduce((total, registro) => total + Number(registro.valor || 0), 0);
 }, [registrosDinheiroInformado, lojaDashboard]);
@@ -1438,11 +1442,23 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       .filter((item) => item.tipo === "despesa")
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
-    // "Em dinheiro" (card Saldo) = soma dos fechamentos confirmados MENOS
-    // as despesas pagas em dinheiro — senão o dinheiro que já saiu do
-    // caixa pra pagar uma despesa ainda apareceria como se estivesse lá.
-    const despesasEmDinheiro = lancamentosDashboard
-      .filter((item) => item.tipo === "despesa" && item.pago_em_dinheiro)
+    // Pedido do usuário (18/08/2026): o "Em dinheiro" ficou negativo e sem
+    // relação com a realidade porque somava TODOS os fechamentos já
+    // confirmados desde sempre menos só as despesas em dinheiro do mês
+    // filtrado — comparando períodos diferentes. Zerado agora: conta só o
+    // que acontecer DEPOIS de hoje (mesma data-base do Saldo), mas continua
+    // sendo um indicador à parte, sem somar dentro do valor grande do
+    // Saldo (pra não contar a mesma venda em dinheiro duas vezes — ela já
+    // entra no Saldo como receita normal "Vendas Dinheiro" da Saipos).
+    // Confirma marcado no fechamento: soma. Despesa paga com dinheiro do
+    // caixa: desconta.
+    const despesasEmDinheiro = lancamentosAprovados
+      .filter(
+        (item) =>
+          item.tipo === "despesa" &&
+          item.pago_em_dinheiro &&
+          item.data > SALDO_INICIAL_DATA
+      )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
     const cmvValor = lancamentosDashboard
