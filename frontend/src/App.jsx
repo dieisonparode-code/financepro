@@ -3937,6 +3937,7 @@ const statusCmv =
             editarConta={editarContaPagar}
             marcarComoPaga={pagarContaPagar}
             removerConta={removerContaPagar}
+            ehAdministrador={ehAdministrador}
             lojas={lojas}
             vePermissaoTotal={vePermissaoTotal}
             lojaPadrao={

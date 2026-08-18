@@ -160,6 +160,7 @@ function ContasPagar({
   lojaPadrao = null,
   modo = "pendentes",
   aoConfirmarPagamento,
+  ehAdministrador = false,
 }) {
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
@@ -1057,13 +1058,20 @@ function ContasPagar({
                           Editar
                         </button>
 
-                        <button
-                          type="button"
-                          className="delete-button"
-                          onClick={() => confirmarExclusao(conta)}
-                        >
-                          Excluir
-                        </button>
+                        {/* Pedido do usuário (18/08/2026): excluir uma
+                        conta JÁ PAGA é uma ação sensível (reverte a
+                        despesa que já baixou o saldo) — fica só pro
+                        admin. Excluir uma conta ainda PENDENTE continua
+                        liberado pra quem já tinha acesso, sem mudança. */}
+                        {(modo !== "pagas" || ehAdministrador) && (
+                          <button
+                            type="button"
+                            className="delete-button"
+                            onClick={() => confirmarExclusao(conta)}
+                          >
+                            Excluir
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
