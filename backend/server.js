@@ -1027,6 +1027,37 @@ app.delete(
         );
       }
 
+      // BUG REAL corrigido (18/08/2026): excluir uma despesa que nasceu de
+      // pagar uma Conta a Pagar (ou que o admin excluiu direto pela tela
+      // Contas Pagas) deixava a Conta a Pagar "órfã" — continuava marcada
+      // "pago", com lancamento_id apontando pra um lançamento que não
+      // existe mais. Isso escondia o valor de qualquer relatório E
+      // travava a Despesa Recorrente de gerar uma conta nova no mês
+      // seguinte (o marcador [RECORRENTE:...:mês] continuava "existindo").
+      // Mesma lógica já usada no sentido contrário (excluir a conta a
+      // pagar reverte a despesa) — aqui reverte a conta a pagar pra
+      // pendente de novo, como se nunca tivesse sido paga.
+      const { data: contaVinculada } = await supabase
+        .from("contas_pagar")
+        .select("id, descricao, valor")
+        .eq("lancamento_id", id)
+        .maybeSingle();
+
+      if (contaVinculada) {
+        await supabase
+          .from("contas_pagar")
+          .update({ status: "pendente", data_pagamento: null, lancamento_id: null })
+          .eq("id", contaVinculada.id);
+
+        registrarAuditoria(
+          req,
+          "reverteu pra pendente (despesa excluída)",
+          "contas_pagar",
+          contaVinculada.id,
+          `${contaVinculada.descricao} (${contaVinculada.valor}) voltou a ser Conta a Pagar pendente porque a despesa vinculada foi excluída.`
+        );
+      }
+
       const { error } = await supabase
         .from("lancamentos")
         .delete()
