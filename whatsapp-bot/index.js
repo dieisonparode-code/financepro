@@ -117,11 +117,19 @@ async function processarMensagem(sock, mensagem) {
 
   const remoteJid = mensagem.key.remoteJid || "";
   if (!remoteJid.endsWith("@g.us")) return; // só grupos
-  if (GRUPO_ID && remoteJid !== GRUPO_ID) return; // só o grupo configurado
 
   const imageMessage =
     mensagem.message.imageMessage ||
     mensagem.message.viewOnceMessageV2?.message?.imageMessage;
+
+  // Log de depuração: mostra QUALQUER mensagem de grupo que chegar (foto
+  // ou não, do grupo configurado ou não) — ajuda a descobrir se o
+  // problema é mensagem não chegando ou GRUPO_ID errado no .env.
+  console.log(
+    `👀 Mensagem vista no grupo ${remoteJid}${remoteJid === GRUPO_ID ? " (É O GRUPO CONFIGURADO)" : " (grupo diferente do GRUPO_ID configurado)"} — tem foto? ${imageMessage ? "sim" : "não"}`
+  );
+
+  if (GRUPO_ID && remoteJid !== GRUPO_ID) return; // só o grupo configurado
 
   if (!imageMessage) return; // só processa foto
 
