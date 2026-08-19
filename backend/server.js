@@ -5764,6 +5764,65 @@ const CATEGORIAS_DESPESA_WHATSAPP = {
   materia_prima: "Matéria-Prima",
 };
 
+// Pedido do usuário (19/08/2026): duas fotos de notas DIFERENTES (ex:
+// duas notas da mesma empresa, mesmo valor, mandadas em minutos
+// próximos) não podem virar duas despesas idênticas no sistema sem
+// nenhuma informação que prove que são coisas diferentes — vira
+// duplicata bloqueada A NÃO SER que a legenda escrita no grupo (ex:
+// "embalagem") ou algum identificador lido na própria foto (nº da nota,
+// do pedido, autorização, etc.) mostre que não é a mesma nota de novo.
+async function encontrarDespesaDuplicadaWhatsapp({
+  lojaId,
+  fornecedor,
+  valor,
+  legenda,
+  identificador,
+}) {
+  if (!fornecedor || !valor) return null;
+
+  const desde = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("lancamentos")
+    .select("id, fornecedor, valor, descricao, observacao, created_at")
+    .eq("tipo", "despesa")
+    .eq("loja_id", lojaId)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error("Erro ao checar duplicata do WhatsApp:", error.message);
+    return null;
+  }
+
+  const fornecedorLimpo = fornecedor.trim().toLowerCase();
+  const legendaLimpa = (legenda || "").trim().toLowerCase();
+  const identificadorLimpo = (identificador || "").trim().toLowerCase();
+
+  return (
+    (data || []).find((item) => {
+      const mesmoFornecedor =
+        (item.fornecedor || "").trim().toLowerCase() === fornecedorLimpo;
+      const mesmoValor =
+        Math.abs(Number(item.valor || 0) - Number(valor)) < 0.01;
+
+      if (!mesmoFornecedor || !mesmoValor) return false;
+
+      // Se essa nota nova trouxe uma legenda ou identificador que o
+      // lançamento existente ainda NÃO tem registrado, não é duplicata —
+      // é outra nota real, só que parecida.
+      const textoExistente = `${item.descricao || ""} ${item.observacao || ""}`.toLowerCase();
+
+      if (legendaLimpa && !textoExistente.includes(legendaLimpa)) return false;
+      if (identificadorLimpo && !textoExistente.includes(identificadorLimpo))
+        return false;
+
+      return true;
+    }) || null
+  );
+}
+
 app.post(
   "/integracoes/whatsapp/foto",
   verificarTokenWhatsapp,
@@ -5983,10 +6042,11 @@ app.post(
 
         let valorLido = null;
         let fornecedorLido = "";
+        let identificadorLido = "";
         try {
           const textoResposta = await lerImagemComIA(
             foto,
-            'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+            'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento (se estiver visível), e um IDENTIFICADOR que prove que essa nota é diferente de outra parecida (nº da nota fiscal, nº do pedido, código de autorização, ou qualquer código/número visível na foto — o que estiver mais visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "identificador": "código ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
             8192
           );
           const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
@@ -5995,6 +6055,7 @@ app.post(
           );
           valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
           fornecedorLido = dadosLidos.fornecedor || "";
+          identificadorLido = dadosLidos.identificador || "";
         } catch (erroLeitura) {
           console.error(
             "Erro ao ler valor da despesa (WhatsApp):",
@@ -6002,16 +6063,45 @@ app.post(
           );
         }
 
+        // Pedido do usuário (19/08/2026): legenda escrita no grupo (ex:
+        // "embalagem") vira parte da descrição, pra diferenciar na tela
+        // duas despesas do mesmo fornecedor/valor/horário.
+        const legendaLimpa = (legenda || "").trim();
+        const detalheDistintivo = legendaLimpa || identificadorLido || "";
+        const descricaoFinal = detalheDistintivo
+          ? `${categoria} — ${detalheDistintivo}`
+          : categoria;
+
+        const duplicata = await encontrarDespesaDuplicadaWhatsapp({
+          lojaId,
+          fornecedor: fornecedorLido,
+          valor: valorLido || 0,
+          legenda: legendaLimpa,
+          identificador: identificadorLido,
+        });
+
+        if (duplicata) {
+          console.log(
+            `⚠️ Foto do WhatsApp ignorada por parecer duplicata do lançamento #${duplicata.id} (mesmo fornecedor, valor e sem legenda/identificador que diferencie).`
+          );
+
+          return res.status(200).json({
+            ok: true,
+            destino: "duplicata_ignorada",
+            id: duplicata.id,
+          });
+        }
+
         const dadosPreparados = prepararLancamento({
           tipo: "despesa",
-          descricao: categoria,
+          descricao: descricaoFinal,
           categoria,
           fornecedor: fornecedorLido,
           valor: valorLido || 0,
           data: hoje,
           foto,
           loja_id: lojaId,
-          observacao: `Valor lido automaticamente — confira antes de aprovar.${origemTexto}`,
+          observacao: `Valor lido automaticamente — confira antes de aprovar.${identificadorLido ? ` Identificador lido na nota: ${identificadorLido}.` : ""}${origemTexto}`,
         });
 
         const novoLancamento = {
@@ -6049,10 +6139,11 @@ app.post(
       if (ehPago) {
         let valorLido = null;
         let fornecedorLido = "";
+        let identificadorLido = "";
         try {
           const textoResposta = await lerImagemComIA(
             foto,
-            'Essa é a foto de uma nota fiscal ou comprovante de despesa JÁ PAGA de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+            'Essa é a foto de uma nota fiscal ou comprovante de despesa JÁ PAGA de uma hamburgueria (pode ser inclusive um comprovante direto de banco/Pix). Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento/destinatário (se estiver visível), e um IDENTIFICADOR que prove que esse comprovante é diferente de outro parecido (nº da nota fiscal, nº do pedido, código de autorização, ID da transação Pix, ou qualquer código/número visível na foto — o que estiver mais visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "identificador": "código ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
             8192
           );
           const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
@@ -6061,6 +6152,7 @@ app.post(
           );
           valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
           fornecedorLido = dadosLidos.fornecedor || "";
+          identificadorLido = dadosLidos.identificador || "";
         } catch (erroLeitura) {
           console.error(
             "Erro ao ler despesa paga genérica (WhatsApp):",
@@ -6068,16 +6160,48 @@ app.post(
           );
         }
 
+        // Pedido do usuário (19/08/2026): quando é um comprovante direto
+        // do banco (Pix, transferência) e a pessoa escreveu algo embaixo
+        // na legenda do grupo (ex: "embalagens"), essa escrita vira a
+        // descrição — aparece do lado do horário na tela, mostrando pra
+        // que foi aquele pagamento mesmo quando o comprovante em si não
+        // deixa claro.
+        const legendaLimpa = (legenda || "").trim();
+        const detalheDistintivo = legendaLimpa || identificadorLido || "";
+        const descricaoFinal = detalheDistintivo
+          ? `${fornecedorLido || "Despesa recebida via WhatsApp"} — ${detalheDistintivo}`
+          : fornecedorLido || "Despesa recebida via WhatsApp";
+
+        const duplicata = await encontrarDespesaDuplicadaWhatsapp({
+          lojaId,
+          fornecedor: fornecedorLido,
+          valor: valorLido || 0,
+          legenda: legendaLimpa,
+          identificador: identificadorLido,
+        });
+
+        if (duplicata) {
+          console.log(
+            `⚠️ Foto do WhatsApp ignorada por parecer duplicata do lançamento #${duplicata.id} (mesmo fornecedor, valor e sem legenda/identificador que diferencie).`
+          );
+
+          return res.status(200).json({
+            ok: true,
+            destino: "duplicata_ignorada",
+            id: duplicata.id,
+          });
+        }
+
         const dadosPreparados = prepararLancamento({
           tipo: "despesa",
-          descricao: fornecedorLido || "Despesa recebida via WhatsApp",
+          descricao: descricaoFinal,
           categoria: "Despesas Diversas",
           fornecedor: fornecedorLido,
           valor: valorLido || 0,
           data: hoje,
           foto,
           loja_id: lojaId,
-          observacao: `Valor lido automaticamente — confira antes de aprovar.${origemTexto}`,
+          observacao: `Valor lido automaticamente — confira antes de aprovar.${identificadorLido ? ` Identificador lido na nota: ${identificadorLido}.` : ""}${origemTexto}`,
         });
 
         const novoLancamento = {
