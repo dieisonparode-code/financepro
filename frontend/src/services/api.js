@@ -313,11 +313,21 @@ export async function anexarComprovantePagamento(id, comprovante_pagamento) {
   });
 }
 
-export async function salvarDinheiroInformado(emCaixa, abertura, lojaId = null) {
+export async function salvarDinheiroInformado(
+  emCaixa,
+  abertura,
+  lojaId = null,
+  fechamentoId = null
+) {
   return requisicao("/caixa-dinheiro-informado", {
     method: "POST",
     headers: await cabecalhoAutenticado(),
-    body: JSON.stringify({ em_caixa: emCaixa, abertura, loja_id: lojaId }),
+    body: JSON.stringify({
+      em_caixa: emCaixa,
+      abertura,
+      loja_id: lojaId,
+      fechamento_id: fechamentoId,
+    }),
   });
 }
 

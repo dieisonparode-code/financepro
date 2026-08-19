@@ -7,6 +7,7 @@ import {
   buscarFechamentoSaipos,
   salvarValoresInformadosFechamento,
   finalizarConciliacaoFechamento,
+  salvarDinheiroInformado,
 } from "../services/api";
 
 // A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
@@ -852,6 +853,31 @@ function Conciliacao({ lojaId }) {
           );
         } catch (erroSalvar) {
           console.error("Erro ao salvar leitura da foto:", erroSalvar);
+        }
+
+        // Pedido do usuário (19/08/2026): o "em dinheiro" do card Saldo só
+        // desconta despesa e nunca somava nada, porque essa confirmação
+        // nunca estava ligada a nenhum botão. Agora, toda vez que a foto
+        // do fechamento é lida com sucesso e ela trouxe tanto o "Em
+        // caixa" de Dinheiro quanto a "Abertura (+)" em R$, isso já
+        // atualiza sozinho — sem precisar de nenhum clique a mais.
+        // fechamento_id garante que reler a mesma foto (correção) só
+        // ATUALIZA esse valor, nunca soma duas vezes.
+        const emCaixaDinheiro = resultado.valores?.["Dinheiro"];
+        if (emCaixaDinheiro != null && resultado.abertura_caixa != null) {
+          try {
+            await salvarDinheiroInformado(
+              emCaixaDinheiro,
+              resultado.abertura_caixa,
+              lojaId,
+              salvarEm
+            );
+          } catch (erroDinheiro) {
+            console.error(
+              "Erro ao atualizar dinheiro confirmado no fechamento:",
+              erroDinheiro
+            );
+          }
         }
       }
 

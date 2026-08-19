@@ -4752,6 +4752,16 @@ app.post(
       const emCaixa = Number(req.body?.em_caixa);
       const abertura = Number(req.body?.abertura ?? 0);
       const lojaId = req.body?.loja_id ? Number(req.body.loja_id) : null;
+      // Pedido do usuário (19/08/2026): agora essa confirmação é chamada
+      // sozinha toda vez que a Conciliação lê a foto do fechamento de
+      // Dinheiro — se a MESMA foto for lida de novo (correção do
+      // operador), tem que ATUALIZAR o registro existente desse
+      // fechamento, não criar um segundo e somar a mesma grana duas
+      // vezes. fechamento_id é opcional pra não quebrar quem ainda chama
+      // isso manualmente sem vincular a um fechamento.
+      const fechamentoId = req.body?.fechamento_id
+        ? Number(req.body.fechamento_id)
+        : null;
 
       if (!Number.isFinite(emCaixa) || emCaixa < 0) {
         return res.status(400).json({
@@ -4767,9 +4777,24 @@ app.post(
 
       const valor = emCaixa - abertura;
 
+      if (fechamentoId) {
+        await supabase
+          .from("caixa_dinheiro_informado")
+          .delete()
+          .eq("fechamento_id", fechamentoId);
+      }
+
       const { data, error } = await supabase
         .from("caixa_dinheiro_informado")
-        .insert([{ loja_id: lojaId, valor, abertura, em_caixa: emCaixa }])
+        .insert([
+          {
+            loja_id: lojaId,
+            valor,
+            abertura,
+            em_caixa: emCaixa,
+            fechamento_id: fechamentoId,
+          },
+        ])
         .select("*")
         .single();
 
