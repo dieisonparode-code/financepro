@@ -314,6 +314,9 @@ function prepararFechamentoCaixa(dados = {}) {
       dados.valor_pago_dinheiro != null ? Number(dados.valor_pago_dinheiro) : 0,
     foto: dados.foto || "",
     observacao: (dados.observacao || "").trim(),
+    // Usado hoje só pelo tipo "comandas_canceladas" — lido automaticamente
+    // da foto (nome do cliente já usa nome_pessoa, que já existia).
+    telefone: (dados.telefone || "").trim(),
   };
 }
 
@@ -2519,7 +2522,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento, data_abertura_turno";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, telefone, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento, data_abertura_turno";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -2599,6 +2602,36 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
       return res.status(400).json({
         erro: "A foto do comprovante é obrigatória.",
       });
+    }
+
+    // Pedido do usuário (19/08/2026): "Comandas Canceladas" era só arquivo
+    // (a foto ficava salva, sem nenhum dado extraído). Agora lê sozinha o
+    // nome do cliente, o valor do pedido e o telefone, pra mostrar isso
+    // direto na Conciliação — o operador continua só tirando a foto,
+    // igual sempre fez.
+    if (dados.tipo === "comandas_canceladas") {
+      try {
+        const textoResposta = await lerImagemComIA(
+          dados.foto,
+          'Essa é a foto de uma comanda/pedido CANCELADO de uma hamburgueria. Extraia: o NOME do cliente, o VALOR total do pedido, e o TELEFONE do cliente (se estiver visível, mesmo formato brasileiro com DDD). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"nome": "Nome ou null", "valor": 45.90, "telefone": "11999998888 ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
+          2048
+        );
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        const dadosLidos = JSON.parse(
+          jsonEncontrado ? jsonEncontrado[0] : textoResposta
+        );
+
+        if (dadosLidos.nome) dados.nome_pessoa = String(dadosLidos.nome).trim();
+        if (dadosLidos.valor != null) dados.valor = Number(dadosLidos.valor);
+        if (dadosLidos.telefone) dados.telefone = String(dadosLidos.telefone).trim();
+      } catch (erroLeitura) {
+        console.error(
+          "Erro ao ler dados da comanda cancelada:",
+          erroLeitura.message
+        );
+        // Não impede de salvar a foto mesmo se a leitura falhar — só fica
+        // sem nome/valor/telefone preenchido, o operador confere na mão.
+      }
     }
 
     const { data, error } = await supabase

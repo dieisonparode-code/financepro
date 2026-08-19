@@ -179,6 +179,10 @@ function Conciliacao({ lojaId }) {
   // loja — usadas pra calcular o Esperado do Dinheiro (Abertura + Vendas
   // em dinheiro − Retiradas do turno).
   const [retiradasCaixa, setRetiradasCaixa] = useState([]);
+  // Pedido do usuário (19/08/2026): mostrar aqui os pedidos cancelados
+  // daquela mesma noite (nome, valor, telefone — lidos automaticamente
+  // da foto de "Comandas Canceladas").
+  const [comandasCanceladas, setComandasCanceladas] = useState([]);
 
   // Pedido do usuário: mostra a lista de Fechamentos de Caixa dessa loja
   // pra ele escolher qual conciliar — não é mais só "o último" sozinho.
@@ -206,10 +210,14 @@ function Conciliacao({ lojaId }) {
         setRetiradasCaixa(
           todosDaLoja.filter((item) => item.tipo === "pago_dinheiro_caixa")
         );
+        setComandasCanceladas(
+          todosDaLoja.filter((item) => item.tipo === "comandas_canceladas")
+        );
       })
       .catch(() => {
         setFechamentosDisponiveis([]);
         setRetiradasCaixa([]);
+        setComandasCanceladas([]);
       })
       .finally(() => setCarregandoLista(false));
   }, [lojaId]);
@@ -1450,6 +1458,47 @@ function Conciliacao({ lojaId }) {
             )}
           </div>
         </div>
+
+        {grupoEscolhido &&
+          (() => {
+            const chaveTurno = hojeDoRegistro(grupoEscolhido.itens[0]?.criado_em);
+            const canceladasDoTurno = comandasCanceladas.filter(
+              (item) => hojeDoRegistro(item.criado_em) === chaveTurno
+            );
+
+            if (canceladasDoTurno.length === 0) return null;
+
+            const totalCancelado = canceladasDoTurno.reduce(
+              (soma, item) => soma + Number(item.valor || 0),
+              0
+            );
+
+            return (
+              <div
+                className="panel"
+                style={{
+                  marginBottom: "12px",
+                  padding: "12px 16px",
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  borderRadius: "10px",
+                }}
+              >
+                <strong style={{ color: "#ef4444" }}>
+                  🚫 Pedidos cancelados nessa noite ({canceladasDoTurno.length}) —
+                  total {formatarMoeda(totalCancelado)}
+                </strong>
+                <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {canceladasDoTurno.map((item) => (
+                    <div key={item.id} style={{ fontSize: "13px" }}>
+                      {item.nome_pessoa || "(nome não lido)"} —{" "}
+                      {formatarMoeda(item.valor)}
+                      {item.telefone ? ` — ${item.telefone}` : ""}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
         {resultadoFoto && (
           <div
