@@ -5850,27 +5850,6 @@ function verificarTokenWhatsapp(req, res, next) {
   next();
 }
 
-// Pedido do usuário (17/08/2026): dá pra digitar a data de vencimento
-// direto na legenda (ex: "a pagar 22/02/2026") — mais confiável que
-// depender só da IA ler a data impressa no boleto. Aceita DD/MM/AAAA,
-// DD-MM-AAAA e DD.MM.AAAA, com ano de 2 ou 4 dígitos.
-function extrairDataDaLegendaWhatsapp(legenda) {
-  const encontrado = (legenda || "").match(
-    /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/
-  );
-  if (!encontrado) return null;
-
-  const [, diaTexto, mesTexto, anoTexto] = encontrado;
-  const dia = Number(diaTexto);
-  const mes = Number(mesTexto);
-  let ano = Number(anoTexto);
-  if (ano < 100) ano += 2000;
-
-  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return null;
-
-  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-}
-
 // Legenda → categoria de despesa (pedido do usuário, 17/08/2026): cada
 // uma dessas palavras na legenda da foto vira uma despesa de verdade,
 // lida por IA (valor + fornecedor), igual o botão "Ler nota
@@ -5971,7 +5950,7 @@ app.post(
       if (legenda && legenda.trim()) {
         try {
           const respostaClassificacao = await perguntarTextoComIA(
-            `A legenda de uma foto enviada num grupo de WhatsApp de uma hamburgueria foi: "${legenda}". Essa legenda pode ter erro de digitação, plural/singular trocado ou abreviação — interprete o SENTIDO, não exija a palavra exata. Classifique em UMA destas categorias:\n- "boy": diária/pagamento de entregador ou motoboy\n- "cozinha": diária/pagamento de funcionário de cozinha\n- "vale": vale ou adiantamento pra funcionário\n- "reforma": despesa de reforma ou manutenção\n- "compras": despesa de compras gerais\n- "materia_prima": despesa de matéria-prima ou insumos (ex: carne, pão, embalagem)\n- "boleto": conta a pagar, boleto ou fatura AINDA NÃO PAGA\n- "pago": despesa/nota que JÁ FOI PAGA, mas não se encaixa em nenhuma categoria específica acima\n- "nenhuma": não deu pra identificar nada disso\nSe a legenda tiver indício de já estar paga (ex: a palavra "pago" ou parecido) JUNTO com uma categoria específica (vale/reforma/compras/materia_prima/boy/cozinha), escolha a categoria específica, não "pago". Só use "boleto" se NÃO tiver indício de já estar pago. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"categoria": "boy"}.`,
+            `A legenda de uma foto enviada num grupo de WhatsApp de uma hamburgueria foi: "${legenda}". Essa legenda pode ter erro de digitação, plural/singular trocado ou abreviação — interprete o SENTIDO, não exija a palavra exata. Classifique em UMA destas categorias:\n- "boy": diária/pagamento de entregador ou motoboy\n- "cozinha": diária/pagamento de funcionário de cozinha\n- "vale": vale ou adiantamento pra funcionário\n- "reforma": despesa de reforma ou manutenção\n- "compras": despesa de compras gerais\n- "materia_prima": despesa de matéria-prima ou insumos (ex: carne, pão, embalagem)\n- "pago": despesa/nota, qualquer que seja, que não se encaixa em nenhuma categoria específica acima\n- "nenhuma": não deu pra identificar nada disso\nSe a legenda tiver uma categoria específica (vale/reforma/compras/materia_prima/boy/cozinha), escolha ela; senão escolha "pago". Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"categoria": "boy"}.`,
             128
           );
           const jsonEncontrado = respostaClassificacao.match(/\{[\s\S]*\}/);
@@ -5985,7 +5964,6 @@ app.post(
             "reforma",
             "compras",
             "materia_prima",
-            "boleto",
             "pago",
             "nenhuma",
           ];
@@ -6000,12 +5978,12 @@ app.post(
         }
       }
 
-      // Pedido do usuário (17/08/2026): "toda e qualquer nota lançada lá
-      // será uma despesa" — se a IA não conseguiu identificar nada
-      // específico ("nenhuma") ou a classificação falhou, não fica sem
-      // classificar: vira despesa já paga genérica por padrão. A fila só
-      // continua existindo pra um caso bem específico mais à frente
-      // (boleto sem data de vencimento legível).
+      // Pedido do usuário (19/08/2026): "toda e qualquer foto e
+      // comprovante vai para o Contas Pagas" — não existe mais a
+      // classificação "boleto" (a pagar, sem pagar ainda). Não precisa
+      // escrever "pago" na legenda; se a IA não identificar nada
+      // específico ("nenhuma") ou a classificação falhar, vira despesa já
+      // paga genérica por padrão mesmo assim.
       if (!categoriaClassificada || categoriaClassificada === "nenhuma") {
         categoriaClassificada = "pago";
       }
@@ -6065,93 +6043,14 @@ app.post(
           .json({ ok: true, destino: "fechamento_caixa", tipo, id: data.id });
       }
 
-      // Conta a Pagar (boleto/nota AINDA NÃO paga) — pedido do usuário
-      // (17/08/2026): legenda com "boleto" ou "a pagar", SEM a palavra
-      // "pago" junto, vira uma Conta a Pagar pendente (não desconta do
-      // saldo agora, só quando alguém marcar como paga de verdade). A
-      // data de vencimento vem da própria legenda se tiver escrita (ex:
-      // "a pagar 22/02/2026" — mais confiável), senão a IA tenta ler
-      // direto do boleto.
+      // Pedido do usuário (19/08/2026): não existe mais o caminho de
+      // "Conta a Pagar" (ainda não paga) vindo do WhatsApp — toda foto ou
+      // comprovante enviado no grupo é tratado como já pago, sem precisar
+      // escrever "pago" na legenda. A legenda ainda define a categoria
+      // (vale/reforma/compras/matéria-prima) ou vira a descrição da
+      // despesa (ex: "contabilidade", "gás") quando não bate com nenhuma
+      // categoria específica.
       const ehPago = categoriaClassificada === "pago";
-      const ehBoleto = categoriaClassificada === "boleto";
-
-      if (ehBoleto) {
-        const dataDigitada = extrairDataDaLegendaWhatsapp(legenda);
-
-        let valorLido = null;
-        let fornecedorLido = "";
-        let vencimentoLido = null;
-        try {
-          const textoResposta = await lerImagemComIA(
-            foto,
-            'Essa é a foto de um boleto ou nota de uma conta a pagar de uma hamburgueria (ainda NÃO paga). Extraia: o VALOR TOTAL a pagar (normalmente perto de "TOTAL" ou "VALOR DO DOCUMENTO"), o nome do FORNECEDOR/emissor/beneficiário (se estiver visível), e a DATA DE VENCIMENTO impressa (se houver mais de uma data, use a de vencimento do pagamento, não a de emissão). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "vencimento": "AAAA-MM-DD ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
-            8192
-          );
-          const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
-          const dadosLidos = JSON.parse(
-            jsonEncontrado ? jsonEncontrado[0] : textoResposta
-          );
-          valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
-          fornecedorLido = dadosLidos.fornecedor || "";
-          vencimentoLido = dadosLidos.vencimento || null;
-        } catch (erroLeitura) {
-          console.error(
-            "Erro ao ler boleto (WhatsApp):",
-            erroLeitura.message
-          );
-        }
-
-        const vencimentoFinal = dataDigitada || vencimentoLido;
-
-        if (!vencimentoFinal) {
-          const { data, error } = await supabase
-            .from("whatsapp_fila")
-            .insert([
-              {
-                loja_id: lojaId,
-                foto,
-                legenda_recebida: `${legenda || ""} (não consegui ler a data de vencimento — classifique na mão)`,
-                remetente: remetente || "",
-              },
-            ])
-            .select("id")
-            .single();
-
-          if (error) throw error;
-
-          return res.status(201).json({ ok: true, destino: "fila", id: data.id });
-        }
-
-        const dadosPreparados = prepararContaPagar({
-          loja_id: lojaId,
-          descricao: fornecedorLido || "Boleto recebido via WhatsApp",
-          fornecedor: fornecedorLido,
-          valor: valorLido || 0,
-          data_vencimento: vencimentoFinal,
-          foto,
-          observacao: `${dataDigitada ? "Vencimento digitado na legenda." : "Vencimento lido automaticamente da foto — confira."}${origemTexto}`,
-        });
-
-        const { data, error } = await supabase
-          .from("contas_pagar")
-          .insert([dadosPreparados])
-          .select("id")
-          .single();
-
-        if (error) throw error;
-
-        registrarAuditoria(
-          req,
-          "criou (via WhatsApp)",
-          "contas_pagar",
-          data.id,
-          `R$ ${(valorLido || 0).toFixed(2)}, vencimento ${vencimentoFinal} — legenda recebida: "${legenda || ""}"`
-        );
-
-        return res
-          .status(201)
-          .json({ ok: true, destino: "conta_pagar", id: data.id });
-      }
 
       // Despesas (vale/reforma/compras/matéria-prima)
       const categoria = CATEGORIAS_DESPESA_WHATSAPP[categoriaClassificada];
