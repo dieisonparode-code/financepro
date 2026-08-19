@@ -211,6 +211,33 @@ async function registrarAuditoria(req, acao, tabelaAfetada, registroId, detalhes
   }
 }
 
+// Blindagem (19/08/2026): antes, quando uma automação (importação
+// Saipos, backup, despesas recorrentes) falhava, o erro só ia pro
+// console.error — visível só olhando o log do servidor no Render, que
+// ninguém checa no dia a dia. Isso já causou pelo menos um problema real
+// (vendas de um dia inteiro sem importar, sem ninguém saber até o saldo
+// não bater). Agora toda falha de automação também vira uma linha bem
+// marcada no log_auditoria (ação "FALHOU"), pra dar pra ver na tela.
+async function registrarFalhaAutomacao(nomeAutomacao, mensagemErro) {
+  try {
+    await supabase.from("log_auditoria").insert([
+      {
+        usuario_id: null,
+        usuario_nome: `Automação (${nomeAutomacao})`,
+        acao: "FALHOU",
+        tabela_afetada: "sistema",
+        registro_id: null,
+        detalhes: mensagemErro || "Erro desconhecido.",
+      },
+    ]);
+  } catch (erroLog) {
+    console.error(
+      "Não consegui nem registrar a falha da automação:",
+      erroLog.message
+    );
+  }
+}
+
 async function aprovacaoDespesasAtiva() {
   try {
     const { data } = await supabase
@@ -470,14 +497,18 @@ app.get(
 
 let ultimoDiaBackupAutomatico = null;
 
+// Bug encontrado e corrigido (19/08/2026, mesmo padrão achado na
+// importação da Saipos): marcava "já fiz o backup hoje" ANTES de
+// confirmar que o backup deu certo — se desse erro, o dia inteiro ficava
+// marcado como feito e nunca mais tentava. Agora só marca como feito
+// depois de terminar sem erro, e tenta o dia inteiro (não só entre
+// 5h–5h05) até conseguir.
 async function rodarBackupAutomaticoDiario() {
   const hojeStr = dataBrasilia(0);
 
   if (ultimoDiaBackupAutomatico === hojeStr) {
     return;
   }
-
-  ultimoDiaBackupAutomatico = hojeStr;
 
   try {
     const backup = await gerarBackupCompleto();
@@ -512,20 +543,22 @@ async function rodarBackupAutomaticoDiario() {
       .from("backups_automaticos")
       .delete()
       .lt("criado_em", trintaDiasAtras.toISOString());
+
+    ultimoDiaBackupAutomatico = hojeStr;
   } catch (erro) {
-    console.error("Erro no backup automático diário:", erro.message);
+    console.error(
+      "Erro no backup automático diário — vai tentar de novo no próximo minuto:",
+      erro.message
+    );
+    await registrarFalhaAutomacao("Backup diário", erro.message);
   }
 }
 
-// Confere a cada minuto se já é 5h da manhã (horário de Brasília) pra
-// gerar o backup automático do dia — mesmo padrão de checagem já usado
-// pela importação da Saipos e pelas Despesas Recorrentes.
+// Confere a cada minuto se o backup de hoje ainda não rodou — antes só
+// tentava na janela 05:00–05:04; agora tenta o dia inteiro até conseguir
+// (mesmo padrão da importação da Saipos).
 setInterval(function () {
-  const { hora, minuto } = horaBrasilia();
-
-  if (hora === 5 && minuto < 5) {
-    rodarBackupAutomaticoDiario();
-  }
+  rodarBackupAutomaticoDiario();
 }, 60 * 1000);
 
 const colunasListagem =
@@ -5586,6 +5619,10 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
           `Erro na importação automática da Saipos pra loja "${loja.nome}":`,
           erroLoja.message
         );
+        await registrarFalhaAutomacao(
+          `Importação Saipos — ${loja.nome}`,
+          `Data ${dataAlvo}: ${erroLoja.message}`
+        );
       }
     }
 
@@ -5599,6 +5636,7 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
       "Erro na importação automática diária da Saipos — vai tentar de novo no próximo minuto:",
       erro.message
     );
+    await registrarFalhaAutomacao("Importação Saipos", erro.message);
   }
 }
 
@@ -5717,8 +5755,6 @@ async function rodarGeracaoDespesasRecorrentes() {
     return;
   }
 
-  ultimoDiaGeradoDespesasRecorrentes = hojeStr;
-
   try {
     const { data: recorrentes, error } = await supabase
       .from("despesas_recorrentes")
@@ -5737,13 +5773,26 @@ async function rodarGeracaoDespesasRecorrentes() {
           `Erro ao gerar conta a pagar da recorrência #${recorrente.id}:`,
           erroRecorrente.message
         );
+        await registrarFalhaAutomacao(
+          `Despesa recorrente #${recorrente.id} (${recorrente.descricao || ""})`,
+          erroRecorrente.message
+        );
       }
     }
+
+    // Só marca como "feito" no fim, depois de terminar sem erro na busca
+    // das recorrências — mesma correção aplicada na importação Saipos e
+    // no backup diário (19/08/2026). Uma recorrência específica que falhe
+    // já foi logada acima e continua tentando de novo a cada checagem
+    // (a função interna já é segura contra duplicar, verifica no banco
+    // antes de criar).
+    ultimoDiaGeradoDespesasRecorrentes = hojeStr;
   } catch (erro) {
     console.error(
-      "Erro na geração automática de despesas recorrentes:",
+      "Erro na geração automática de despesas recorrentes — vai tentar de novo no próximo minuto:",
       erro.message
     );
+    await registrarFalhaAutomacao("Despesas Recorrentes", erro.message);
   }
 }
 
@@ -6346,16 +6395,31 @@ app.delete("/whatsapp-fila/:id", verificarAdmin, async function (req, res) {
   }
 });
 
-// Confere a cada minuto se já é a hora certa (06:00–06:04, horário de
-// Brasília) de gerar as contas a pagar do mês a partir das despesas
-// recorrentes ativas.
+// Confere a cada minuto se as contas a pagar de hoje ainda não foram
+// geradas a partir das despesas recorrentes ativas — antes só tentava
+// entre 06:00–06:04; agora tenta o dia inteiro até conseguir (mesmo
+// padrão da importação Saipos e do backup diário).
 setInterval(function () {
-  const { hora, minuto } = horaBrasilia();
-
-  if (hora === 6 && minuto < 5) {
-    rodarGeracaoDespesasRecorrentes();
-  }
+  rodarGeracaoDespesasRecorrentes();
 }, 60 * 1000);
+
+// Blindagem (19/08/2026): uma promise rejeitada sem ".catch" ou um erro
+// fora de qualquer try/catch, em qualquer parte do código, hoje faria o
+// processo do Node cair inteiro (todo mundo perde acesso ao sistema até
+// o Render reiniciar sozinho) SEM deixar nenhum rastro do motivo. Isso
+// vira um log claro em vez de um crash mudo — não deixa o servidor no ar
+// com estado quebrado (por segurança ainda derruba o processo pra ele
+// reiniciar limpo), mas pelo menos fica registrado o que aconteceu.
+process.on("unhandledRejection", function (motivo) {
+  console.error(
+    "⚠️ Promise rejeitada sem tratamento (unhandledRejection):",
+    motivo
+  );
+});
+
+process.on("uncaughtException", function (erro) {
+  console.error("⚠️ Erro não tratado (uncaughtException):", erro);
+});
 
 app.listen(
   PORT,
