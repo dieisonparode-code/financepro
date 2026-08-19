@@ -361,6 +361,11 @@ function criarFormularioInicial(tipo = "receita") {
 // data não entram de novo na conta porque já estão embutidos nesse valor.
 const SALDO_INICIAL_VALOR = 106430.13;
 const SALDO_INICIAL_DATA = "2026-08-18";
+// O R$106.430,13 é o saldo real da loja Uberlândia (a única em operação de
+// fato quando esse valor foi informado) — não é um caixa único somado de
+// todas as lojas. Usado pra o card Saldo não mostrar esse valor quando
+// outra loja (sem nenhuma movimentação própria) estiver selecionada.
+const LOJA_INICIAL_ID = "4";
 
 function App() {
   return (
@@ -1519,10 +1524,20 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     const dataEfetivaRecebimento = (item) =>
       item.data_prevista_recebimento || item.data;
 
+    // Pedido do usuário (19/08/2026): Sinop, Sorriso e Rondonópolis ainda
+    // não têm nenhuma movimentação própria — selecionar uma delas tem que
+    // mostrar Saldo zerado, não o saldo da Uberlândia. O Saldo agora
+    // respeita o filtro de loja do topo, igual todo o resto do Dashboard
+    // (só "Todas as lojas" soma tudo junto).
+    const lojaCombinaComSaldo = (item) =>
+      lojaDashboard === "todas" ||
+      String(item.loja_id || "") === String(lojaDashboard);
+
     const receitasRecebidasDesdeAjusteSaldo = lancamentosAprovados
       .filter(
         (item) =>
           item.tipo === "receita" &&
+          lojaCombinaComSaldo(item) &&
           dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
       )
       .reduce((total, item) => {
@@ -1549,6 +1564,7 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       .filter(
         (item) =>
           item.tipo === "receita" &&
+          lojaCombinaComSaldo(item) &&
           dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
       )
       .reduce((total, item) => {
@@ -1565,15 +1581,28 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       }, 0);
 
     const despesasDesdeAjusteSaldo = lancamentosAprovados
-      .filter((item) => item.tipo === "despesa" && item.data > SALDO_INICIAL_DATA)
+      .filter(
+        (item) =>
+          item.tipo === "despesa" &&
+          lojaCombinaComSaldo(item) &&
+          item.data > SALDO_INICIAL_DATA
+      )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
+    // Base de R$106.430,13 só entra quando "Todas as lojas" ou a própria
+    // Uberlândia estiver selecionada — outra loja específica começa do
+    // zero (não tem esse dinheiro).
+    const baseSaldoAplicavel =
+      lojaDashboard === "todas" || lojaDashboard === LOJA_INICIAL_ID
+        ? SALDO_INICIAL_VALOR
+        : 0;
+
     const saldo =
-      SALDO_INICIAL_VALOR +
+      baseSaldoAplicavel +
       receitasRecebidasDesdeAjusteSaldo -
       despesasDesdeAjusteSaldo;
     const saldoBruto =
-      SALDO_INICIAL_VALOR +
+      baseSaldoAplicavel +
       receitasRecebidasBrutoDesdeAjusteSaldo -
       despesasDesdeAjusteSaldo;
     const totalTaxas =
