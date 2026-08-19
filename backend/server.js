@@ -5509,14 +5509,21 @@ function horaBrasilia() {
 
 let ultimaDataImportadaAutomaticamente = null;
 
+// Bug encontrado e corrigido (19/08/2026): antes, "já importei hoje" era
+// marcado ANTES de confirmar que a importação deu certo — se desse
+// qualquer erro (rede instável, Supabase fora do ar, servidor reiniciando
+// bem na hora), o dia inteiro ficava marcado como "feito" mesmo sem ter
+// sido, e a rotina nunca mais tentava de novo até o dia seguinte (as
+// vendas em dinheiro/PIX/débito daquele dia só entrariam manualmente).
+// Agora só marca como concluído no fim, DEPOIS de terminar sem erro — se
+// falhar, tenta de novo no próximo minuto, e continua tentando o dia
+// inteiro (não só na janela 05:00–05:04) até conseguir.
 async function rodarImportacaoAutomaticaDiariaSaipos() {
   const dataAlvo = dataBrasilia(1);
 
   if (ultimaDataImportadaAutomaticamente === dataAlvo) {
     return;
   }
-
-  ultimaDataImportadaAutomaticamente = dataAlvo;
 
   try {
     const { data: lojasComSaipos, error } = await supabase
@@ -5556,24 +5563,28 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
         );
       }
     }
+
+    // Só marca como "feito" depois de terminar sem erro no laço acima —
+    // se uma loja específica falhou, ela já foi logada e vai ficar sem
+    // esse dia importado (precisa do botão manual), mas isso não trava a
+    // tentativa de amanhã.
+    ultimaDataImportadaAutomaticamente = dataAlvo;
   } catch (erro) {
     console.error(
-      "Erro na importação automática diária da Saipos:",
+      "Erro na importação automática diária da Saipos — vai tentar de novo no próximo minuto:",
       erro.message
     );
   }
 }
 
-// Confere a cada minuto se já é a hora certa (05:00–05:04, horário de
-// Brasília) de rodar a importação do dia anterior. A checagem por
-// "ultimaDataImportadaAutomaticamente" garante que só roda 1 vez por dia,
-// mesmo com esse intervalo de minuto em minuto.
+// Confere a cada minuto se a importação do dia anterior ainda não rodou —
+// antes só tentava na janela 05:00–05:04; se o servidor tivesse acabado
+// de reiniciar (deploy, ou "acordando" de um período parado) bem nesses 5
+// minutos, perdia a janela inteira e só tentava de novo no dia seguinte.
+// Agora tenta o dia inteiro até conseguir (ainda roda só 1x de verdade,
+// controlado por "ultimaDataImportadaAutomaticamente").
 setInterval(function () {
-  const { hora, minuto } = horaBrasilia();
-
-  if (hora === 5 && minuto < 5) {
-    rodarImportacaoAutomaticaDiariaSaipos();
-  }
+  rodarImportacaoAutomaticaDiariaSaipos();
 }, 60 * 1000);
 
 let ultimoDiaGeradoDespesasRecorrentes = null;

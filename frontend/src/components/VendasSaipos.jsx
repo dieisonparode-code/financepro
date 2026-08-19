@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { buscarFechamentoSaipos, buscarVendasPagSeguro } from "../services/api";
+import {
+  buscarFechamentoSaipos,
+  buscarVendasPagSeguro,
+  importarReceitasSaipos,
+} from "../services/api";
 
 // Usa o fuso horário do próprio dispositivo (não força São Paulo) — é o que
 // bate com a expectativa de quem está usando a tela, seja qual for a loja.
@@ -77,6 +81,13 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [atualizadoEm, setAtualizadoEm] = useState(null);
+  // Pedido do usuário (19/08/2026): a importação automática das 5h pode
+  // falhar (rede, servidor reiniciando na hora) e antes não tinha nenhum
+  // jeito de forçar de novo sem mexer direto no banco — esse botão chama
+  // a mesma importação que roda sozinha todo dia, só que na hora, pra
+  // qualquer data.
+  const [importando, setImportando] = useState(false);
+  const [resultadoImportacao, setResultadoImportacao] = useState("");
   // Pedido do usuário (12/08/2026): vendas caindo na PagSeguro em tempo
   // real, direto nessa tela — em ordem cronológica única (não separada
   // por forma de pagamento como na Conciliação).
@@ -120,6 +131,27 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
       setErroPagSeguro(
         erroBusca.message || "Não foi possível buscar as vendas na PagSeguro."
       );
+    }
+  }
+
+  async function importarAgora() {
+    if (!lojaId) return;
+
+    setImportando(true);
+    setResultadoImportacao("");
+
+    try {
+      const resultado = await importarReceitasSaipos(lojaId, data);
+      setResultadoImportacao(
+        `✅ ${resultado.criados?.length || 0} venda(s) importada(s), ${resultado.atualizados?.length || 0} atualizada(s).`
+      );
+      buscar();
+    } catch (erroImportacao) {
+      setResultadoImportacao(
+        `❌ ${erroImportacao.message || "Não foi possível importar."}`
+      );
+    } finally {
+      setImportando(false);
     }
   }
 
@@ -214,6 +246,29 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
               As vendas entram como receita automaticamente todo dia às
               05h — não precisa clicar em nada.
             </small>
+
+            {ehAdministrador && (
+              <>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={importarAgora}
+                  disabled={importando}
+                  style={{ marginTop: 8 }}
+                >
+                  {importando
+                    ? "Importando..."
+                    : "⬇️ Importar vendas dessa data agora (admin)"}
+                </button>
+
+                <small className="foto-ajuda">
+                  Use se a importação automática das 5h falhar ou atrasar —
+                  importa as vendas da data escolhida acima como receita,
+                  igual a rotina automática faz sozinha todo dia.
+                  {resultadoImportacao && <> {resultadoImportacao}</>}
+                </small>
+              </>
+            )}
           </>
         )}
       </article>
