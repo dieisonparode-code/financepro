@@ -238,7 +238,7 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
 
             <small className="foto-ajuda">
               Atualiza sozinho a cada 1 minuto. {atualizadoEm && (
-                <>Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR")}.</>
+                <>Última atualização: {atualizadoEm.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}.</>
               )}
             </small>
 

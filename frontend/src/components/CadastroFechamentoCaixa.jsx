@@ -133,9 +133,14 @@ function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
   });
 }
 
+// Bug real corrigido (19/08/2026): sem forçar o fuso de Brasília, mostrava
+// o horário do fuso do dispositivo/servidor (ex: 3h adiantado se estiver
+// em UTC) — mesma correção aplicada em Contas Pagas.
 function formatarDataHora(dataIso) {
   if (!dataIso) return "";
-  return new Date(dataIso).toLocaleString("pt-BR");
+  return new Date(dataIso).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 function formatarMoeda(valor) {

@@ -4972,7 +4972,8 @@ const statusCmv =
                             <strong>{info.nome}</strong>
                             <div>
                               {new Date(registro.criado_em).toLocaleTimeString(
-                                "pt-BR"
+                                "pt-BR",
+                                { timeZone: "America/Sao_Paulo" }
                               )}
                             </div>
                           </div>

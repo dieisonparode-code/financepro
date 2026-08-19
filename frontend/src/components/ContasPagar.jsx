@@ -80,14 +80,22 @@ function formatarData(data) {
 // Pedido do usuário (18/08/2026): mostrar não só a data, mas o horário
 // exato em que a conta foi paga/lançada no sistema (nunca a data de uma
 // nota/comprovante). `horarioIso` vem de `pago_em`/`created_at`.
+// Bug real corrigido (19/08/2026): sem forçar o fuso, o horário aparecia
+// 3h adiantado (ex: comprovante Pix às 19:41, sistema mostrando 22:41) —
+// o navegador/servidor formatava no fuso dele, não no de Brasília, onde
+// a loja fica. Mesmo padrão já usado em outros lugares do sistema
+// ("Sempre mostra no horário de Uberlândia, não no fuso do dispositivo").
 function formatarDataHora(horarioIso, dataFallback) {
   if (!horarioIso) return formatarData(dataFallback);
   const data = new Date(horarioIso);
   if (Number.isNaN(data.getTime())) return formatarData(dataFallback);
-  const dataFormatada = data.toLocaleDateString("pt-BR");
+  const dataFormatada = data.toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
   const horaFormatada = data.toLocaleTimeString("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
   });
   return `${dataFormatada} às ${horaFormatada}`;
 }
