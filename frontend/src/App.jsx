@@ -367,6 +367,17 @@ const SALDO_INICIAL_DATA = "2026-08-18";
 // outra loja (sem nenhuma movimentação própria) estiver selecionada.
 const LOJA_INICIAL_ID = "4";
 
+// Bug real corrigido (19/08/2026): o valor do banco às vezes vem SEM
+// indicar o fuso (sem "Z" no final) — é UTC de verdade, mas sem o "Z" o
+// navegador tenta adivinhar o fuso sozinho e erra o horário mostrado
+// (confirmado comparando com o horário real de um comprovante Pix).
+function paraDataUtc(bruto) {
+  if (!bruto) return null;
+  const jaTemFuso = /[Zz]|[+-]\d{2}:\d{2}$/.test(bruto);
+  const data = new Date(jaTemFuso ? bruto : `${bruto}Z`);
+  return Number.isNaN(data.getTime()) ? null : data;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -4971,7 +4982,7 @@ const statusCmv =
                           <div>
                             <strong>{info.nome}</strong>
                             <div>
-                              {new Date(registro.criado_em).toLocaleTimeString(
+                              {paraDataUtc(registro.criado_em)?.toLocaleTimeString(
                                 "pt-BR",
                                 { timeZone: "America/Sao_Paulo" }
                               )}

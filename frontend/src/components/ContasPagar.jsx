@@ -77,18 +77,27 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
+// Bug real corrigido (19/08/2026): o Supabase às vezes devolve o horário
+// SEM indicar o fuso (ex: "2026-08-19T22:41:40", sem "Z" no final) — o
+// valor gravado já é em UTC (padrão do Postgres), mas sem o "Z" o
+// navegador tenta ADIVINHAR o fuso sozinho (usa o fuso dele) e erra o
+// horário mostrado. Confirmado comparando com o horário real de um
+// comprovante Pix: o sistema mostrava 3~4h a mais. Corrigido forçando UTC
+// no valor bruto antes de converter pro fuso de Brasília.
+function paraDataUtc(bruto) {
+  if (!bruto) return null;
+  const jaTemFuso = /[Zz]|[+-]\d{2}:\d{2}$/.test(bruto);
+  const data = new Date(jaTemFuso ? bruto : `${bruto}Z`);
+  return Number.isNaN(data.getTime()) ? null : data;
+}
+
 // Pedido do usuário (18/08/2026): mostrar não só a data, mas o horário
 // exato em que a conta foi paga/lançada no sistema (nunca a data de uma
 // nota/comprovante). `horarioIso` vem de `pago_em`/`created_at`.
-// Bug real corrigido (19/08/2026): sem forçar o fuso, o horário aparecia
-// 3h adiantado (ex: comprovante Pix às 19:41, sistema mostrando 22:41) —
-// o navegador/servidor formatava no fuso dele, não no de Brasília, onde
-// a loja fica. Mesmo padrão já usado em outros lugares do sistema
-// ("Sempre mostra no horário de Uberlândia, não no fuso do dispositivo").
 function formatarDataHora(horarioIso, dataFallback) {
   if (!horarioIso) return formatarData(dataFallback);
-  const data = new Date(horarioIso);
-  if (Number.isNaN(data.getTime())) return formatarData(dataFallback);
+  const data = paraDataUtc(horarioIso);
+  if (!data) return formatarData(dataFallback);
   const dataFormatada = data.toLocaleDateString("pt-BR", {
     timeZone: "America/Sao_Paulo",
   });

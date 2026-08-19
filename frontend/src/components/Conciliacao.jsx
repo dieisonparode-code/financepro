@@ -71,9 +71,14 @@ function formatarMoeda(valor) {
 // dispositivo de quem está olhando — senão parece que a venda foi em outro
 // horário do que realmente foi (ex: alguém acessando de Mato Grosso, que é
 // 1 hora atrás de Uberlândia).
+// Bug real corrigido (19/08/2026): o valor do banco às vezes vem SEM
+// indicar o fuso (sem "Z" no final) — é UTC de verdade, mas sem o "Z" o
+// navegador tenta adivinhar o fuso sozinho e erra o horário. Força UTC no
+// valor bruto antes de converter pro fuso de Brasília.
 function formatarDataHora(dataIso) {
   if (!dataIso) return "";
-  return new Date(dataIso).toLocaleString("pt-BR", {
+  const jaTemFuso = /[Zz]|[+-]\d{2}:\d{2}$/.test(dataIso);
+  return new Date(jaTemFuso ? dataIso : `${dataIso}Z`).toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
   });
 }
