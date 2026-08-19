@@ -1505,8 +1505,26 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     // por mês nem por loja — é o saldo real da empresa, não um recorte.
     // Lançamentos antigos (antes de hoje) não entram nessa conta porque
     // já estão embutidos no valor de R$ 106.430,13 informado.
+    //
+    // BUG encontrado e corrigido (19/08/2026): uma venda de cartão/iFood
+    // feita ANTES da data-base (ex.: vendida dia 15/08) mas cujo dinheiro
+    // só cai DEPOIS (ex.: prevista pra 19/08) nunca entrava no Saldo —
+    // ficava só em "Próximos Recebimentos" até vencer, e quando vencia
+    // (deixava de estar pendente) já tinha sumido de lá SEM nunca ter
+    // somado aqui, porque o filtro olhava a data da VENDA (sempre antes da
+    // base), não a data que o dinheiro CAI de verdade. Por isso o "a
+    // receber" some da lista mas o Saldo não sobe. Corrigido usando a data
+    // EFETIVA de recebimento (data_prevista_recebimento — ou a própria
+    // data da venda, pras formas sem prazo) como referência.
+    const dataEfetivaRecebimento = (item) =>
+      item.data_prevista_recebimento || item.data;
+
     const receitasRecebidasDesdeAjusteSaldo = lancamentosAprovados
-      .filter((item) => item.tipo === "receita" && item.data > SALDO_INICIAL_DATA)
+      .filter(
+        (item) =>
+          item.tipo === "receita" &&
+          dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
+      )
       .reduce((total, item) => {
         const aindaPendente =
           item.data_prevista_recebimento &&
@@ -1528,7 +1546,11 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     // esse detalhe mostra um número de outro período, sem nenhuma relação
     // com o Saldo de cima.
     const receitasRecebidasBrutoDesdeAjusteSaldo = lancamentosAprovados
-      .filter((item) => item.tipo === "receita" && item.data > SALDO_INICIAL_DATA)
+      .filter(
+        (item) =>
+          item.tipo === "receita" &&
+          dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
+      )
       .reduce((total, item) => {
         const aindaPendente =
           item.data_prevista_recebimento &&
