@@ -189,6 +189,36 @@ export default function DashboardPremium({
   acessoCardFluxoCaixa = true,
   acessoCardProximosRecebimentos = true,
 }) {
+  // Pedido do usuário (19/08/2026): ordem fixa dos botões de loja no
+  // Dashboard — Sinop, Sorriso, Rondonópolis, Uberlândia. Qualquer loja
+  // nova cadastrada que não bata com nenhum desses 4 nomes (ex: lojas de
+  // teste) cai no final, sem quebrar nada.
+  const ORDEM_LOJAS_DASHBOARD = ["sinop", "sorriso", "rondonopolis", "uberlandia"];
+
+  function normalizarNomeLoja(nome) {
+    return (nome || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, ""); // tira acento (ex: "Rondonópolis" -> "rondonopolis")
+  }
+
+  const lojasOrdenadas = useMemo(() => {
+    return [...lojas].sort((a, b) => {
+      const posicaoA = ORDEM_LOJAS_DASHBOARD.findIndex((chave) =>
+        normalizarNomeLoja(a.nome).includes(chave)
+      );
+      const posicaoB = ORDEM_LOJAS_DASHBOARD.findIndex((chave) =>
+        normalizarNomeLoja(b.nome).includes(chave)
+      );
+
+      // Loja que não bate com nenhum nome conhecido vai pro final da lista.
+      const indiceA = posicaoA === -1 ? ORDEM_LOJAS_DASHBOARD.length : posicaoA;
+      const indiceB = posicaoB === -1 ? ORDEM_LOJAS_DASHBOARD.length : posicaoB;
+
+      return indiceA - indiceB;
+    });
+  }, [lojas]);
+
   const receitas = numero(totais.receitas);
   const despesas = numero(totais.despesas);
   const fluxoCaixa = numero(totais.fluxoCaixa);
@@ -534,7 +564,7 @@ export default function DashboardPremium({
             Todas as lojas
           </button>
 
-          {lojas.map((loja) => (
+          {lojasOrdenadas.map((loja) => (
             <button
               type="button"
               key={loja.id}
