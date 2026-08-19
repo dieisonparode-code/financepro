@@ -581,6 +581,18 @@ function ContasPagar({
     .filter((conta) => conta.data_pagamento === dataFormatada(new Date()))
     .reduce((soma, conta) => soma + Number(conta.valor || 0), 0);
 
+  // Soma de TODAS as contas vencidas (atrasadas) visíveis — cada mês não
+  // pago de uma despesa recorrente entra como uma conta separada, com
+  // sua própria data; esse total só soma o que já passou do vencimento.
+  const contasVencidas = contasVisiveis.filter(
+    (conta) => situacaoConta(conta).rotulo === "Atrasado"
+  );
+  const quantidadeVencida = contasVencidas.length;
+  const totalVencido = contasVencidas.reduce(
+    (soma, conta) => soma + Number(conta.valor || 0),
+    0
+  );
+
   return (
     <section className="categorias-layout">
       {modo === "pagas" ? (
@@ -840,6 +852,36 @@ function ContasPagar({
 
           <strong>{contasVisiveis.length}</strong>
         </div>
+
+        {modo === "pendentes" && totalVencido > 0 && (
+          // Pedido do usuário (19/08/2026): uma despesa recorrente não
+          // paga por vários meses seguidos gera uma Conta a Pagar NOVA a
+          // cada mês (cada uma com sua própria data de vencimento — isso
+          // já acontece sozinho). O que faltava era mostrar a SOMA de
+          // tudo que já venceu, pra dar pra ver de cara "olha, atrasei
+          // R$ X no total, em N contas" sem ter que somar na mão.
+          <div
+            style={{
+              background: "rgba(220, 38, 38, 0.12)",
+              border: "1px solid rgba(220, 38, 38, 0.4)",
+              borderRadius: 10,
+              padding: "10px 14px",
+              marginBottom: 12,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <span style={{ color: "#dc2626", fontWeight: 600 }}>
+              ⚠️ {quantidadeVencida} conta(s) vencida(s)
+            </span>
+            <strong style={{ color: "#dc2626" }}>
+              Total: {formatarMoeda(totalVencido)}
+            </strong>
+          </div>
+        )}
 
         {modo === "pendentes" && contasVisiveis.length > 0 && (
           <div
