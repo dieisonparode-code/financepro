@@ -193,7 +193,10 @@ export default function DashboardPremium({
   // Dashboard — Sinop, Sorriso, Rondonópolis, Uberlândia. Qualquer loja
   // nova cadastrada que não bata com nenhum desses 4 nomes (ex: lojas de
   // teste) cai no final, sem quebrar nada.
-  const ORDEM_LOJAS_DASHBOARD = ["sinop", "sorriso", "rondonopolis", "uberlandia"];
+  // "donopolis" em vez de "rondonopolis": o nome cadastrado no banco tem
+  // erro de digitação ("Romdonopolis", com M) — "donopolis" bate certo
+  // nos dois jeitos (com ou sem esse erro de digitação).
+  const ORDEM_LOJAS_DASHBOARD = ["sinop", "sorriso", "donopolis", "uberlandia"];
 
   function normalizarNomeLoja(nome) {
     return (nome || "")
