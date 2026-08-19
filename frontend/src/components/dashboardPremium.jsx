@@ -218,50 +218,36 @@ export default function DashboardPremium({
     quantidadeReceitas > 0 ? receitas / quantidadeReceitas : 0;
 
  const categorias = useMemo(() => {
-  const mapaCategorias = despesasPorCategoria.reduce(
-    (acumulado, item) => {
-      const nome = item.categoria || "Outros";
-      const valor = numero(item.valor);
+  // Bug encontrado (19/08/2026): a cor de cada categoria vinha de uma
+  // lista fixa de NOMES ("Fornecedores", "Funcionários", "Aluguel"...)
+  // que não tem nada a ver com as categorias reais cadastradas no
+  // sistema (ex: "Outros", "Retirada de Caixa", "Despesas Diversas",
+  // "Matéria-Prima") — qualquer nome que não batesse caía todo no mesmo
+  // azul padrão, por isso o gráfico parecia ter só 2 cores. Agora a cor
+  // vem só da POSIÇÃO no ranking (1ª maior categoria, 2ª maior, etc.),
+  // usando a paleta CORES_CATEGORIAS — cada fatia sempre com uma cor
+  // diferente da vizinha, não importa o nome da categoria.
+  const mapaCategorias = despesasPorCategoria.reduce((acumulado, item) => {
+    const nome = item.categoria || "Outros";
+    const valor = numero(item.valor);
 
-      if (!acumulado[nome]) {
-        acumulado[nome] = {
-          nome,
-          valor: 0,
-          cor:
-            item.cor ||
-            (nome === "Fornecedores"
-              ? "#ef4444"
-              : nome === "Funcionários"
-              ? "#f59e0b"
-              : nome === "Aluguel"
-              ? "#8b5cf6"
-              : nome === "Energia"
-              ? "#22c55e"
-              : nome === "Gás"
-              ? "#3b82f6"
-              : nome === "Marketing"
-              ? "#06b6d4"
-              : nome === "Impostos"
-              ? "#ec4899"
-              : nome === "Taxas"
-              ? "#f97316"
-              : nome === "Manutenção"
-              ? "#84cc16"
-              : "#2563eb"),
-        };
-      }
+    if (!acumulado[nome]) {
+      acumulado[nome] = { nome, valor: 0 };
+    }
 
-      acumulado[nome].valor += valor;
+    acumulado[nome].valor += valor;
 
-      return acumulado;
-    },
-    {}
-  );
+    return acumulado;
+  }, {});
 
   const ordenadas = Object.values(mapaCategorias)
     .filter((item) => item.valor > 0)
     .sort((a, b) => b.valor - a.valor)
-    .slice(0, 5);
+    .slice(0, 5)
+    .map((item, indice) => ({
+      ...item,
+      cor: CORES_CATEGORIAS[indice % CORES_CATEGORIAS.length],
+    }));
 
   const totalCategorias = ordenadas.reduce(
     (acumulado, item) => acumulado + item.valor,
