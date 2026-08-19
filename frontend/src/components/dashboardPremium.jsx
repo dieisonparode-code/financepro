@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import "./dashboardPremium.css";
 import UserMenu from "./UserMenu";
 
@@ -32,6 +32,14 @@ function numero(valor) {
 
 function formatarPercentual(valor) {
   return `${numero(valor).toFixed(1)}%`;
+}
+
+// Marcas do eixo Y do gráfico de barras (ex: "150k", "3k", "800") —
+// acompanha o valor real dos dados, não é mais fixo.
+function formatarEscalaGrafico(valor) {
+  const v = numero(valor);
+  if (v >= 1000) return `${Math.round(v / 1000)}k`;
+  return String(Math.round(v));
 }
 
 function Icone({ children, className = "" }) {
@@ -250,6 +258,56 @@ export default function DashboardPremium({
   const ticketMedio =
     quantidadeReceitas > 0 ? receitas / quantidadeReceitas : 0;
 
+ // Lançamentos de TODOS os meses (não só o mês escolhido no topo),
+ // filtrados só pela loja — usado pelos seletores de período dos
+ // gráficos, que precisam olhar além do mês atual.
+ const lancamentosComparativo = useMemo(() => {
+   return todosLancamentos.filter(
+     (item) =>
+       lojaDashboard === "todas" ||
+       String(item.loja_id || "") === String(lojaDashboard)
+   );
+ }, [todosLancamentos, lojaDashboard]);
+
+ // Pedido do usuário (19/08/2026): o seletor "Este mês" tinha só essa
+ // opção — não dava pra ver outro período de verdade. Agora tem "Mês
+ // passado" e "Este ano" de verdade, recalculando a partir dos
+ // lançamentos reais (não só o mês escolhido no topo do Dashboard).
+ const [periodoCategorias, setPeriodoCategorias] = useState("mes");
+
+ const despesasPorCategoriaNoPeriodo = useMemo(() => {
+   if (periodoCategorias === "mes") {
+     return despesasPorCategoria;
+   }
+
+   let filtroData;
+   if (periodoCategorias === "mes_passado") {
+     const [ano, mes] = mesDashboard.split("-").map(Number);
+     const dataAnterior = new Date(ano, mes - 2, 1);
+     const anoMesAnterior = `${dataAnterior.getFullYear()}-${String(
+       dataAnterior.getMonth() + 1
+     ).padStart(2, "0")}`;
+     filtroData = (data) => data?.slice(0, 7) === anoMesAnterior;
+   } else {
+     // "ano"
+     const ano = mesDashboard.split("-")[0];
+     filtroData = (data) => data?.slice(0, 4) === ano;
+   }
+
+   const agrupadas = lancamentosComparativo
+     .filter((item) => item.tipo === "despesa" && filtroData(item.data))
+     .reduce((acumulado, item) => {
+       const categoria = item.categoria || "Outros";
+       if (!acumulado[categoria]) {
+         acumulado[categoria] = { categoria, valor: 0 };
+       }
+       acumulado[categoria].valor += Number(item.valor || 0);
+       return acumulado;
+     }, {});
+
+   return Object.values(agrupadas);
+ }, [periodoCategorias, despesasPorCategoria, lancamentosComparativo, mesDashboard]);
+
  const categorias = useMemo(() => {
   // Bug encontrado (19/08/2026): a cor de cada categoria vinha de uma
   // lista fixa de NOMES ("Fornecedores", "Funcionários", "Aluguel"...)
@@ -260,7 +318,7 @@ export default function DashboardPremium({
   // vem só da POSIÇÃO no ranking (1ª maior categoria, 2ª maior, etc.),
   // usando a paleta CORES_CATEGORIAS — cada fatia sempre com uma cor
   // diferente da vizinha, não importa o nome da categoria.
-  const mapaCategorias = despesasPorCategoria.reduce((acumulado, item) => {
+  const mapaCategorias = despesasPorCategoriaNoPeriodo.reduce((acumulado, item) => {
     const nome = item.categoria || "Outros";
     const valor = numero(item.valor);
 
@@ -294,8 +352,8 @@ export default function DashboardPremium({
         ? (item.valor / totalCategorias) * 100
         : 0,
   }));
-}, [despesasPorCategoria]);
-     
+}, [despesasPorCategoriaNoPeriodo]);
+
 
   const ultimasTransacoes = useMemo(
     () =>
@@ -428,13 +486,86 @@ export default function DashboardPremium({
     [despesas]
   );
 
-  const mesesComparativo = ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago"];
-  const serieReceitas = [0.76, 0.68, 0.62, 0.78, 1.08, 1].map(
-    (fator) => receitas * fator
-  );
-  const serieDespesas = [0.69, 0.61, 0.62, 0.72, 0.86, 1].map(
-    (fator) => despesas * fator
-  );
+  // Pedido do usuário (19/08/2026): esse gráfico usava números FAKE (o
+  // valor de receita/despesa do mês atual multiplicado por fatores
+  // decorativos tipo 0.76, 0.68...) pra simular uma tendência de vários
+  // meses — não eram dados reais de mês nenhum. Agora calcula de verdade,
+  // a partir dos lançamentos reais, agrupado por mês/trimestre/ano
+  // (o seletor "Mensal" já funciona e tem outras opções).
+  const NOMES_MES_CURTO = [
+    "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+    "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+  ];
+
+  const [periodoComparativo, setPeriodoComparativo] = useState("mensal");
+
+  const { mesesComparativo, serieReceitas, serieDespesas } = useMemo(() => {
+    const [anoBase, mesBase] = mesDashboard.split("-").map(Number);
+
+    // Quantos "baldes" (meses, trimestres ou anos) voltar, e o tamanho de
+    // cada balde em meses.
+    const configuracao = {
+      mensal: { quantidade: 6, tamanhoMeses: 1 },
+      trimestral: { quantidade: 4, tamanhoMeses: 3 },
+      anual: { quantidade: 3, tamanhoMeses: 12 },
+    }[periodoComparativo] || { quantidade: 6, tamanhoMeses: 1 };
+
+    const baldes = [];
+    for (let i = configuracao.quantidade - 1; i >= 0; i--) {
+      const totalMesesAtras = i * configuracao.tamanhoMeses;
+      const dataBalde = new Date(anoBase, mesBase - 1 - totalMesesAtras, 1);
+      const anoBalde = dataBalde.getFullYear();
+      const mesBalde = dataBalde.getMonth(); // 0-11, início do balde
+
+      let rotulo;
+      if (configuracao.tamanhoMeses === 1) {
+        rotulo = NOMES_MES_CURTO[mesBalde];
+      } else if (configuracao.tamanhoMeses === 3) {
+        rotulo = `T${Math.floor(mesBalde / 3) + 1}/${String(anoBalde).slice(2)}`;
+      } else {
+        rotulo = String(anoBalde);
+      }
+
+      baldes.push({
+        rotulo,
+        anoInicio: anoBalde,
+        mesInicio: mesBalde, // 0-11
+        receita: 0,
+        despesa: 0,
+      });
+    }
+
+    lancamentosComparativo.forEach((item) => {
+      if (!item.data) return;
+      const [anoItem, mesItem] = item.data.split("-").map(Number);
+      if (!anoItem || !mesItem) return;
+
+      const mesesTotaisItem = anoItem * 12 + (mesItem - 1);
+
+      const balde = baldes.find((b) => {
+        const inicioTotal = b.anoInicio * 12 + b.mesInicio;
+        return (
+          mesesTotaisItem >= inicioTotal &&
+          mesesTotaisItem < inicioTotal + configuracao.tamanhoMeses
+        );
+      });
+
+      if (!balde) return;
+
+      if (item.tipo === "receita") {
+        balde.receita += Number(item.valor || 0);
+      } else if (item.tipo === "despesa") {
+        balde.despesa += Number(item.valor || 0);
+      }
+    });
+
+    return {
+      mesesComparativo: baldes.map((b) => b.rotulo),
+      serieReceitas: baldes.map((b) => b.receita),
+      serieDespesas: baldes.map((b) => b.despesa),
+    };
+  }, [lancamentosComparativo, mesDashboard, periodoComparativo]);
+
   const maiorComparativo = Math.max(
     1,
     ...serieReceitas,
@@ -714,19 +845,27 @@ export default function DashboardPremium({
               </p>
             </div>
 
-            <select defaultValue="mensal">
-              <option value="mensal">Mensal</option>
+            <select
+              value={periodoComparativo}
+              onChange={(evento) => setPeriodoComparativo(evento.target.value)}
+            >
+              <option value="mensal">Mensal (últimos 6 meses)</option>
+              <option value="trimestral">Trimestral (últimos 4)</option>
+              <option value="anual">Anual (últimos 3)</option>
             </select>
           </header>
 
           <div className="fp-grafico-barras">
             <aside>
-              <span>150k</span>
-              <span>120k</span>
-              <span>90k</span>
-              <span>60k</span>
-              <span>30k</span>
-              <span>0</span>
+              {/* Antes essas 6 marcas eram fixas (150k/120k/90k...) — não
+                  faziam sentido nenhum com dados reais variando bem
+                  diferente disso. Agora acompanham o maior valor real da
+                  série (maiorComparativo). */}
+              {[1, 0.8, 0.6, 0.4, 0.2, 0].map((fator) => (
+                <span key={fator}>
+                  {formatarEscalaGrafico(maiorComparativo * fator)}
+                </span>
+              ))}
             </aside>
 
             <div className="fp-area-meses">
@@ -785,8 +924,13 @@ export default function DashboardPremium({
         <article className="fp-painel fp-categorias">
           <header>
             <h2>Despesas por categoria</h2>
-            <select defaultValue="mes">
+            <select
+              value={periodoCategorias}
+              onChange={(evento) => setPeriodoCategorias(evento.target.value)}
+            >
               <option value="mes">Este mês</option>
+              <option value="mes_passado">Mês passado</option>
+              <option value="ano">Este ano</option>
             </select>
           </header>
 
