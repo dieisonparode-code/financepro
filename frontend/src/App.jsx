@@ -1468,15 +1468,18 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     // entra no Saldo como receita normal "Vendas Dinheiro" da Saipos).
     // Confirma marcado no fechamento: soma. Despesa paga com dinheiro do
     // caixa: desconta.
-    const despesasEmDinheiro = lancamentosAprovados
-      .filter(
-        (item) =>
-          item.tipo === "despesa" &&
-          item.pago_em_dinheiro &&
-          item.data > SALDO_INICIAL_DATA
-      )
-      .reduce((total, item) => total + Number(item.valor || 0), 0);
-
+    // BUG REAL corrigido (20/08/2026, achado pelo usuário): descontar as
+    // despesas "pago em dinheiro" aqui SOMAVA duas vezes a mesma saída de
+    // caixa. A retirada de dinheiro pra pagar boy/fornecedor já sai
+    // impressa no próprio comprovante Saipos ("Retiradas") e já está
+    // embutida no valor "Em caixa" que a Conciliação lê da foto (o "Em
+    // caixa" é o CONTADO DE VERDADE, depois de qualquer retirada) — então
+    // o "dinheiro novo" (em_caixa − abertura) que alimenta esse indicador
+    // JÁ vem líquido de toda despesa em dinheiro daquele turno. Descontar
+    // a despesa de novo aqui duplicava o desconto (ex.: um "Pago com
+    // dinheiro do caixa" de R$440 que já tinha saído do "Em caixa" saía
+    // uma segunda vez, deixando o indicador bem mais negativo que a
+    // realidade).
     const cmvValor = lancamentosDashboard
       .filter(
         (item) =>
@@ -1642,7 +1645,7 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       cmvValor,
       cmvPercentual,
       margemPercentual,
-      dinheiroEmCaixa: dinheiroEmCaixaFiltrado - despesasEmDinheiro,
+      dinheiroEmCaixa: dinheiroEmCaixaFiltrado,
     };
   }, [lancamentosDashboard, lancamentosAprovados, dinheiroEmCaixaFiltrado]);
 
