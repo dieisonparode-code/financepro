@@ -765,7 +765,11 @@ export default function DashboardPremium({
           // inteiro que não tinha relação nenhuma com o saldo novo.
           bruto={formatarMoeda(saldoBruto)}
           taxa={`${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`}
-          emDinheiro={dinheiroEmCaixa !== 0 ? formatarMoeda(dinheiroEmCaixa) : null}
+          // Pedido do usuário (20/08/2026): antes sumia a linha inteira
+          // quando o valor era exatamente R$0,00 — agora sempre mostra,
+          // mesmo zerado, pra dar pra confirmar visualmente que zerou de
+          // verdade (em vez de simplesmente não aparecer nada).
+          emDinheiro={formatarMoeda(dinheiroEmCaixa)}
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
