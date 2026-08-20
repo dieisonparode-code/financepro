@@ -518,6 +518,19 @@ function ContasPagar({
   // Pagas" (só nessa aba, nunca em "A pagar"), sem duplicar nada no banco:
   // é só uma junção pra visualização, cada uma mantém sua origem marcada
   // (_origem) pra "Ver foto"/Editar/Excluir saberem de onde vieram.
+  // Bug real corrigido (20/08/2026): quando uma Conta a Pagar é marcada
+  // como paga, o sistema cria uma despesa vinculada (lancamento_id) — mas
+  // essa MESMA despesa também aparecia solta na lista de "despesas" logo
+  // abaixo, fazendo o mesmo pagamento aparecer 2x na tela (e o total do
+  // dia contar em dobro). Agora tira da lista de despesas qualquer uma
+  // que já esteja vinculada a uma conta paga, pra cada pagamento aparecer
+  // só uma vez.
+  const idsDespesasJaEmContaPaga = new Set(
+    contas
+      .filter((conta) => conta.status === "pago" && conta.lancamento_id)
+      .map((conta) => conta.lancamento_id)
+  );
+
   const contasPagasNormalizadas =
     modo === "pagas"
       ? [
@@ -532,7 +545,9 @@ function ContasPagar({
               // (fica null e cai no fallback por data, sem horário).
               _horario: conta.pago_em || null,
             })),
-          ...despesas.map((despesa) => ({
+          ...despesas
+            .filter((despesa) => !idsDespesasJaEmContaPaga.has(despesa.id))
+            .map((despesa) => ({
             id: `despesa-${despesa.id}`,
             _origem: "despesa",
             _idOriginal: despesa.id,
