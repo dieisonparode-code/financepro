@@ -198,4 +198,22 @@ async function processarMensagem(sock, mensagem) {
   }
 }
 
+// Blindagem (20/08/2026, achado analisando um crash real no log): a
+// biblioteca do WhatsApp às vezes rejeita uma promise durante a
+// reconexão (ex: erro de rede "WebSocket fechado, código 1006") SEM que
+// ninguém dê ".catch()" nela — e a partir do Node 24, isso derruba o
+// processo inteiro em vez de só logar um aviso (como acontecia em
+// versões antigas do Node). O robô morria de vez, silenciosamente, e só
+// o ícone da bandeja continuava ali (o ícone é só um "casco" que não
+// garante nada por dentro) — nenhuma foto/PDF era processada até alguém
+// perceber e reiniciar na mão. Agora só loga o erro e deixa o próprio
+// mecanismo de reconexão (dentro de "iniciar()") continuar tentando,
+// sem matar o processo.
+process.on("unhandledRejection", (motivo) => {
+  console.error(
+    "⚠️ Erro de rede não tratado (não vai derrubar o robô):",
+    motivo
+  );
+});
+
 iniciar();
