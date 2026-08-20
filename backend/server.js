@@ -4349,6 +4349,12 @@ app.get(
   }
 );
 
+// Pedido do usuário (19/08/2026): comprovante do banco às vezes vem em
+// PDF (ex: Sicredi), não em foto — o robô do WhatsApp ignorava esses de
+// propósito, então essas despesas nunca entravam sozinhas. Agora aceita
+// os dois formatos na mesma função: "data:image/..." (como sempre) ou
+// "data:application/pdf;base64,..." — a Claude lê PDF nativamente, sem
+// precisar converter pra imagem antes.
 async function lerImagemComIA(
   fotoDataUrl,
   promptTexto,
@@ -4361,15 +4367,34 @@ async function lerImagemComIA(
     throw new Error("ANTHROPIC_API_KEY não configurada no .env.");
   }
 
-  // foto vem como data URL: "data:image/jpeg;base64,/9j/4AAQ..."
-  const correspondencia = fotoDataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+  const correspondenciaImagem = fotoDataUrl.match(
+    /^data:(image\/\w+);base64,(.+)$/
+  );
+  const correspondenciaPdf = fotoDataUrl.match(
+    /^data:application\/pdf;base64,(.+)$/
+  );
 
-  if (!correspondencia) {
-    throw new Error("Formato de imagem inválido.");
+  if (!correspondenciaImagem && !correspondenciaPdf) {
+    throw new Error("Formato de imagem/PDF inválido.");
   }
 
-  const tipoImagem = correspondencia[1];
-  const dadosBase64 = correspondencia[2];
+  const blocoMidia = correspondenciaPdf
+    ? {
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: correspondenciaPdf[1],
+        },
+      }
+    : {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: correspondenciaImagem[1],
+          data: correspondenciaImagem[2],
+        },
+      };
 
   const anthropic = new Anthropic({ apiKey });
 
@@ -4379,17 +4404,7 @@ async function lerImagemComIA(
     messages: [
       {
         role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: tipoImagem,
-              data: dadosBase64,
-            },
-          },
-          { type: "text", text: promptTexto },
-        ],
+        content: [blocoMidia, { type: "text", text: promptTexto }],
       },
     ],
   });

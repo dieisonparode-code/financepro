@@ -1,5 +1,6 @@
 // Robô do WhatsApp — fica de olho num grupo específico. Quando alguém
-// manda uma FOTO com legenda (ex: "boy", "cozinha", "vale", "reforma",
+// manda uma FOTO (ou um PDF — ex: comprovante do banco que vem em PDF
+// como no Sicredi) com legenda (ex: "boy", "cozinha", "vale", "reforma",
 // "compras", "materia prima"), ele manda pro FinancePro classificar
 // sozinho. Legenda não reconhecida (ou sem legenda) cai numa fila pra
 // classificar na mão dentro do sistema.
@@ -126,6 +127,17 @@ async function processarMensagem(sock, mensagem) {
     mensagem.message.imageMessage ||
     mensagem.message.viewOnceMessageV2?.message?.imageMessage;
 
+  // Pedido do usuário (19/08/2026): comprovante de banco às vezes vem em
+  // PDF, não em foto (ex: Sicredi) — antes o robô ignorava de propósito e
+  // essas despesas nunca entravam sozinhas no sistema. Detecta o PDF do
+  // mesmo jeito que já detecta a foto (inclusive a variante mais nova do
+  // WhatsApp, "documentWithCaptionMessage", que embrulha o documento
+  // quando ele tem legenda).
+  const documentMessage =
+    mensagem.message.documentMessage ||
+    mensagem.message.documentWithCaptionMessage?.message?.documentMessage;
+  const ehPdf = documentMessage?.mimetype === "application/pdf";
+
   // Em vez de exigir a string inteira idêntica (frágil — LID vs PN,
   // sufixo diferente etc. já causaram falso "diferente" nesse teste),
   // compara só a parte numérica antes do "@" — muito mais robusto.
@@ -136,23 +148,25 @@ async function processarMensagem(sock, mensagem) {
   // Log de depuração: mostra QUALQUER mensagem de grupo que chegar (foto
   // ou não, do grupo configurado ou não).
   console.log(
-    `👀 Mensagem vista — grupo=${JSON.stringify(remoteJid)} | configurado=${JSON.stringify(GRUPO_ID)} | id numérico bate? ${bateGrupo ? "SIM" : "NÃO"} (recebido="${idNumericoRecebido}" vs configurado="${idNumericoConfigurado}") — tem foto? ${imageMessage ? "sim" : "não"}`
+    `👀 Mensagem vista — grupo=${JSON.stringify(remoteJid)} | configurado=${JSON.stringify(GRUPO_ID)} | id numérico bate? ${bateGrupo ? "SIM" : "NÃO"} (recebido="${idNumericoRecebido}" vs configurado="${idNumericoConfigurado}") — tem foto? ${imageMessage ? "sim" : "não"} — tem PDF? ${ehPdf ? "sim" : "não"}`
   );
 
   if (GRUPO_ID && !bateGrupo) return; // só o grupo configurado
 
-  if (!imageMessage) return; // só processa foto
+  if (!imageMessage && !ehPdf) return; // só processa foto ou PDF
 
-  const legenda = imageMessage.caption || "";
+  const legenda = imageMessage?.caption || documentMessage?.caption || "";
   const remetente =
     mensagem.pushName || mensagem.key.participant || "desconhecido";
 
   console.log(
-    `📸 Foto recebida de ${remetente} — legenda: "${legenda || "(sem legenda)"}"`
+    `${ehPdf ? "📄 PDF" : "📸 Foto"} recebido de ${remetente} — legenda: "${legenda || "(sem legenda)"}"`
   );
 
   const buffer = await downloadMediaMessage(mensagem, "buffer", {});
-  const fotoBase64 = `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  const fotoBase64 = ehPdf
+    ? `data:application/pdf;base64,${buffer.toString("base64")}`
+    : `data:image/jpeg;base64,${buffer.toString("base64")}`;
 
   try {
     const resposta = await axios.post(
@@ -178,7 +192,7 @@ async function processarMensagem(sock, mensagem) {
     console.log(destinoTexto[resposta.data.destino] || "✅ Processado.");
   } catch (erro) {
     console.error(
-      "❌ Não consegui mandar a foto pro FinancePro:",
+      `❌ Não consegui mandar o ${ehPdf ? "PDF" : "foto"} pro FinancePro:`,
       erro.response?.data?.erro || erro.message
     );
   }
