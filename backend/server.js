@@ -2274,6 +2274,18 @@ app.put(
 // sempre. Isso é só o "molde"; quem gera a Conta a Pagar de verdade todo
 // mês é a automação (rodarGeracaoDespesasRecorrentes, mais abaixo).
 function prepararDespesaRecorrente(dados = {}) {
+  // Pedido do usuário (19/08/2026): "mes_inicio" (formato AAAA-MM) define
+  // a partir de qual mês essa recorrente vale de verdade — se a pessoa
+  // cadastra hoje (ex: dia 19) uma recorrente com vencimento no dia 10
+  // (já passado esse mês), ela pode escolher se isso conta como "já
+  // atrasada agora" (deixa null/mês atual) ou "só a partir do mês que
+  // vem" (manda o mês seguinte aqui).
+  const mesInicioValido =
+    typeof dados.mes_inicio === "string" &&
+    /^\d{4}-\d{2}$/.test(dados.mes_inicio)
+      ? dados.mes_inicio
+      : null;
+
   return {
     descricao: (dados.descricao || "").trim(),
     fornecedor: (dados.fornecedor || "").trim(),
@@ -2282,6 +2294,7 @@ function prepararDespesaRecorrente(dados = {}) {
     loja_id: dados.loja_id ? Number(dados.loja_id) : null,
     observacao: (dados.observacao || "").trim(),
     ativo: dados.ativo !== false,
+    mes_inicio: mesInicioValido,
   };
 }
 
@@ -5718,6 +5731,14 @@ async function gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr) {
   const anoMes = `${ano}-${String(mes).padStart(2, "0")}`;
   const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
 
+  // Pedido do usuário (19/08/2026): se a recorrente tem um "mes_inicio"
+  // definido (ex: cadastrada depois do dia de vencimento já ter passado
+  // esse mês, mas com intenção de só valer a partir do mês seguinte),
+  // nem tenta gerar nada pra mês anterior a esse.
+  if (recorrente.mes_inicio && anoMes < recorrente.mes_inicio) {
+    return null;
+  }
+
   const marcador = `[RECORRENTE:${recorrente.id}:${anoMes}]`;
 
   const { data: existentes, error: erroBusca } = await supabase
@@ -5765,6 +5786,15 @@ async function gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr) {
     }`,
     foto: "",
     loja_id: recorrente.loja_id,
+    // Bug real corrigido (19/08/2026): a checagem acima ("já existe?")
+    // roda em código, com uma brecha de tempo entre o SELECT e o INSERT
+    // — a criação imediata (ao cadastrar) e o relógio de fundo já
+    // dispararam quase juntos pra uma recorrente nova e criaram duas
+    // contas iguais pro mesmo mês. Esses dois campos, com uma trava
+    // única no próprio banco, fecham essa brecha: se der corrida, o
+    // SEGUNDO insert falha (código 23505) em vez de duplicar.
+    recorrente_id: recorrente.id,
+    recorrente_ano_mes: anoMes,
   };
 
   const { data: contaCriada, error: erroConta } = await supabase
@@ -5774,6 +5804,12 @@ async function gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr) {
     .single();
 
   if (erroConta) {
+    // 23505 = unique_violation — outra execução (rodando quase junto)
+    // já criou essa mesma conta um instante antes; não é erro de
+    // verdade, é a trava funcionando como esperado.
+    if (erroConta.code === "23505") {
+      return null;
+    }
     throw erroConta;
   }
 

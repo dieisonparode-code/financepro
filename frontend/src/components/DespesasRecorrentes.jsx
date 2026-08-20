@@ -22,6 +22,12 @@ function DespesasRecorrentes({
   const [diaVencimento, setDiaVencimento] = useState("");
   const [lojaId, setLojaId] = useState(lojaPadrao ? String(lojaPadrao) : "");
   const [observacao, setObservacao] = useState("");
+  // Pedido do usuário (19/08/2026): quando o dia de vencimento já passou
+  // nesse mês (ex: cadastra dia 19 uma recorrente com vencimento dia
+  // 10), o sistema gerava a conta desse mês já "atrasada" na hora —
+  // mesmo quando a intenção era só começar a contar a partir do mês
+  // seguinte. Esse toggle deixa escolher.
+  const [comecarProximoMes, setComecarProximoMes] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -45,6 +51,7 @@ function DespesasRecorrentes({
     setDiaVencimento("");
     setLojaId(lojaPadrao ? String(lojaPadrao) : "");
     setObservacao("");
+    setComecarProximoMes(false);
     setEditandoId(null);
   }
 
@@ -56,6 +63,7 @@ function DespesasRecorrentes({
     setDiaVencimento(String(recorrente.dia_vencimento ?? ""));
     setLojaId(recorrente.loja_id ? String(recorrente.loja_id) : "");
     setObservacao(recorrente.observacao || "");
+    setComecarProximoMes(Boolean(recorrente.mes_inicio));
   }
 
   async function salvar(evento) {
@@ -96,6 +104,22 @@ function DespesasRecorrentes({
       dia_vencimento: Number(diaVencimento),
       loja_id: lojaId || null,
       observacao: observacao.trim(),
+      // "Só a partir do mês que vem" — calcula o mês seguinte (AAAA-MM)
+      // ao de hoje; deixa null (sem restrição) se a intenção é já contar
+      // esse mês, mesmo que o dia já tenha passado.
+      mes_inicio: comecarProximoMes
+        ? (() => {
+            const agora = new Date();
+            const proximo = new Date(
+              agora.getFullYear(),
+              agora.getMonth() + 1,
+              1
+            );
+            return `${proximo.getFullYear()}-${String(
+              proximo.getMonth() + 1
+            ).padStart(2, "0")}`;
+          })()
+        : null,
     };
 
     try {
@@ -122,6 +146,7 @@ function DespesasRecorrentes({
         dia_vencimento: recorrente.dia_vencimento,
         loja_id: recorrente.loja_id,
         observacao: recorrente.observacao,
+        mes_inicio: recorrente.mes_inicio || null,
         ativo: !recorrente.ativo,
       });
     } catch (erro) {
@@ -234,6 +259,24 @@ function DespesasRecorrentes({
             />
           </label>
 
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexDirection: "row",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={comecarProximoMes}
+              onChange={(evento) => setComecarProximoMes(evento.target.checked)}
+              style={{ width: "auto" }}
+            />
+            Só vale a partir do mês que vem (não conta o dia de vencimento
+            desse mês, mesmo que já tenha passado)
+          </label>
+
           <div className="modal-actions">
             {editandoId && (
               <button
@@ -304,6 +347,13 @@ function DespesasRecorrentes({
                           )?.nome
                         }
                       </small>
+                    )}
+                    {recorrente.mes_inicio && (
+                      <div>
+                        <small style={{ color: "#f59e0b" }}>
+                          ⏳ Só a partir de {recorrente.mes_inicio}
+                        </small>
+                      </div>
                     )}
                   </div>
                 </div>
