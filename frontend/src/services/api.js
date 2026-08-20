@@ -340,6 +340,36 @@ export async function buscarStatusWhatsapp() {
   });
 }
 
+// Resumo (sem nome do sócio) pra recalcular o Saldo certo pra QUALQUER
+// usuário que vê o card Saldo, não só admin.
+export async function buscarResumoRetiradasSocios() {
+  return requisicao("/retiradas-socios/resumo", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+// Retiradas de Sócios (20/08/2026) — tela e dados só-admin.
+export async function buscarRetiradasSocios() {
+  return requisicao("/retiradas-socios", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarRetiradaSocio(dados) {
+  return requisicao("/retiradas-socios", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function excluirRetiradaSocio(id) {
+  return requisicao(`/retiradas-socios/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarDinheiroInformado() {
   return requisicao("/caixa-dinheiro-informado", {
     headers: await cabecalhoAutenticado(),

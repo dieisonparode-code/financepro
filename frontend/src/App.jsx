@@ -28,6 +28,10 @@ import {
   buscarFormasPagamento,
   buscarDinheiroInformado,
   buscarStatusWhatsapp,
+  buscarResumoRetiradasSocios,
+  buscarRetiradasSocios,
+  criarRetiradaSocio,
+  excluirRetiradaSocio,
   buscarNotasFiscais,
   criarNotaFiscal,
   excluirNotaFiscal,
@@ -90,6 +94,7 @@ import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
 import DespesasRecorrentes from "./components/DespesasRecorrentes";
+import RetiradasSocios from "./components/RetiradasSocios";
 import Fornecedores from "./components/Fornecedores";
 import ContasReceber from "./components/ContasReceber";
 import LogAuditoria from "./components/LogAuditoria";
@@ -546,6 +551,23 @@ function FinanceApp() {
   // desconectado do WhatsApp) — antes só dava pra descobrir cavando o
   // log manualmente.
   const [statusWhatsappBot, setStatusWhatsappBot] = useState(null);
+
+  // Retiradas de Sócios (20/08/2026) — só admin.
+  const [retiradasSocios, setRetiradasSocios] = useState([]);
+  const [carregandoRetiradasSocios, setCarregandoRetiradasSocios] =
+    useState(true);
+
+  // Resumo (sem nome do sócio) pra QUALQUER usuário — usado só pra dar
+  // baixa no Saldo certo, mesmo pra quem não é admin e não vê a tela.
+  const [resumoRetiradasSocios, setResumoRetiradasSocios] = useState([]);
+
+  useEffect(() => {
+    buscarResumoRetiradasSocios()
+      .then((dados) => setResumoRetiradasSocios(Array.isArray(dados) ? dados : []))
+      .catch((erro) =>
+        console.error("Erro ao buscar resumo de retiradas de sócios:", erro)
+      );
+  }, []);
 
   const [clientes, setClientes] = useState([]);
   const [carregandoClientes, setCarregandoClientes] = useState(true);
@@ -1112,6 +1134,41 @@ function FinanceApp() {
     return () => clearInterval(intervalo);
   }, [ehAdministrador]);
 
+  // Retiradas de Sócios (20/08/2026) — só admin, mesma regra da rota no
+  // backend (verificarAdmin).
+  useEffect(() => {
+    if (!ehAdministrador) {
+      setCarregandoRetiradasSocios(false);
+      return;
+    }
+
+    async function carregarRetiradasSocios() {
+      try {
+        setCarregandoRetiradasSocios(true);
+        const dados = await buscarRetiradasSocios();
+        setRetiradasSocios(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar retiradas de sócios:", erro);
+      } finally {
+        setCarregandoRetiradasSocios(false);
+      }
+    }
+
+    carregarRetiradasSocios();
+  }, [ehAdministrador]);
+
+  async function adicionarRetiradaSocioHandler(dados) {
+    const criada = await criarRetiradaSocio(dados);
+    setRetiradasSocios((anteriores) => [criada, ...anteriores]);
+  }
+
+  async function removerRetiradaSocioHandler(id) {
+    await excluirRetiradaSocio(id);
+    setRetiradasSocios((anteriores) =>
+      anteriores.filter((item) => item.id !== id)
+    );
+  }
+
   async function removerItemWhatsappFilaHandler(id) {
     await removerItemWhatsappFila(id);
     setWhatsappFila((anteriores) => anteriores.filter((item) => item.id !== id));
@@ -1630,6 +1687,17 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
+    // Pedido do usuário (20/08/2026): retirada de dinheiro pros sócios
+    // também dá baixa no Saldo, igual uma despesa — só que não aparece
+    // em Despesas/Contas Pagas (tabela própria, tela só-admin). Usa o
+    // "resumo" (sem nome do sócio) pra funcionar igual pra QUALQUER
+    // usuário que vê o Saldo, não só admin.
+    const retiradasSociosDesdeAjusteSaldo = resumoRetiradasSocios
+      .filter(
+        (item) => lojaCombinaComSaldo(item) && item.data > SALDO_INICIAL_DATA
+      )
+      .reduce((total, item) => total + Number(item.valor || 0), 0);
+
     // Base de R$106.430,13 só entra quando "Todas as lojas" ou a própria
     // Uberlândia estiver selecionada — outra loja específica começa do
     // zero (não tem esse dinheiro).
@@ -1641,11 +1709,13 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     const saldo =
       baseSaldoAplicavel +
       receitasRecebidasDesdeAjusteSaldo -
-      despesasDesdeAjusteSaldo;
+      despesasDesdeAjusteSaldo -
+      retiradasSociosDesdeAjusteSaldo;
     const saldoBruto =
       baseSaldoAplicavel +
       receitasRecebidasBrutoDesdeAjusteSaldo -
-      despesasDesdeAjusteSaldo;
+      despesasDesdeAjusteSaldo -
+      retiradasSociosDesdeAjusteSaldo;
     const totalTaxas =
       receitasRecebidasBrutoDesdeAjusteSaldo -
       receitasRecebidasDesdeAjusteSaldo;
@@ -1674,7 +1744,12 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       margemPercentual,
       dinheiroEmCaixa: dinheiroEmCaixaFiltrado,
     };
-  }, [lancamentosDashboard, lancamentosAprovados, dinheiroEmCaixaFiltrado]);
+  }, [
+    lancamentosDashboard,
+    lancamentosAprovados,
+    dinheiroEmCaixaFiltrado,
+    resumoRetiradasSocios,
+  ]);
 
   const despesasPorCategoria = useMemo(() => {
   const agrupadas = lancamentosAprovados
@@ -3352,6 +3427,15 @@ const statusCmv =
             </button>
           )}
 
+          {ehAdministrador && (
+            <button
+              className={pagina === "retiradas-socios" ? "active" : ""}
+              onClick={() => setPagina("retiradas-socios")}
+            >
+              💸 Retiradas de Sócios
+            </button>
+          )}
+
           {temPermissaoFinanceira("contas_pagar") && (
             <button
               className={pagina === "fornecedores" ? "active" : ""}
@@ -4182,6 +4266,17 @@ const statusCmv =
             adicionar={adicionarDespesaRecorrente}
             editar={editarDespesaRecorrenteHandler}
             remover={removerDespesaRecorrente}
+          />
+        )}
+
+        {pagina === "retiradas-socios" && ehAdministrador && (
+          <RetiradasSocios
+            retiradas={retiradasSocios}
+            carregando={carregandoRetiradasSocios}
+            lojas={lojas}
+            lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
+            adicionar={adicionarRetiradaSocioHandler}
+            remover={removerRetiradaSocioHandler}
           />
         )}
 

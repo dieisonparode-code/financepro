@@ -5074,6 +5074,139 @@ app.delete(
   }
 );
 
+// ===== Retiradas de Sócios (20/08/2026) =====
+// Pedido do usuário: retirada de dinheiro pros sócios precisa dar baixa
+// no Saldo e aparecer nos Relatórios, mas NUNCA em Contas Pagas nem
+// Despesas comuns (telas que a equipe toda acessa) — por isso é uma
+// tabela própria (retiradas_socios), inteira restrita a admin, do
+// cadastro até a leitura.
+function prepararRetiradaSocio(dados = {}) {
+  return {
+    socio: (dados.socio || "").trim(),
+    valor: Number(dados.valor || 0),
+    data: dados.data || null,
+    loja_id: dados.loja_id ? Number(dados.loja_id) : null,
+    observacao: (dados.observacao || "").trim(),
+  };
+}
+
+// Pedido do usuário: a retirada tem que dar baixa no Saldo pra QUALQUER
+// usuário que vê o card Saldo (não só admin) — senão o número fica
+// diferente dependendo de quem está olhando. Mas os DETALHES (nome do
+// sócio, observação) continuam só-admin. Essa rota devolve só o mínimo
+// pra recalcular o Saldo certo (id, valor, data, loja_id), sem vazar
+// quem sacou quanto pra quem não é admin.
+app.get(
+  "/retiradas-socios/resumo",
+  verificarPermissao(["saldo", "financeiro"]),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("retiradas_socios")
+        .select("id, valor, data, loja_id");
+
+      if (error) throw error;
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar resumo de retiradas de sócios:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar o resumo de retiradas de sócios.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get("/retiradas-socios", verificarAdmin, async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("retiradas_socios")
+      .select("*")
+      .order("data", { ascending: false })
+      .order("id", { ascending: false });
+
+    if (error) throw error;
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar retiradas de sócios:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar as retiradas de sócios.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/retiradas-socios", verificarAdmin, async function (req, res) {
+  try {
+    const dados = prepararRetiradaSocio(req.body);
+
+    if (!dados.socio || !dados.valor || !dados.data) {
+      return res.status(400).json({
+        erro: "Informe o sócio, o valor e a data da retirada.",
+      });
+    }
+
+    const { usuario, perfil } = await obterPerfilOpcional(req);
+
+    const { data, error } = await supabase
+      .from("retiradas_socios")
+      .insert([
+        {
+          id: Date.now(),
+          ...dados,
+          criado_por: perfil?.nome || usuario?.email || "",
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    registrarAuditoria(
+      req,
+      "criou",
+      "retiradas_socios",
+      data.id,
+      `${data.socio} — ${data.valor} em ${data.data}`
+    );
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao criar retirada de sócio:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível salvar a retirada de sócio.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/retiradas-socios/:id", verificarAdmin, async function (req, res) {
+  try {
+    const { error } = await supabase
+      .from("retiradas_socios")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) throw error;
+
+    registrarAuditoria(req, "excluiu", "retiradas_socios", req.params.id, null);
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir retirada de sócio:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir a retirada de sócio.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 app.get("/usuarios", verificarAdmin, async function (req, res) {
   try {
     const { data, error } = await supabase
