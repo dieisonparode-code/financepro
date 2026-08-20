@@ -8,6 +8,7 @@ import {
   salvarValoresInformadosFechamento,
   finalizarConciliacaoFechamento,
   salvarDinheiroInformado,
+  buscarDinheiroInformado,
 } from "../services/api";
 
 // A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
@@ -188,6 +189,68 @@ function Conciliacao({ lojaId }) {
   // daquela mesma noite (nome, valor, telefone — lidos automaticamente
   // da foto de "Comandas Canceladas").
   const [comandasCanceladas, setComandasCanceladas] = useState([]);
+
+  // Pedido do usuário (20/08/2026): um aviso — clicado na hora que o
+  // usuário quiser, não automático — que compara a Abertura do turno
+  // mais recente com o "Em caixa" (fechamento) do turno anterior. Se o
+  // caixa abriu hoje com um valor diferente do que fechou ontem, é sinal
+  // de que alguém mexeu no dinheiro entre os dois turnos (tirou ou pôs
+  // sem registrar) — vale conferir.
+  const [avisoAberturaFechamento, setAvisoAberturaFechamento] = useState(null);
+  const [conferindoAbertura, setConferindoAbertura] = useState(false);
+
+  async function conferirAberturaVsFechamentoAnterior() {
+    setConferindoAbertura(true);
+    setAvisoAberturaFechamento(null);
+
+    try {
+      const resultado = await buscarDinheiroInformado();
+      const registros = (resultado?.registros || [])
+        .filter(
+          (item) =>
+            String(item.loja_id) === String(lojaId) &&
+            item.fechamento_id != null // só fechamentos de verdade (lidos de foto), não ajustes manuais
+        )
+        .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+
+      if (registros.length < 2) {
+        setAvisoAberturaFechamento({
+          tipo: "info",
+          texto:
+            "Ainda não tem fechamentos suficientes lidos por foto pra comparar (precisa de pelo menos 2).",
+        });
+        return;
+      }
+
+      const maisRecente = registros[registros.length - 1];
+      const anterior = registros[registros.length - 2];
+
+      const aberturaMaisRecente = Number(maisRecente.abertura || 0);
+      const fechamentoAnterior = Number(anterior.em_caixa || 0);
+      const diferenca = Number(
+        (aberturaMaisRecente - fechamentoAnterior).toFixed(2)
+      );
+
+      if (Math.abs(diferenca) <= 0.02) {
+        setAvisoAberturaFechamento({
+          tipo: "ok",
+          texto: `✅ Bateu — o caixa abriu com ${formatarMoeda(aberturaMaisRecente)}, igual ao que fechou no turno anterior.`,
+        });
+      } else {
+        setAvisoAberturaFechamento({
+          tipo: "alerta",
+          texto: `⚠️ Diferença entre turnos: o caixa fechou o turno anterior com ${formatarMoeda(fechamentoAnterior)}, mas abriu esse turno com ${formatarMoeda(aberturaMaisRecente)} — ${diferenca > 0 ? "sobrou" : "faltou"} ${formatarMoeda(Math.abs(diferenca))}. Confira se alguém mexeu no dinheiro do caixa entre os dois fechamentos.`,
+        });
+      }
+    } catch (erro) {
+      setAvisoAberturaFechamento({
+        tipo: "erro",
+        texto: erro.message || "Não foi possível conferir agora.",
+      });
+    } finally {
+      setConferindoAbertura(false);
+    }
+  }
 
   // Pedido do usuário: mostra a lista de Fechamentos de Caixa dessa loja
   // pra ele escolher qual conciliar — não é mais só "o último" sozinho.
@@ -1463,6 +1526,38 @@ function Conciliacao({ lojaId }) {
             )}
           </div>
         </div>
+
+        {lojaId && (
+          <div style={{ marginBottom: "12px" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={conferirAberturaVsFechamentoAnterior}
+              disabled={conferindoAbertura}
+            >
+              {conferindoAbertura
+                ? "Conferindo..."
+                : "🔍 Conferir se a abertura de hoje bate com o fechamento de ontem"}
+            </button>
+
+            {avisoAberturaFechamento && (
+              <div
+                className="empty-state"
+                style={{
+                  marginTop: "8px",
+                  color:
+                    avisoAberturaFechamento.tipo === "alerta"
+                      ? "#f59e0b"
+                      : avisoAberturaFechamento.tipo === "ok"
+                      ? "#16ca50"
+                      : undefined,
+                }}
+              >
+                {avisoAberturaFechamento.texto}
+              </div>
+            )}
+          </div>
+        )}
 
         {grupoEscolhido &&
           (() => {
