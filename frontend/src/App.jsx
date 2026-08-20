@@ -27,6 +27,7 @@ import {
   excluirCategoria as excluirCategoriaApi,
   buscarFormasPagamento,
   buscarDinheiroInformado,
+  buscarStatusWhatsapp,
   buscarNotasFiscais,
   criarNotaFiscal,
   excluirNotaFiscal,
@@ -539,6 +540,12 @@ function FinanceApp() {
 
   const [whatsappFila, setWhatsappFila] = useState([]);
   const [carregandoWhatsappFila, setCarregandoWhatsappFila] = useState(true);
+
+  // Pedido do usuário (20/08/2026): avisar sozinho no topo quando o robô
+  // do WhatsApp parar de mandar sinal de vida (crash, sem internet,
+  // desconectado do WhatsApp) — antes só dava pra descobrir cavando o
+  // log manualmente.
+  const [statusWhatsappBot, setStatusWhatsappBot] = useState(null);
 
   const [clientes, setClientes] = useState([]);
   const [carregandoClientes, setCarregandoClientes] = useState(true);
@@ -1083,6 +1090,26 @@ function FinanceApp() {
     }
 
     carregarWhatsappFila();
+  }, [ehAdministrador]);
+
+  // Status do robô do WhatsApp (20/08/2026) — só admin. Confere de novo a
+  // cada 3 minutos pra pegar se ele cair (ou voltar) enquanto a pessoa
+  // está com a tela aberta, sem precisar recarregar a página.
+  useEffect(() => {
+    if (!ehAdministrador) return;
+
+    async function carregarStatusWhatsapp() {
+      try {
+        const dados = await buscarStatusWhatsapp();
+        setStatusWhatsappBot(dados);
+      } catch (erro) {
+        console.error("Erro ao buscar status do robô do WhatsApp:", erro);
+      }
+    }
+
+    carregarStatusWhatsapp();
+    const intervalo = setInterval(carregarStatusWhatsapp, 3 * 60 * 1000);
+    return () => clearInterval(intervalo);
   }, [ehAdministrador]);
 
   async function removerItemWhatsappFilaHandler(id) {
@@ -3529,6 +3556,20 @@ const statusCmv =
         </div>
       );
     })()}
+
+  {ehAdministrador &&
+    statusWhatsappBot &&
+    statusWhatsappBot.ligado === false && (
+      <div className="alerta-contas-pagar" style={{ background: "rgba(239, 68, 68, 0.15)" }}>
+        <strong>
+          🔴 Robô do WhatsApp parece desligado
+          {statusWhatsappBot.minutos_desde_ultimo_sinal != null
+            ? ` — sem sinal há ${Math.round(statusWhatsappBot.minutos_desde_ultimo_sinal)} minuto(s)`
+            : " — nunca recebi sinal dele"}
+          . Fotos e PDFs mandados no grupo não estão sendo processados.
+        </strong>
+      </div>
+    )}
 
   {pagina !== "dashboard" && (
     <header className="topbar">

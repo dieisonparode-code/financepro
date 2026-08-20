@@ -46,6 +46,20 @@ if (!BACKEND_URL || !WHATSAPP_BOT_TOKEN) {
   process.exit(1);
 }
 
+let intervaloHeartbeat = null;
+
+async function mandarHeartbeat() {
+  try {
+    await axios.post(
+      `${BACKEND_URL}/integracoes/whatsapp/heartbeat`,
+      {},
+      { headers: { "x-whatsapp-token": WHATSAPP_BOT_TOKEN }, timeout: 15000 }
+    );
+  } catch (erro) {
+    console.error("Não consegui mandar o sinal de vida:", erro.message);
+  }
+}
+
 async function iniciar() {
   const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
@@ -67,6 +81,14 @@ async function iniciar() {
     }
 
     if (connection === "close") {
+      // Para de mandar sinal de vida enquanto estiver desconectado — o
+      // sinal só deve dizer "tudo bem" quando REALMENTE está conectado,
+      // senão o Dashboard não percebe a queda.
+      if (intervaloHeartbeat) {
+        clearInterval(intervaloHeartbeat);
+        intervaloHeartbeat = null;
+      }
+
       const deveReconectar =
         lastDisconnect?.error?.output?.statusCode !==
         DisconnectReason.loggedOut;
@@ -102,6 +124,15 @@ async function iniciar() {
         }
       } else {
         console.log(`👂 Escutando o grupo "${GRUPO_ID}" (${GRUPO_ID.length} caracteres)...`);
+      }
+
+      // Pedido do usuário (20/08/2026): manda um "sinal de vida" pro
+      // FinancePro a cada 5 minutos enquanto estiver realmente conectado
+      // — se parar de chegar, o Dashboard avisa sozinho que o robô caiu,
+      // em vez de alguém só notar quando uma foto não entra.
+      if (!intervaloHeartbeat) {
+        mandarHeartbeat();
+        intervaloHeartbeat = setInterval(mandarHeartbeat, 5 * 60 * 1000);
       }
     }
   });

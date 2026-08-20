@@ -5901,6 +5901,41 @@ function verificarTokenWhatsapp(req, res, next) {
   next();
 }
 
+// Pedido do usuário (20/08/2026): antes só dava pra descobrir que o robô
+// do WhatsApp tinha caído cavando o log dele manualmente (achamos um
+// crash real assim hoje) — agora ele manda um "sinal de vida" pro
+// servidor de tempos em tempos enquanto está ligado e conectado. Se esse
+// sinal parar de chegar, o Dashboard mostra um aviso sozinho, sem
+// precisar ninguém notar que fotos pararam de entrar.
+let ultimoHeartbeatWhatsapp = null;
+
+app.post(
+  "/integracoes/whatsapp/heartbeat",
+  verificarTokenWhatsapp,
+  function (req, res) {
+    ultimoHeartbeatWhatsapp = new Date().toISOString();
+    res.json({ ok: true });
+  }
+);
+
+// Minutos sem sinal de vida pra considerar o robô "desligado" — folga
+// suficiente pra não alarmar à toa numa reconexão rápida normal.
+const MINUTOS_WHATSAPP_DESLIGADO = 10;
+
+app.get("/integracoes/whatsapp/status", verificarPermissao(PERM_LANCAMENTOS), function (req, res) {
+  const minutosDesdeUltimoSinal = ultimoHeartbeatWhatsapp
+    ? (Date.now() - new Date(ultimoHeartbeatWhatsapp).getTime()) / 60000
+    : null;
+
+  res.json({
+    ultimo_heartbeat: ultimoHeartbeatWhatsapp,
+    ligado:
+      ultimoHeartbeatWhatsapp != null &&
+      minutosDesdeUltimoSinal <= MINUTOS_WHATSAPP_DESLIGADO,
+    minutos_desde_ultimo_sinal: minutosDesdeUltimoSinal,
+  });
+});
+
 // Legenda → categoria de despesa (pedido do usuário, 17/08/2026): cada
 // uma dessas palavras na legenda da foto vira uma despesa de verdade,
 // lida por IA (valor + fornecedor), igual o botão "Ler nota

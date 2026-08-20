@@ -331,6 +331,15 @@ export async function salvarDinheiroInformado(
   });
 }
 
+// Pedido do usuário (20/08/2026): pra avisar sozinho no Dashboard quando
+// o robô do WhatsApp cair, em vez de precisar notar que fotos pararam de
+// entrar.
+export async function buscarStatusWhatsapp() {
+  return requisicao("/integracoes/whatsapp/status", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarDinheiroInformado() {
   return requisicao("/caixa-dinheiro-informado", {
     headers: await cabecalhoAutenticado(),
