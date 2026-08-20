@@ -3725,13 +3725,22 @@ const statusCmv =
                     <span>{item.descricao}</span>
                     <span>
                       🏬{" "}
-                      {lojas.find((loja) => loja.id === item.loja_id)
-                        ?.nome || "Sem loja"}
+                      {/* Bug real corrigido (20/08/2026): comparação com
+                          "===" estrito falhava quando um lado vinha como
+                          número e o outro como texto (ex: loja_id salvo
+                          via WhatsApp/script) — mostrava "Sem loja" mesmo
+                          com o dado certo gravado. Mesmo padrão de
+                          comparação (String() dos dois lados) já usado no
+                          resto do sistema. */}
+                      {lojas.find(
+                        (loja) => String(loja.id) === String(item.loja_id)
+                      )?.nome || "Sem loja"}
                     </span>
                     {item.tem_foto_mercadoria &&
                       (() => {
                         const loja = lojas.find(
-                          (item2) => item2.id === item.loja_id
+                          (item2) =>
+                            String(item2.id) === String(item.loja_id)
                         );
 
                         if (
