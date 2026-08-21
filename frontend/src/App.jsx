@@ -3382,7 +3382,11 @@ const statusCmv =
             </button>
           )}
 
-          {temPermissaoFinanceira("relatorios") && (
+          {/* Pedido do usuário (20/08/2026): Relatórios agora tem as
+              Retiradas de Sócios dentro (informação sensível) — a tela
+              inteira passou a ser só-admin, não é mais liberada por
+              permissão granular pra gerente/equipe. */}
+          {ehAdministrador && (
             <button
               className={pagina === "relatorios" ? "active" : ""}
               onClick={() => setPagina("relatorios")}
@@ -4701,7 +4705,7 @@ const statusCmv =
           </section>
         )}
 
-        {pagina === "relatorios" && (
+        {pagina === "relatorios" && ehAdministrador && (
           <div className="report-tipo-toggle no-print">
             <button
               type="button"
@@ -4729,7 +4733,7 @@ const statusCmv =
           </div>
         )}
 
-        {pagina === "relatorios" && tipoRelatorio === "impostos" && (
+        {pagina === "relatorios" && ehAdministrador && tipoRelatorio === "impostos" && (
           <section className="panel report-print-area">
             <div className="panel-header report-header">
               <div>
@@ -4825,7 +4829,7 @@ const statusCmv =
           </section>
         )}
 
-        {pagina === "relatorios" && tipoRelatorio === "financeiro" && (
+        {pagina === "relatorios" && ehAdministrador && tipoRelatorio === "financeiro" && (
           <section className="panel report-print-area">
             <div className="panel-header report-header">
               <div>
@@ -4971,6 +4975,26 @@ const statusCmv =
 </article>
     
 
+              {/* Pedido do usuário (20/08/2026): Retiradas de Sócios
+                  dentro do Relatório financeiro — só aparece aqui porque
+                  essa seção inteira agora é admin-only (não entra em
+                  Contas Pagas/Despesas nem em nenhum outro relatório que
+                  a equipe acesse). */}
+              <article className="panel report-card">
+                <span>💸 Retiradas de Sócios</span>
+                <strong>
+                  {formatarMoeda(
+                    retiradasSocios
+                      .filter(
+                        (item) =>
+                          item.data >= dataInicialRelatorio &&
+                          item.data <= dataFinalRelatorio
+                      )
+                      .reduce((soma, item) => soma + Number(item.valor || 0), 0)
+                  )}
+                </strong>
+              </article>
+
               <article className="panel report-card">
                 <span>Lançamentos</span>
                 <strong>{lancamentosRelatorio.length}</strong>
@@ -5059,7 +5083,7 @@ const statusCmv =
           </section>
         )}
 
-        {pagina === "relatorios" && tipoRelatorio === "caixa" && (
+        {pagina === "relatorios" && ehAdministrador && tipoRelatorio === "caixa" && (
           <section className="panel">
             <div className="panel-header">
               <div>
