@@ -91,6 +91,16 @@ async function iniciar() {
         "\n📱 Escaneia esse QR code com o WhatsApp do CHIP SECUNDÁRIO (Configurações → Aparelhos conectados → Conectar aparelho):\n"
       );
       qrcodeTerminal.generate(qr, { small: true });
+
+      // Pedido do usuário (21/08/2026): o QR em ASCII dentro do log do
+      // Render sai pequeno/distorcido, difícil de escanear direto da
+      // tela do log. Gera também um link com o QR como imagem de
+      // verdade (serviço público gratuito) — abre no navegador do
+      // computador (imagem grande e nítida) e escaneia com o celular.
+      console.log(
+        "\n🔗 OU abre esse link no navegador do computador pra ver o QR como imagem (mais fácil de escanear):\n" +
+          `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}\n`
+      );
     }
 
     if (connection === "close") {
