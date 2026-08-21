@@ -6047,6 +6047,14 @@ function verificarTokenWhatsapp(req, res, next) {
 // precisar ninguém notar que fotos pararam de entrar.
 let ultimoHeartbeatWhatsapp = null;
 
+// Bug real corrigido (21/08/2026): esse "último sinal" só vive na memória
+// do processo — todo deploy/restart do backend no Render zera ele, e o
+// robô só manda um novo sinal a cada 5 min. Sem essa folga, o Dashboard
+// mostrava "desligado" por até 5 minutos depois de QUALQUER deploy, mesmo
+// com o robô conectado normalmente a vida toda. Guarda quando o servidor
+// ligou e não acende o alerta antes de dar tempo de um heartbeat chegar.
+const inicioDoServidor = Date.now();
+
 app.post(
   "/integracoes/whatsapp/heartbeat",
   verificarTokenWhatsapp,
@@ -6064,12 +6072,16 @@ app.get("/integracoes/whatsapp/status", verificarPermissao(PERM_LANCAMENTOS), fu
   const minutosDesdeUltimoSinal = ultimoHeartbeatWhatsapp
     ? (Date.now() - new Date(ultimoHeartbeatWhatsapp).getTime()) / 60000
     : null;
+  const minutosDesdeQueOServidorLigou = (Date.now() - inicioDoServidor) / 60000;
+  const aindaEmFolgaDeReinicio =
+    minutosDesdeQueOServidorLigou < MINUTOS_WHATSAPP_DESLIGADO;
 
   res.json({
     ultimo_heartbeat: ultimoHeartbeatWhatsapp,
     ligado:
-      ultimoHeartbeatWhatsapp != null &&
-      minutosDesdeUltimoSinal <= MINUTOS_WHATSAPP_DESLIGADO,
+      aindaEmFolgaDeReinicio ||
+      (ultimoHeartbeatWhatsapp != null &&
+        minutosDesdeUltimoSinal <= MINUTOS_WHATSAPP_DESLIGADO),
     minutos_desde_ultimo_sinal: minutosDesdeUltimoSinal,
   });
 });
