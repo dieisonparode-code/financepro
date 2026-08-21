@@ -1222,9 +1222,15 @@ function Conciliacao({ lojaId }) {
       // (ainda serve pra pegar um caso de dinheiro sumindo do caixa
       // físico que nem o Esperado nem o Real em conta pegariam sozinhos),
       // só não é mais ele quem decide a cor/veredito dessas 3 formas.
+      // BUG REAL corrigido (21/08/2026, achado pelo usuário): tinha
+      // invertido o sinal — "Falta" tem que ser quando o Esperado é MAIOR
+      // que o Real em conta (esperava mais do que realmente caiu), não o
+      // contrário. Ficou mostrando "Sobra" em verde quando na verdade
+      // estava faltando dinheiro (ex: Esperado R$402,87, Real R$302,58 —
+      // isso é FALTA de R$100,29, não sobra).
       const diferenca =
         temRealConta && temSistema
-          ? Number((valorRealConta - valorSistema).toFixed(2))
+          ? Number((valorSistema - valorRealConta).toFixed(2))
           : temInformado && temBase
           ? Number((valorBase - valorInformado).toFixed(2))
           : null;
