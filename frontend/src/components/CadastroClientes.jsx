@@ -1,5 +1,5 @@
 import { useState } from "react";
-import CampoValor from "./CampoValor";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 function formatarData(data) {
   if (!data) return "Sem data";
@@ -148,17 +148,10 @@ function CadastroClientes({
     try {
       const novo = await adicionarAtendimento(clienteAberto.id, {
         data: dataAtendimento,
-        // Pedido do usuário (20/08/2026): campo agora é o CampoValor
-        // (formato brasileiro, com milhar) — precisa converter pra
-        // número antes de mandar.
-        valor:
-          valorAtendimento === ""
-            ? null
-            : Number(
-                valorAtendimento.includes(",")
-                  ? valorAtendimento.replace(/\./g, "").replace(",", ".")
-                  : valorAtendimento
-              ),
+        // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) virava
+        // 35 — usa o paraNumero() do CampoValor, que sempre tira o ponto
+        // de milhar primeiro, tenha vírgula ou não.
+        valor: valorAtendimento === "" ? null : paraNumero(valorAtendimento),
         observacao: observacaoAtendimento,
       });
 

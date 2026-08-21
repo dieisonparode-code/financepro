@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import CampoValor from "./CampoValor";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -92,16 +92,10 @@ function DespesasRecorrentes({
     const dados = {
       descricao: descricao.trim(),
       fornecedor: fornecedor.trim(),
-      // BUG REAL corrigido (17/08/2026): valor digitado no formato
-      // brasileiro (ex: "6.520,16") só trocava a vírgula por ponto,
-      // sobrando o ponto de milhar e virando um número inválido
-      // ("6.520.16" → NaN → chegava como 0 no servidor, disparando "Informe
-      // o valor" mesmo com o campo preenchido). Só tira o ponto quando
-      // tem vírgula também (senão um valor tipo "650.16" digitado com
-      // ponto decimal quebraria virando "65016").
-      valor: Number(
-        valor.includes(",") ? valor.replace(/\./g, "").replace(",", ".") : valor
-      ),
+      // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) virava
+      // 35 — usa o paraNumero() do CampoValor, que sempre tira o ponto
+      // de milhar primeiro, tenha vírgula ou não.
+      valor: paraNumero(valor),
       dia_vencimento: Number(diaVencimento),
       loja_id: lojaId || null,
       observacao: observacao.trim(),

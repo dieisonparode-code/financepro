@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { lerFotoContaPagar, anexarComprovantePagamento } from "../services/api";
-import CampoValor from "./CampoValor";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 // Mesma compressão já usada em Despesas/Conciliação — reduz o tamanho antes
 // de guardar (a foto vira base64 direto na tabela, sem isso ficaria pesado).
@@ -294,13 +294,10 @@ function ContasPagar({
         fornecedor,
         // Pedido do usuário (20/08/2026): campo agora é o CampoValor
         // (formato brasileiro, com milhar) — precisa converter pra
-        // número antes de mandar, igual já é feito nos outros campos de
-        // valor do sistema.
-        valor: Number(
-          valor.includes(",")
-            ? valor.replace(/\./g, "").replace(",", ".")
-            : valor
-        ),
+        // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) virava
+        // 35 — usa o paraNumero() do CampoValor, que sempre tira o ponto
+        // de milhar primeiro, tenha vírgula ou não.
+        valor: paraNumero(valor),
         pix,
         data_vencimento: dataVencimento,
         observacao,
@@ -340,16 +337,10 @@ function ContasPagar({
   }
 
   async function salvarValorEditado(conta, valorDigitado) {
-    // BUG REAL corrigido (17/08/2026): valor acima de R$1.000 no formato
-    // brasileiro (ex: "6.520,16") só trocava a vírgula, sobrava o ponto
-    // de milhar e virava número inválido. Só tira o ponto quando tem
-    // vírgula também.
-    const textoValor = String(valorDigitado);
-    const novoValor = Number(
-      textoValor.includes(",")
-        ? textoValor.replace(/\./g, "").replace(",", ".")
-        : textoValor
-    );
+    // Esse campo continua sendo um <input type="number"> nativo (só
+    // aceita ponto decimal, nunca vírgula nem ponto de milhar), então
+    // paraNumero() aqui é só por consistência/segurança.
+    const novoValor = paraNumero(String(valorDigitado));
 
     if (!Number.isFinite(novoValor) || novoValor <= 0) {
       alert("Digite um valor válido maior que zero.");

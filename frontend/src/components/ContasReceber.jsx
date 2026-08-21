@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import CampoValor from "./CampoValor";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 function hojeLocal() {
   const agora = new Date();
@@ -111,17 +111,11 @@ function ContasReceber({
     }
   }
 
-  // BUG REAL corrigido (17/08/2026): valor acima de R$1.000 no formato
-  // brasileiro (ex: "4.180,68") só trocava a vírgula, sobrava o ponto de
-  // milhar e virava número inválido. Só tira o ponto quando tem vírgula
-  // também.
+  // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) virava 35 —
+  // usa o paraNumero() do CampoValor, que sempre tira o ponto de milhar
+  // primeiro, tenha vírgula ou não.
   function paraNumeroBr(texto) {
-    const valorTexto = String(texto);
-    return Number(
-      valorTexto.includes(",")
-        ? valorTexto.replace(/\./g, "").replace(",", ".")
-        : valorTexto
-    );
+    return paraNumero(texto);
   }
 
   const taxaCalculada = useMemo(() => {

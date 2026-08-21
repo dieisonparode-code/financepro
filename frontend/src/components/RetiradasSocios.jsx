@@ -1,5 +1,5 @@
 import { useState } from "react";
-import CampoValor from "./CampoValor";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 // Pedido do usuário (20/08/2026): retirada de dinheiro pros sócios —
 // tela inteira só-admin, separada de Despesas/Contas Pagas de propósito
@@ -66,14 +66,10 @@ function RetiradasSocios({
     try {
       await adicionar({
         socio: socio.trim(),
-        // Mesmo cuidado de sempre com número no formato brasileiro
-        // (ex: "6.520,16") — só tira o ponto de milhar quando tem
-        // vírgula também.
-        valor: Number(
-          valor.includes(",")
-            ? valor.replace(/\./g, "").replace(",", ".")
-            : valor
-        ),
+        // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) estava
+        // virando 35 — usa o paraNumero() do CampoValor, que sempre tira
+        // o ponto de milhar primeiro, tenha vírgula ou não.
+        valor: paraNumero(valor),
         data,
         loja_id: lojaId || null,
         observacao: observacao.trim(),

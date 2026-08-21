@@ -32,6 +32,23 @@ function formatarComMilharEnquantoDigita(bruto) {
     : inteiroFormatado;
 }
 
+// Bug real corrigido (21/08/2026): "35.000,00" convertia certo, mas
+// "35.000" (sem vírgula, ex: valor redondo sem centavos) caía na conta
+// errada — cada tela só tirava o ponto de milhar QUANDO tinha vírgula
+// junto, então "35.000" ia direto pro Number() e o JS lia o ponto como
+// decimal, virando 35 em vez de 35000. Como o CampoValor sempre insere
+// ponto de milhar (tenha vírgula ou não), a conversão tem que SEMPRE
+// tirar os pontos primeiro, e só then trocar a vírgula (se tiver) por
+// ponto decimal — nunca decidir com base em "tem vírgula ou não".
+export function paraNumero(textoFormatado) {
+  if (!textoFormatado && textoFormatado !== 0) return 0;
+
+  const texto = String(textoFormatado).replace(/\./g, "").replace(",", ".");
+  const numero = Number(texto);
+
+  return Number.isNaN(numero) ? 0 : numero;
+}
+
 function CampoValor({ value, onChange, ...outrasProps }) {
   function aoDigitar(evento) {
     onChange(formatarComMilharEnquantoDigita(evento.target.value));

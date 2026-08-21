@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import CampoValor from "./CampoValor";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 const tiposFechamento = [
   {
@@ -420,13 +420,11 @@ function CadastroFechamentoCaixa({
     }
   }
 
-  // Pedido do usuário (20/08/2026): os campos de valor agora usam o
-  // CampoValor (formato brasileiro, com milhar) — converte pra número
-  // igual já é feito nos outros campos de valor do sistema.
+  // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) virava 35 —
+  // usa o paraNumero() do CampoValor, que sempre tira o ponto de milhar
+  // primeiro, tenha vírgula ou não.
   function paraNumeroBr(texto) {
-    return Number(
-      texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto
-    );
+    return paraNumero(texto);
   }
 
   async function confirmarRascunhoDiaria() {
