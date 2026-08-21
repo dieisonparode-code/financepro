@@ -1764,6 +1764,35 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
     resumoRetiradasSocios,
   ]);
 
+  // Pedido do usuário (21/08/2026): mesmo Ponto de Equilíbrio do
+  // Relatório financeiro, só que aqui no Dashboard já filtrado pela loja
+  // selecionada no topo (custo fixo/aluguel é por loja) — cálculo NOVO e
+  // SEPARADO, só lê totais.cmvPercentual (já existente), não altera nada.
+  const pontoDeEquilibrioDashboard = useMemo(() => {
+    const custoFixoMensal = despesasRecorrentes
+      .filter(
+        (recorrente) =>
+          recorrente.ativo !== false &&
+          (lojaDashboard === "todas" ||
+            !recorrente.loja_id ||
+            String(recorrente.loja_id) === String(lojaDashboard))
+      )
+      .reduce((total, recorrente) => total + Number(recorrente.valor || 0), 0);
+
+    const margemContribuicaoPercentual = 100 - totais.cmvPercentual;
+
+    const faturamentoNecessario =
+      margemContribuicaoPercentual > 0
+        ? custoFixoMensal / (margemContribuicaoPercentual / 100)
+        : null;
+
+    return {
+      custoFixoMensal,
+      margemContribuicaoPercentual,
+      faturamentoNecessario,
+    };
+  }, [despesasRecorrentes, lojaDashboard, totais.cmvPercentual]);
+
   const despesasPorCategoria = useMemo(() => {
   const agrupadas = lancamentosAprovados
     .filter((item) => item.tipo === "despesa")
@@ -1895,6 +1924,36 @@ const statusCmv =
     margemPercentual,
   };
 }, [lancamentosRelatorio]);
+
+// Pedido do usuário (21/08/2026): Ponto de Equilíbrio — quanto a empresa
+// precisa faturar por mês só pra cobrir custo fixo + custo variável, sem
+// lucro nem prejuízo. Cálculo NOVO e SEPARADO — não lê nem altera nada
+// de totaisRelatorio/totais/saldo já existente, só empresta o
+// cmvPercentual já calculado ali (leitura, sem mexer). Fórmula clássica:
+// Ponto de Equilíbrio = Custo Fixo / Margem de Contribuição.
+// - Custo Fixo Mensal = soma das Despesas Recorrentes ativas (aluguel,
+//   contabilidade, folha fixa, etc — o que já está cadastrado ali).
+// - Margem de Contribuição = 100% − CMV% do período selecionado no
+//   relatório (aproximação: quanto sobra de cada R$1 vendido depois do
+//   custo direto do produto/insumo).
+const pontoDeEquilibrio = useMemo(() => {
+  const custoFixoMensal = despesasRecorrentes
+    .filter((recorrente) => recorrente.ativo !== false)
+    .reduce((total, recorrente) => total + Number(recorrente.valor || 0), 0);
+
+  const margemContribuicaoPercentual = 100 - totaisRelatorio.cmvPercentual;
+
+  const faturamentoNecessario =
+    margemContribuicaoPercentual > 0
+      ? custoFixoMensal / (margemContribuicaoPercentual / 100)
+      : null;
+
+  return {
+    custoFixoMensal,
+    margemContribuicaoPercentual,
+    faturamentoNecessario,
+  };
+}, [despesasRecorrentes, totaisRelatorio.cmvPercentual]);
 
   
    
@@ -3788,6 +3847,7 @@ const statusCmv =
       acessoCardDespesas={acessoCardDespesas}
       acessoCardFluxoCaixa={acessoCardFluxoCaixa}
       acessoCardProximosRecebimentos={acessoCardProximosRecebimentos}
+      pontoDeEquilibrio={pontoDeEquilibrioDashboard}
     />
   )}
   
@@ -4987,6 +5047,21 @@ const statusCmv =
   </small>
 </article>
     
+
+              {/* Pedido do usuário (21/08/2026): Ponto de Equilíbrio. */}
+              <article className="panel report-card">
+                <span>⚖️ Ponto de Equilíbrio (mês)</span>
+                <strong>
+                  {pontoDeEquilibrio.faturamentoNecessario != null
+                    ? formatarMoeda(pontoDeEquilibrio.faturamentoNecessario)
+                    : "—"}
+                </strong>
+                <small>
+                  Custo fixo {formatarMoeda(pontoDeEquilibrio.custoFixoMensal)}
+                  {" — "}
+                  margem {pontoDeEquilibrio.margemContribuicaoPercentual.toFixed(1)}%
+                </small>
+              </article>
 
               {/* Pedido do usuário (20/08/2026): Retiradas de Sócios
                   dentro do Relatório financeiro — só aparece aqui porque

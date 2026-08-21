@@ -196,6 +196,7 @@ export default function DashboardPremium({
   acessoCardDespesas = true,
   acessoCardFluxoCaixa = true,
   acessoCardProximosRecebimentos = true,
+  pontoDeEquilibrio = null,
 }) {
   // Pedido do usuário (19/08/2026): ordem fixa dos botões de loja no
   // Dashboard — Sinop, Sorriso, Rondonópolis, Uberlândia. Qualquer loja
@@ -813,6 +814,22 @@ export default function DashboardPremium({
             <small className="fp-sucesso">{margemStatus}</small>
           </div>
           <Anel valor={margem} cor="#18c754" texto="Margem" />
+        </article>
+
+        <article>
+          <div>
+            <span>⚖️ Ponto de Equilíbrio</span>
+            <strong>
+              {pontoDeEquilibrio?.faturamentoNecessario != null
+                ? formatarMoeda(pontoDeEquilibrio.faturamentoNecessario)
+                : "—"}
+            </strong>
+            <small>
+              Custo fixo {formatarMoeda(pontoDeEquilibrio?.custoFixoMensal || 0)}
+              /mês pra bater
+            </small>
+          </div>
+          <b className="fp-alerta">📉</b>
         </article>
 
         <article>
