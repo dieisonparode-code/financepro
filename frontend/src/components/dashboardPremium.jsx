@@ -151,7 +151,7 @@ function CartaoPrincipal({
 
       {emDinheiro != null && (
         <div className="fp-kpi-bruto-taxa">
-          <span>💵 em dinheiro {emDinheiro}</span>
+          <span>💵 fundo de caixa {emDinheiro}</span>
         </div>
       )}
 

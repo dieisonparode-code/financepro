@@ -1473,21 +1473,45 @@ const lancamentosDashboard = useMemo(() => {
   });
 }, [lancamentosAprovados, mesDashboard, lojaDashboard]);
 
-// Soma só os fechamentos de dinheiro DAQUELA loja — nunca de todas
-// juntas, senão o dinheiro físico de uma loja aparece misturado com o
-// das outras. Pedido do usuário (18/08/2026): zerado a partir de hoje —
-// só conta fechamento confirmado DEPOIS da data-base do Saldo (antes
-// somava "desde sempre", o que não tinha mais relação com o valor real
-// de hoje).
+// Pedido do usuário (21/08/2026): trocado de "variação acumulada desde a
+// data-base" (podia ficar negativo, confuso — não existe dinheiro
+// negativo de verdade numa gaveta) pro "fundo de caixa" real: o valor
+// "Em caixa" do ÚLTIMO fechamento de Dinheiro confirmado de cada loja —
+// já contado de verdade, já líquido de qualquer retirada/pagamento em
+// dinheiro daquele turno (diária, boy, etc). Com "Todas as lojas", soma
+// o último fundo de caixa de CADA loja (nunca a variação de uma
+// misturada com o valor absoluto de outra).
 const dinheiroEmCaixaFiltrado = useMemo(() => {
-  return registrosDinheiroInformado
-    .filter(
-      (registro) =>
-        (lojaDashboard === "todas" ||
-          String(registro.loja_id || "") === String(lojaDashboard)) &&
-        registro.criado_em > SALDO_INICIAL_DATA
-    )
-    .reduce((total, registro) => total + Number(registro.valor || 0), 0);
+  const registrosFiltrados = registrosDinheiroInformado.filter(
+    (registro) =>
+      lojaDashboard === "todas" ||
+      String(registro.loja_id || "") === String(lojaDashboard)
+  );
+
+  if (lojaDashboard === "todas") {
+    const maisRecentePorLoja = new Map();
+
+    registrosFiltrados.forEach((registro) => {
+      const chave = String(registro.loja_id || "");
+      const atual = maisRecentePorLoja.get(chave);
+
+      if (!atual || registro.criado_em > atual.criado_em) {
+        maisRecentePorLoja.set(chave, registro);
+      }
+    });
+
+    return Array.from(maisRecentePorLoja.values()).reduce(
+      (total, registro) => total + Number(registro.em_caixa || 0),
+      0
+    );
+  }
+
+  const maisRecente = registrosFiltrados.reduce((atual, registro) => {
+    if (!atual || registro.criado_em > atual.criado_em) return registro;
+    return atual;
+  }, null);
+
+  return maisRecente ? Number(maisRecente.em_caixa || 0) : 0;
 }, [registrosDinheiroInformado, lojaDashboard]);
 
   const totais = useMemo(() => {
@@ -1542,28 +1566,17 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
       .filter((item) => item.tipo === "despesa")
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
-    // Pedido do usuário (18/08/2026): o "Em dinheiro" ficou negativo e sem
-    // relação com a realidade porque somava TODOS os fechamentos já
-    // confirmados desde sempre menos só as despesas em dinheiro do mês
-    // filtrado — comparando períodos diferentes. Zerado agora: conta só o
-    // que acontecer DEPOIS de hoje (mesma data-base do Saldo), mas continua
-    // sendo um indicador à parte, sem somar dentro do valor grande do
-    // Saldo (pra não contar a mesma venda em dinheiro duas vezes — ela já
-    // entra no Saldo como receita normal "Vendas Dinheiro" da Saipos).
-    // Confirma marcado no fechamento: soma. Despesa paga com dinheiro do
-    // caixa: desconta.
-    // BUG REAL corrigido (20/08/2026, achado pelo usuário): descontar as
-    // despesas "pago em dinheiro" aqui SOMAVA duas vezes a mesma saída de
-    // caixa. A retirada de dinheiro pra pagar boy/fornecedor já sai
-    // impressa no próprio comprovante Saipos ("Retiradas") e já está
-    // embutida no valor "Em caixa" que a Conciliação lê da foto (o "Em
-    // caixa" é o CONTADO DE VERDADE, depois de qualquer retirada) — então
-    // o "dinheiro novo" (em_caixa − abertura) que alimenta esse indicador
-    // JÁ vem líquido de toda despesa em dinheiro daquele turno. Descontar
-    // a despesa de novo aqui duplicava o desconto (ex.: um "Pago com
-    // dinheiro do caixa" de R$440 que já tinha saído do "Em caixa" saía
-    // uma segunda vez, deixando o indicador bem mais negativo que a
-    // realidade).
+    // Pedido do usuário (21/08/2026): esse indicador não é mais uma
+    // variação acumulada desde uma data-base (podia dar negativo, o que
+    // não existe de verdade numa gaveta de dinheiro) — agora é o "Fundo
+    // de Caixa" real, o valor "Em caixa" do ÚLTIMO fechamento de Dinheiro
+    // confirmado (dinheiroEmCaixaFiltrado, calculado mais acima). Esse
+    // "Em caixa" já é o valor CONTADO DE VERDADE na Conciliação, já
+    // líquido de qualquer retirada/pagamento em dinheiro daquele turno
+    // (diária, boy, fornecedor, etc — tudo que aparece impresso em
+    // "Retiradas" no comprovante Saipos já saiu dali antes da contagem) —
+    // por isso não desconta despesa nenhuma aqui de novo, senão duplica o
+    // desconto que a própria contagem já fez.
     const cmvValor = lancamentosDashboard
       .filter(
         (item) =>
