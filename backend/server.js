@@ -4098,26 +4098,31 @@ function diaSeguinteStr(dataStr) {
 // agora vai de 05:00 do dia escolhido até 04:59:59 do dia seguinte, pra
 // cobrir o turno inteiro sem faltar nem duplicar (o dia seguinte busca a
 // partir de 05:00 dele, não de 00:00, então não há sobreposição).
+// Bug real corrigido (21/08/2026): a checagem "dataFim >= hojeBrasilia"
+// só olhava se a data ESCOLHIDA já tinha virado hoje — mas o FIM de
+// verdade da janela do turno é o dia SEGUINTE às 4h59 (turno vira à
+// noite, corte às 5h da manhã). Entre meia-noite e 5h da manhã, "hoje"
+// (hojeBrasilia) já virou o dia seguinte — a checagem dava "false"
+// (dataFim já é "ontem" comparado a hoje) e mandava o fim natural da
+// janela (dia seguinte às 4h59), que nesse intervalo específico AINDA
+// NÃO TINHA CHEGADO de verdade — a PagSeguro rejeitava com "finalDate
+// must be lower than allowed limit" (erro 13009), travando a
+// conciliação de qualquer fechamento fechado de madrugada. Agora compara
+// o FIM DE VERDADE da janela (não a data em si) contra o agora real, e
+// limita em "agora" sempre que o fim ainda não tiver chegado — não
+// importa qual dos dois cálculos gerou esse fim.
 function calcularPeriodoPagSeguro(dataInicio, dataFim) {
-  const hojeBrasilia = agoraBrasilia().toISOString().slice(0, 10);
+  const agoraComMargem = new Date(agoraBrasilia().getTime() - 60 * 1000);
+  const fimNaturalDaJanela = `${diaSeguinteStr(dataFim)}T04:59:59`;
 
-  // ">=" e não só "===": o frontend agora usa o fuso do dispositivo de quem
-  // está usando o sistema (pode ser diferente do de Brasília, como Mato
-  // Grosso), então a data escolhida pode chegar aqui igual ou até "depois"
-  // do que já é hoje em Brasília. Nesses casos, sempre limita em "agora".
-  if (dataFim >= hojeBrasilia) {
-    // 1 minuto de margem pra não bater exatamente em "agora" e ser rejeitado.
-    const agoraComMargem = new Date(agoraBrasilia().getTime() - 60 * 1000);
-
-    return {
-      dataInicioCompleta: `${dataInicio}T05:00:00`,
-      dataFimCompleta: agoraComMargem.toISOString().slice(0, 19),
-    };
-  }
+  const dataFimCompleta =
+    new Date(fimNaturalDaJanela) > agoraComMargem
+      ? agoraComMargem.toISOString().slice(0, 19)
+      : fimNaturalDaJanela;
 
   return {
     dataInicioCompleta: `${dataInicio}T05:00:00`,
-    dataFimCompleta: `${diaSeguinteStr(dataFim)}T04:59:59`,
+    dataFimCompleta,
   };
 }
 
