@@ -88,6 +88,10 @@ import {
   atualizarInsumo,
   excluirInsumo,
   registrarMovimentacaoEstoque,
+  buscarFichasTecnicas,
+  criarFichaTecnica,
+  editarFichaTecnica,
+  excluirFichaTecnica,
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
@@ -106,6 +110,7 @@ import NotasFiscais from "./components/NotasFiscais";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
 import CadastroInsumos from "./components/CadastroInsumos";
+import FichaTecnica from "./components/FichaTecnica";
 import UserMenu from "./components/UserMenu";
 
 const gruposFinanceiros = [
@@ -577,6 +582,11 @@ function FinanceApp() {
   const [despesasRecorrentes, setDespesasRecorrentes] = useState([]);
   const [carregandoDespesasRecorrentes, setCarregandoDespesasRecorrentes] =
     useState(true);
+  // Ficha Técnica (21/08/2026) — reaproveita o state "insumos" que já
+  // existe mais abaixo (tela Estoque); só o de Fichas Técnicas é novo.
+  const [fichasTecnicas, setFichasTecnicas] = useState([]);
+  const [carregandoFichasTecnicas, setCarregandoFichasTecnicas] =
+    useState(true);
   const [historicoFornecedores, setHistoricoFornecedores] = useState([]);
   const [carregandoFornecedores, setCarregandoFornecedores] = useState(true);
 
@@ -825,6 +835,41 @@ function FinanceApp() {
   useEffect(() => {
     carregarDespesasRecorrentes();
   }, []);
+
+  // Ficha Técnica (21/08/2026) — usa o mesmo state/funções "insumos" que
+  // já existiam pra tela Estoque (adicionarInsumo/editarInsumoHandler/
+  // removerInsumo/registrarMovimentacaoHandler, mais abaixo neste
+  // arquivo); só carrega/gerencia fichasTecnicas, que é novo.
+  async function carregarFichasTecnicas() {
+    try {
+      setCarregandoFichasTecnicas(true);
+      const dados = await buscarFichasTecnicas();
+      setFichasTecnicas(Array.isArray(dados) ? dados : []);
+    } catch (erro) {
+      console.error("Erro ao carregar fichas técnicas:", erro);
+    } finally {
+      setCarregandoFichasTecnicas(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarFichasTecnicas();
+  }, []);
+
+  async function adicionarFichaTecnicaHandler(dados) {
+    await criarFichaTecnica(dados);
+    await carregarFichasTecnicas();
+  }
+
+  async function editarFichaTecnicaHandler(id, dados) {
+    await editarFichaTecnica(id, dados);
+    await carregarFichasTecnicas();
+  }
+
+  async function removerFichaTecnicaHandler(id) {
+    await excluirFichaTecnica(id);
+    setFichasTecnicas((anteriores) => anteriores.filter((item) => item.id !== id));
+  }
 
   async function carregarHistoricoFornecedores() {
     try {
@@ -3570,6 +3615,7 @@ const pontoDeEquilibrio = useMemo(() => {
           {(temPermissaoFinanceira("categorias") ||
             temPermissao("clientes") ||
             temPermissao("estoque") ||
+            temPermissaoFinanceira("despesas") ||
             ehAdministrador) && (
             <>
               <button
@@ -3605,6 +3651,15 @@ const pontoDeEquilibrio = useMemo(() => {
                       onClick={() => setPagina("estoque")}
                     >
                       Estoque
+                    </button>
+                  )}
+
+                  {temPermissaoFinanceira("despesas") && (
+                    <button
+                      className={pagina === "ficha-tecnica" ? "active" : ""}
+                      onClick={() => setPagina("ficha-tecnica")}
+                    >
+                      📋 Ficha Técnica
                     </button>
                   )}
 
@@ -3761,6 +3816,8 @@ const pontoDeEquilibrio = useMemo(() => {
             ? "Usuários"
             : pagina === "estoque"
             ? "Estoque"
+            : pagina === "ficha-tecnica"
+            ? "Ficha Técnica"
             : "FinancePro"}
         </h1>
 
@@ -4268,6 +4325,25 @@ const pontoDeEquilibrio = useMemo(() => {
             editarInsumo={editarInsumoHandler}
             excluirInsumo={removerInsumo}
             registrarMovimentacao={registrarMovimentacaoHandler}
+          />
+        )}
+
+        {pagina === "ficha-tecnica" && (
+          <FichaTecnica
+            insumos={insumos}
+            fichas={fichasTecnicas}
+            carregandoFichas={carregandoFichasTecnicas}
+            lojas={lojas}
+            lojaPadrao={
+              vePermissaoTotal
+                ? lojaDashboard !== "todas"
+                  ? lojaDashboard
+                  : null
+                : perfil?.loja_id || null
+            }
+            adicionarFicha={adicionarFichaTecnicaHandler}
+            editarFichaExistente={editarFichaTecnicaHandler}
+            removerFicha={removerFichaTecnicaHandler}
           />
         )}
 

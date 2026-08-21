@@ -370,6 +370,39 @@ export async function excluirRetiradaSocio(id) {
   });
 }
 
+// Ficha Técnica (21/08/2026) — CMV real por prato. Reaproveita
+// buscarInsumos/criarInsumo/atualizarInsumo/excluirInsumo/
+// registrarMovimentacaoEstoque que já existiam pra tela Estoque — não
+// duplica nada disso, só soma a Ficha Técnica (produto + insumos usados).
+export async function buscarFichasTecnicas() {
+  return requisicao("/fichas-tecnicas", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarFichaTecnica(dados) {
+  return requisicao("/fichas-tecnicas", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function editarFichaTecnica(id, dados) {
+  return requisicao(`/fichas-tecnicas/${id}`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function excluirFichaTecnica(id) {
+  return requisicao(`/fichas-tecnicas/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarDinheiroInformado() {
   return requisicao("/caixa-dinheiro-informado", {
     headers: await cabecalhoAutenticado(),

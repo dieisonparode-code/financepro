@@ -330,6 +330,11 @@ function prepararInsumo(dados = {}) {
     fator_conversao: dados.fator_conversao
       ? Number(dados.fator_conversao)
       : 1,
+    // Pedido do usuário (21/08/2026): custo por unidade — usado pela
+    // Ficha Técnica pra calcular o custo real de cada prato. Campo
+    // opcional, novo, não muda nada do que já existia aqui.
+    custo_unitario:
+      dados.custo_unitario != null ? Number(dados.custo_unitario) : 0,
   };
 }
 
@@ -2465,6 +2470,213 @@ app.delete(
 
       res.status(500).json({
         erro: "Não foi possível excluir a despesa recorrente.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Pedido do usuário (21/08/2026): Ficha Técnica — CMV real por prato
+// (quantidade de cada insumo × custo unitário), em vez de só o CMV
+// aproximado por categoria de despesa que o Dashboard já usava.
+// IMPORTANTE: reaproveita a tabela `insumos` e as rotas /insumos* que JÁ
+// EXISTEM (tela "Estoque"/CadastroInsumos.jsx, permissão "estoque") —
+// não duplica nada disso. Só foi adicionada a coluna custo_unitario
+// nessa tabela (ver sql/ficha_tecnica_e_insumos.sql), usada aqui pra
+// calcular o custo de cada Ficha Técnica.
+const PERM_FICHA_TECNICA = PERM_DESPESAS;
+
+// Ficha Técnica — produto (prato) + lista de insumos usados. Vem sempre
+// com "itens" (array de {insumo_id, quantidade}) no corpo da requisição;
+// pra editar, apaga os itens antigos e recria — mais simples e seguro do
+// que tentar diferenciar o que mudou linha a linha.
+app.get(
+  "/fichas-tecnicas",
+  verificarPermissao(PERM_FICHA_TECNICA),
+  async function (req, res) {
+    try {
+      const { data: fichas, error } = await supabase
+        .from("fichas_tecnicas")
+        .select("*")
+        .order("nome_produto", { ascending: true });
+
+      if (error) throw error;
+
+      const { data: itens, error: erroItens } = await supabase
+        .from("ficha_tecnica_itens")
+        .select("*, insumos(nome, unidade_medida, custo_unitario)");
+
+      if (erroItens) throw erroItens;
+
+      const fichasComItens = (fichas || []).map((ficha) => {
+        const itensDaFicha = (itens || []).filter(
+          (item) => item.ficha_tecnica_id === ficha.id
+        );
+
+        const custoTotal = itensDaFicha.reduce((total, item) => {
+          const custoUnitario = Number(item.insumos?.custo_unitario || 0);
+          return total + Number(item.quantidade || 0) * custoUnitario;
+        }, 0);
+
+        return { ...ficha, itens: itensDaFicha, custo_total: custoTotal };
+      });
+
+      res.json(fichasComItens);
+    } catch (erro) {
+      console.error("Erro ao buscar fichas técnicas:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar as fichas técnicas.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+async function salvarItensDaFicha(fichaTecnicaId, itens) {
+  await supabase
+    .from("ficha_tecnica_itens")
+    .delete()
+    .eq("ficha_tecnica_id", fichaTecnicaId);
+
+  const itensValidos = (Array.isArray(itens) ? itens : [])
+    .filter((item) => item.insumo_id && Number(item.quantidade) > 0)
+    .map((item) => ({
+      ficha_tecnica_id: fichaTecnicaId,
+      insumo_id: Number(item.insumo_id),
+      quantidade: Number(item.quantidade),
+    }));
+
+  if (itensValidos.length === 0) return;
+
+  const { error } = await supabase
+    .from("ficha_tecnica_itens")
+    .insert(itensValidos);
+
+  if (error) throw error;
+}
+
+app.post(
+  "/fichas-tecnicas",
+  verificarPermissao(PERM_FICHA_TECNICA),
+  async function (req, res) {
+    try {
+      const nomeProduto = (req.body.nome_produto || "").trim();
+
+      if (!nomeProduto) {
+        return res.status(400).json({ erro: "Informe o nome do produto." });
+      }
+
+      const { usuario, perfil } = await obterPerfilOpcional(req);
+
+      const dados = {
+        nome_produto: nomeProduto,
+        preco_venda:
+          req.body.preco_venda != null ? Number(req.body.preco_venda) : null,
+        nome_item_saipos: (req.body.nome_item_saipos || "").trim() || null,
+        loja_id: req.body.loja_id || null,
+        ativo: req.body.ativo !== false,
+        observacao: (req.body.observacao || "").trim(),
+        criado_por: perfil?.nome || usuario?.email || "",
+      };
+
+      const { data: ficha, error } = await supabase
+        .from("fichas_tecnicas")
+        .insert(dados)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await salvarItensDaFicha(ficha.id, req.body.itens);
+
+      registrarAuditoria(req, "criou", "fichas_tecnicas", ficha.id, nomeProduto);
+
+      res.status(201).json(ficha);
+    } catch (erro) {
+      console.error("Erro ao criar ficha técnica:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível salvar a ficha técnica.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/fichas-tecnicas/:id",
+  verificarPermissao(PERM_FICHA_TECNICA),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      const nomeProduto = (req.body.nome_produto || "").trim();
+
+      if (!nomeProduto) {
+        return res.status(400).json({ erro: "Informe o nome do produto." });
+      }
+
+      const dados = {
+        nome_produto: nomeProduto,
+        preco_venda:
+          req.body.preco_venda != null ? Number(req.body.preco_venda) : null,
+        nome_item_saipos: (req.body.nome_item_saipos || "").trim() || null,
+        loja_id: req.body.loja_id || null,
+        ativo: req.body.ativo !== false,
+        observacao: (req.body.observacao || "").trim(),
+        atualizado_em: new Date().toISOString(),
+      };
+
+      const { data: ficha, error } = await supabase
+        .from("fichas_tecnicas")
+        .update(dados)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await salvarItensDaFicha(id, req.body.itens);
+
+      registrarAuditoria(req, "editou", "fichas_tecnicas", id, nomeProduto);
+
+      res.json(ficha);
+    } catch (erro) {
+      console.error("Erro ao editar ficha técnica:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível editar a ficha técnica.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.delete(
+  "/fichas-tecnicas/:id",
+  verificarPermissao(PERM_FICHA_TECNICA),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      const { error } = await supabase
+        .from("fichas_tecnicas")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      registrarAuditoria(req, "excluiu", "fichas_tecnicas", id, null);
+
+      res.status(204).send();
+    } catch (erro) {
+      console.error("Erro ao excluir ficha técnica:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível excluir a ficha técnica.",
         detalhes: erro.message,
       });
     }

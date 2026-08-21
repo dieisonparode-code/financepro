@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CampoValor, { paraNumero } from "./CampoValor";
 
 function CadastroInsumos({
   insumos = [],
@@ -17,6 +18,9 @@ function CadastroInsumos({
   const [estoqueMinimo, setEstoqueMinimo] = useState("0");
   const [unidadeCompra, setUnidadeCompra] = useState("");
   const [fatorConversao, setFatorConversao] = useState("1");
+  // Pedido do usuário (21/08/2026): custo por unidade, usado pela Ficha
+  // Técnica pra calcular o custo real de cada prato.
+  const [custoUnitario, setCustoUnitario] = useState("");
   const [lojaId, setLojaId] = useState(lojaFixaId || "");
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -31,6 +35,7 @@ function CadastroInsumos({
     setEstoqueMinimo("0");
     setUnidadeCompra("");
     setFatorConversao("1");
+    setCustoUnitario("");
     setLojaId(lojaFixaId || "");
     setEditandoId(null);
   }
@@ -60,6 +65,7 @@ function CadastroInsumos({
           estoque_minimo: estoqueMinimo || 0,
           unidade_compra: unidadeCompra.trim(),
           fator_conversao: fatorConversao || 1,
+          custo_unitario: paraNumero(custoUnitario),
           loja_id: lojaId,
         });
       } else {
@@ -70,6 +76,7 @@ function CadastroInsumos({
           estoque_minimo: estoqueMinimo || 0,
           unidade_compra: unidadeCompra.trim(),
           fator_conversao: fatorConversao || 1,
+          custo_unitario: paraNumero(custoUnitario),
           loja_id: lojaId,
         });
       }
@@ -90,6 +97,14 @@ function CadastroInsumos({
     setEstoqueMinimo(String(insumo.estoque_minimo || 0));
     setUnidadeCompra(insumo.unidade_compra || "");
     setFatorConversao(String(insumo.fator_conversao || 1));
+    setCustoUnitario(
+      insumo.custo_unitario
+        ? Number(insumo.custo_unitario).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        : ""
+    );
     setLojaId(insumo.loja_id || "");
   }
 
@@ -262,6 +277,11 @@ function CadastroInsumos({
                 placeholder="0"
               />
             </label>
+
+            <label>
+              Custo por {unidadeMedida} (opcional, pra Ficha Técnica)
+              <CampoValor value={custoUnitario} onChange={setCustoUnitario} />
+            </label>
           </div>
 
           <div className="form-row">
@@ -390,6 +410,16 @@ function CadastroInsumos({
                           "pt-BR"
                         )}{" "}
                         {insumo.unidade_medida} em estoque
+                        {Number(insumo.custo_unitario) > 0 && (
+                          <>
+                            {" — "}
+                            {Number(insumo.custo_unitario).toLocaleString("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            })}
+                            /{insumo.unidade_medida}
+                          </>
+                        )}
                       </span>
                       <span>
                         🏬{" "}
