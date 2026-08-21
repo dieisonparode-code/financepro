@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CampoValor from "./CampoValor";
 
 // Opções de classificação manual — mesma lista de palavras-código que o
 // robô do WhatsApp já tenta reconhecer sozinho na legenda. Isso só
@@ -278,14 +279,12 @@ function WhatsAppFila({
                       ))}
                     </select>
 
-                    <input
-                      type="text"
-                      inputMode="decimal"
+                    <CampoValor
                       placeholder="Valor (R$)"
                       disabled={salvandoEsse}
                       value={campoDoItem(item.id, "valor", "")}
-                      onChange={(evento) =>
-                        atualizarCampo(item.id, "valor", evento.target.value)
+                      onChange={(novoValor) =>
+                        atualizarCampo(item.id, "valor", novoValor)
                       }
                       style={{ maxWidth: 120 }}
                     />

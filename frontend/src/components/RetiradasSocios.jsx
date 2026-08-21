@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CampoValor from "./CampoValor";
 
 // Pedido do usuário (20/08/2026): retirada de dinheiro pros sócios —
 // tela inteira só-admin, separada de Despesas/Contas Pagas de propósito
@@ -136,14 +137,7 @@ function RetiradasSocios({
           <div className="form-row">
             <label>
               Valor
-              <input
-                type="text"
-                inputMode="decimal"
-                value={valor}
-                onChange={(evento) => setValor(evento.target.value)}
-                placeholder="0,00"
-                required
-              />
+              <CampoValor value={valor} onChange={setValor} required />
             </label>
 
             <label>

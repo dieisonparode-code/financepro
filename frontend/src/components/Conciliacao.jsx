@@ -10,6 +10,7 @@ import {
   salvarDinheiroInformado,
   buscarDinheiroInformado,
 } from "../services/api";
+import CampoValor from "./CampoValor";
 
 // A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
 // prazo (funcionários), Vale e Cortesia já são contabilizados
@@ -1207,8 +1208,24 @@ function Conciliacao({ lojaId }) {
               : valorInformadoTexto
           )
         : null;
+
+      // Pedido do usuário (21/08/2026): pra Cartão de Crédito/Débito e
+      // PIX (formas com Real em conta), o "bateu/não bateu" NÃO deve
+      // depender do "Informado" — esse número vem de alguém contando/
+      // digitando o totalizador da maquininha na hora de fechar o caixa,
+      // e pode ter erro de conta ou comprovante perdido. O "Esperado" já
+      // é o que a própria Saipos registrou automaticamente na hora da
+      // venda (o vendedor não digita esse número, o sistema registra
+      // sozinho) — comparar Esperado direto com o Real em conta (o
+      // dinheiro que realmente caiu, verdade objetiva) é mais confiável
+      // pra decidir se bateu. O "Informado" continua aparecendo na tela
+      // (ainda serve pra pegar um caso de dinheiro sumindo do caixa
+      // físico que nem o Esperado nem o Real em conta pegariam sozinhos),
+      // só não é mais ele quem decide a cor/veredito dessas 3 formas.
       const diferenca =
-        temInformado && temBase
+        temRealConta && temSistema
+          ? Number((valorRealConta - valorSistema).toFixed(2))
+          : temInformado && temBase
           ? Number((valorBase - valorInformado).toFixed(2))
           : null;
       const bateu = diferenca != null && Math.abs(diferenca) < 0.01;
@@ -1226,12 +1243,15 @@ function Conciliacao({ lojaId }) {
       };
     });
 
+    // Pedido do usuário (21/08/2026): antes só somava linha que tinha
+    // "Informado" digitado — mas Crédito/Débito/PIX agora decidem sozinhas
+    // (Esperado × Real em conta), mesmo sem ninguém digitar nada em
+    // Informado. O total tem que incluir toda linha que TEM veredito
+    // (diferenca calculada), não só as que dependem do Informado.
     const diferencaTotal = linhas
-      .filter((linha) => linha.temInformado && linha.temBase)
+      .filter((linha) => linha.diferenca != null)
       .reduce((soma, linha) => soma + linha.diferenca, 0);
-    const algumInformado = linhas.some(
-      (linha) => linha.temInformado && linha.temBase
-    );
+    const algumInformado = linhas.some((linha) => linha.diferenca != null);
 
     return { linhas, diferencaTotal, algumInformado };
   }, [totaisBrutosSistema, valoresInformados, resumo, grupoEscolhido]);
@@ -1747,15 +1767,10 @@ function Conciliacao({ lojaId }) {
                                         alignItems: "center",
                                       }}
                                     >
-                                      <input
-                                        type="text"
-                                        inputMode="decimal"
+                                      <CampoValor
                                         autoFocus
-                                        placeholder="0,00"
                                         value={valorEsperadoDigitado}
-                                        onChange={(evento) =>
-                                          setValorEsperadoDigitado(evento.target.value)
-                                        }
+                                        onChange={setValorEsperadoDigitado}
                                         style={{ maxWidth: "90px" }}
                                       />
                                       <button
@@ -1813,15 +1828,12 @@ function Conciliacao({ lojaId }) {
                                   )}
                                 </td>
                                 <td data-label="Informado">
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="0,00"
+                                  <CampoValor
                                     value={valoresInformados[forma] ?? ""}
-                                    onChange={(evento) =>
+                                    onChange={(novoValor) =>
                                       setValoresInformados((anterior) => ({
                                         ...anterior,
-                                        [forma]: evento.target.value,
+                                        [forma]: novoValor,
                                       }))
                                     }
                                     style={{ maxWidth: "120px" }}
@@ -1846,7 +1858,7 @@ function Conciliacao({ lojaId }) {
                                   data-label="Diferença"
                                   style={{
                                     color:
-                                      !temInformado || !temBase
+                                      diferenca == null
                                         ? undefined
                                         : bateu
                                         ? "#16ca50"
@@ -1858,7 +1870,7 @@ function Conciliacao({ lojaId }) {
                                 >
                                   {!temBase
                                     ? "(sem comparação ainda)"
-                                    : !temInformado
+                                    : diferenca == null
                                     ? "—"
                                     : bateu
                                     ? "✅ Bateu"

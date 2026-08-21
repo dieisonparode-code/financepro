@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { lerFotoContaPagar, anexarComprovantePagamento } from "../services/api";
+import CampoValor from "./CampoValor";
 
 // Mesma compressão já usada em Despesas/Conciliação — reduz o tamanho antes
 // de guardar (a foto vira base64 direto na tabela, sem isso ficaria pesado).
@@ -246,10 +247,15 @@ function ContasPagar({
         return;
       }
 
-      // Esse campo é <input type="number"> (formato com ponto decimal),
-      // diferente do campo de valor de Despesas — não usar formatação
-      // brasileira com vírgula aqui, o input nativo não aceita.
-      setValor(Number(resultado.valor).toFixed(2));
+      // Pedido do usuário (20/08/2026): campo trocado pro CampoValor
+      // (formato brasileiro, com vírgula e milhar) — preenche já nesse
+      // formato, não mais com ponto decimal.
+      setValor(
+        Number(resultado.valor).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
 
       if (resultado.fornecedor) {
         setFornecedor(resultado.fornecedor);
@@ -286,7 +292,15 @@ function ContasPagar({
       const dados = {
         descricao: descricao.trim(),
         fornecedor,
-        valor,
+        // Pedido do usuário (20/08/2026): campo agora é o CampoValor
+        // (formato brasileiro, com milhar) — precisa converter pra
+        // número antes de mandar, igual já é feito nos outros campos de
+        // valor do sistema.
+        valor: Number(
+          valor.includes(",")
+            ? valor.replace(/\./g, "").replace(",", ".")
+            : valor
+        ),
         pix,
         data_vencimento: dataVencimento,
         observacao,
@@ -312,7 +326,12 @@ function ContasPagar({
     setEditandoId(conta.id);
     setDescricao(conta.descricao);
     setFornecedor(conta.fornecedor || "");
-    setValor(conta.valor);
+    setValor(
+      Number(conta.valor || 0).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
     setPix(conta.pix || "");
     setDataVencimento(conta.data_vencimento);
     setObservacao(conta.observacao || "");
@@ -711,14 +730,7 @@ function ContasPagar({
           <div className="form-row">
             <label>
               Valor
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={valor}
-                onChange={(evento) => setValor(evento.target.value)}
-                placeholder="0,00"
-              />
+              <CampoValor value={valor} onChange={setValor} />
             </label>
 
             <label>

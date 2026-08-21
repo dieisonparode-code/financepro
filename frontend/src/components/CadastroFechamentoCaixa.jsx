@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CampoValor from "./CampoValor";
 
 const tiposFechamento = [
   {
@@ -419,6 +420,15 @@ function CadastroFechamentoCaixa({
     }
   }
 
+  // Pedido do usuário (20/08/2026): os campos de valor agora usam o
+  // CampoValor (formato brasileiro, com milhar) — converte pra número
+  // igual já é feito nos outros campos de valor do sistema.
+  function paraNumeroBr(texto) {
+    return Number(
+      texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto
+    );
+  }
+
   async function confirmarRascunhoDiaria() {
     if (!rascunhoDiaria) return;
 
@@ -426,7 +436,7 @@ function CadastroFechamentoCaixa({
 
     const ehPagoDinheiroCaixa = rascunhoDiaria.tipo === "pago_dinheiro_caixa";
     const valorNumerico =
-      rascunhoDiaria.valor !== "" ? Number(rascunhoDiaria.valor) : null;
+      rascunhoDiaria.valor !== "" ? paraNumeroBr(rascunhoDiaria.valor) : null;
 
     try {
       await adicionarFechamento({
@@ -439,7 +449,7 @@ function CadastroFechamentoCaixa({
         valor_pago_dinheiro: ehPagoDinheiroCaixa
           ? valorNumerico || 0
           : rascunhoDiaria.pagoDinheiro !== ""
-          ? Number(rascunhoDiaria.pagoDinheiro)
+          ? paraNumeroBr(rascunhoDiaria.pagoDinheiro)
           : 0,
         nome_pessoa: ehPagoDinheiroCaixa ? rascunhoDiaria.nomePessoa : "",
       });
@@ -462,10 +472,10 @@ function CadastroFechamentoCaixa({
   // no saldo) e "a pagar" (o que ainda falta, ex.: no Pix do dia
   // seguinte) — pedido do usuário pra diária paga em duas partes.
   const valorDiariaNumerico = rascunhoDiaria
-    ? Number(rascunhoDiaria.valor || 0)
+    ? paraNumeroBr(rascunhoDiaria.valor || "0")
     : 0;
   const pagoDinheiroNumerico = rascunhoDiaria
-    ? Number(rascunhoDiaria.pagoDinheiro || 0)
+    ? paraNumeroBr(rascunhoDiaria.pagoDinheiro || "0")
     : 0;
   const aPagarNumerico = Math.max(
     0,
@@ -872,19 +882,16 @@ function CadastroFechamentoCaixa({
 
             <label>
               Valor total do recibo
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <CampoValor
                 placeholder={
                   rascunhoDiaria.lendo ? "Lendo valor da foto..." : "0,00"
                 }
                 value={rascunhoDiaria.valor}
                 disabled={rascunhoDiaria.lendo || rascunhoDiaria.salvando}
-                onChange={(evento) =>
+                onChange={(novoValor) =>
                   setRascunhoDiaria((anterior) => ({
                     ...anterior,
-                    valor: evento.target.value,
+                    valor: novoValor,
                   }))
                 }
               />
@@ -918,17 +925,13 @@ function CadastroFechamentoCaixa({
                 <label>
                   💵 Pago em dinheiro agora (deixe 0,00 se nada foi pago em
                   dinheiro — vai tudo pra "a pagar")
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
+                  <CampoValor
                     value={rascunhoDiaria.pagoDinheiro}
                     disabled={rascunhoDiaria.salvando}
-                    onChange={(evento) =>
+                    onChange={(novoValor) =>
                       setRascunhoDiaria((anterior) => ({
                         ...anterior,
-                        pagoDinheiro: evento.target.value,
+                        pagoDinheiro: novoValor,
                       }))
                     }
                   />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CampoValor from "./CampoValor";
 
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -208,14 +209,7 @@ function DespesasRecorrentes({
           <div className="form-row">
             <label>
               Valor
-              <input
-                type="text"
-                inputMode="decimal"
-                value={valor}
-                onChange={(evento) => setValor(evento.target.value)}
-                placeholder="0,00"
-                required
-              />
+              <CampoValor value={valor} onChange={setValor} required />
             </label>
 
             <label>

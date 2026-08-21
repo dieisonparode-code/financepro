@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import CampoValor from "./CampoValor";
 
 function hojeLocal() {
   const agora = new Date();
@@ -285,23 +286,19 @@ function ContasReceber({
               <div className="form-row">
                 <label>
                   Valor bruto (vendido)
-                  <input
-                    type="text"
-                    inputMode="decimal"
+                  <CampoValor
                     placeholder="Ex.: 8335,72"
                     value={calcBruto}
-                    onChange={(evento) => setCalcBruto(evento.target.value)}
+                    onChange={setCalcBruto}
                   />
                 </label>
 
                 <label>
                   Valor real recebido
-                  <input
-                    type="text"
-                    inputMode="decimal"
+                  <CampoValor
                     placeholder="Ex.: 7268,94"
                     value={calcRecebido}
-                    onChange={(evento) => setCalcRecebido(evento.target.value)}
+                    onChange={setCalcRecebido}
                   />
                 </label>
               </div>

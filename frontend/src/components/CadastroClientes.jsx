@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CampoValor from "./CampoValor";
 
 function formatarData(data) {
   if (!data) return "Sem data";
@@ -147,7 +148,17 @@ function CadastroClientes({
     try {
       const novo = await adicionarAtendimento(clienteAberto.id, {
         data: dataAtendimento,
-        valor: valorAtendimento === "" ? null : valorAtendimento,
+        // Pedido do usuário (20/08/2026): campo agora é o CampoValor
+        // (formato brasileiro, com milhar) — precisa converter pra
+        // número antes de mandar.
+        valor:
+          valorAtendimento === ""
+            ? null
+            : Number(
+                valorAtendimento.includes(",")
+                  ? valorAtendimento.replace(/\./g, "").replace(",", ".")
+                  : valorAtendimento
+              ),
         observacao: observacaoAtendimento,
       });
 
@@ -383,15 +394,9 @@ function CadastroClientes({
 
                 <label>
                   Valor gasto (opcional)
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                  <CampoValor
                     value={valorAtendimento}
-                    onChange={(evento) =>
-                      setValorAtendimento(evento.target.value)
-                    }
-                    placeholder="0,00"
+                    onChange={setValorAtendimento}
                   />
                 </label>
               </div>
