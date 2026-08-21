@@ -60,6 +60,19 @@ async function mandarHeartbeat() {
   }
 }
 
+// Bug real corrigido (21/08/2026): a conexão travou "por dentro" sem
+// nunca disparar "connection: close" — o socket ficava tecnicamente
+// aberto (o sinal de vida continuava chegando certinho no FinancePro,
+// ícone da bandeja normal), mas parou de receber mensagens novas do
+// grupo. Como o único jeito de reconectar era reagir a "close", e esse
+// evento nunca chegou, o robô ficou "zumbi" até alguém reiniciar na mão.
+// Correção: reconecta sozinho de tempos em tempos, MESMO sem nenhum
+// sinal de erro — fecha e abre a conexão de novo periodicamente, o que
+// não perde a sessão (o login fica salvo em ./auth) e evita esse tipo de
+// trava silenciosa se acumular por horas.
+const HORAS_ENTRE_RECONEXAO_PREVENTIVA = 3;
+let intervaloReconexaoPreventiva = null;
+
 async function iniciar() {
   const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
@@ -87,6 +100,11 @@ async function iniciar() {
       if (intervaloHeartbeat) {
         clearInterval(intervaloHeartbeat);
         intervaloHeartbeat = null;
+      }
+
+      if (intervaloReconexaoPreventiva) {
+        clearInterval(intervaloReconexaoPreventiva);
+        intervaloReconexaoPreventiva = null;
       }
 
       const deveReconectar =
@@ -134,6 +152,19 @@ async function iniciar() {
         mandarHeartbeat();
         intervaloHeartbeat = setInterval(mandarHeartbeat, 5 * 60 * 1000);
       }
+
+      // Reconexão preventiva — ver comentário lá em cima de
+      // HORAS_ENTRE_RECONEXAO_PREVENTIVA. Faz um "close" manual, que já
+      // aciona sozinho o "iniciar()" de novo lá em cima (mesmo caminho de
+      // quando a conexão cai de verdade).
+      if (!intervaloReconexaoPreventiva) {
+        intervaloReconexaoPreventiva = setInterval(() => {
+          console.log(
+            "🔄 Reconexão preventiva (evita ficar preso numa conexão travada por horas)..."
+          );
+          sock.end(new Error("reconexão preventiva agendada"));
+        }, HORAS_ENTRE_RECONEXAO_PREVENTIVA * 60 * 60 * 1000);
+      }
     }
   });
 
@@ -168,6 +199,16 @@ async function processarMensagem(sock, mensagem) {
     mensagem.message.documentMessage ||
     mensagem.message.documentWithCaptionMessage?.message?.documentMessage;
   const ehPdf = documentMessage?.mimetype === "application/pdf";
+  // Bug real corrigido (21/08/2026): "nota"/comprovante mandado como
+  // ARQUIVO em vez de foto (WhatsApp faz isso sozinho às vezes, ou a
+  // pessoa escolhe "Documento" ao anexar) chegava como documentMessage
+  // com mimetype "image/jpeg"/"image/png" — o robô só tratava
+  // documentMessage como PDF, então essa imagem-como-arquivo era
+  // silenciosamente ignorada (nem foto nem PDF pros critérios antigos).
+  const ehImagemComoDocumento =
+    documentMessage != null &&
+    !ehPdf &&
+    (documentMessage.mimetype || "").startsWith("image/");
 
   // Em vez de exigir a string inteira idêntica (frágil — LID vs PN,
   // sufixo diferente etc. já causaram falso "diferente" nesse teste),
@@ -179,24 +220,36 @@ async function processarMensagem(sock, mensagem) {
   // Log de depuração: mostra QUALQUER mensagem de grupo que chegar (foto
   // ou não, do grupo configurado ou não).
   console.log(
-    `👀 Mensagem vista — grupo=${JSON.stringify(remoteJid)} | configurado=${JSON.stringify(GRUPO_ID)} | id numérico bate? ${bateGrupo ? "SIM" : "NÃO"} (recebido="${idNumericoRecebido}" vs configurado="${idNumericoConfigurado}") — tem foto? ${imageMessage ? "sim" : "não"} — tem PDF? ${ehPdf ? "sim" : "não"}`
+    `👀 Mensagem vista — grupo=${JSON.stringify(remoteJid)} | configurado=${JSON.stringify(GRUPO_ID)} | id numérico bate? ${bateGrupo ? "SIM" : "NÃO"} (recebido="${idNumericoRecebido}" vs configurado="${idNumericoConfigurado}") — tem foto? ${imageMessage ? "sim" : "não"} — tem PDF? ${ehPdf ? "sim" : "não"} — tem imagem-como-arquivo? ${ehImagemComoDocumento ? "sim" : "não"}`
   );
 
   if (GRUPO_ID && !bateGrupo) return; // só o grupo configurado
 
-  if (!imageMessage && !ehPdf) return; // só processa foto ou PDF
+  // Log extra SÓ quando não reconheceu nada — mostra os tipos de conteúdo
+  // que a mensagem realmente tem, pra dar pra descobrir na hora (sem
+  // precisar eu adivinhar) se aparecer um formato novo que o robô ainda
+  // não sabe ler.
+  if (!imageMessage && !ehPdf && !ehImagemComoDocumento) {
+    console.log(
+      `   (mensagem não reconhecida como foto/PDF — tipos presentes: ${Object.keys(mensagem.message).join(", ")})`
+    );
+    return; // só processa foto, PDF ou imagem mandada como arquivo
+  }
 
-  const legenda = imageMessage?.caption || documentMessage?.caption || "";
+  const legenda =
+    imageMessage?.caption || documentMessage?.caption || "";
   const remetente =
     mensagem.pushName || mensagem.key.participant || "desconhecido";
 
   console.log(
-    `${ehPdf ? "📄 PDF" : "📸 Foto"} recebido de ${remetente} — legenda: "${legenda || "(sem legenda)"}"`
+    `${ehPdf ? "📄 PDF" : ehImagemComoDocumento ? "📎 Imagem (mandada como arquivo)" : "📸 Foto"} recebido de ${remetente} — legenda: "${legenda || "(sem legenda)"}"`
   );
 
   const buffer = await downloadMediaMessage(mensagem, "buffer", {});
   const fotoBase64 = ehPdf
     ? `data:application/pdf;base64,${buffer.toString("base64")}`
+    : ehImagemComoDocumento
+    ? `data:${documentMessage.mimetype};base64,${buffer.toString("base64")}`
     : `data:image/jpeg;base64,${buffer.toString("base64")}`;
 
   try {
