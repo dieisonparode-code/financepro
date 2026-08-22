@@ -4240,6 +4240,71 @@ app.get(
   }
 );
 
+// Pedido do usuário (21/08/2026): notificação em tempo real (via
+// polling do frontend) de venda cancelada — cruza TODAS as lojas com
+// saipos_id_store cadastrado, olhando só o dia de hoje. É leve o
+// bastante pra chamar a cada minuto ou dois sem sobrecarregar a Saipos.
+app.get(
+  "/vendas-canceladas-hoje",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const { data: lojas, error: erroLojas } = await supabase
+        .from("lojas")
+        .select("id, nome, saipos_id_store")
+        .not("saipos_id_store", "is", null);
+
+      if (erroLojas) {
+        throw erroLojas;
+      }
+
+      const hoje = dataBrasilia();
+      const dataInicio = `${hoje} 00:00:00`;
+      const dataFim = `${hoje} 23:59:59`;
+
+      const resultadosPorLoja = await Promise.all(
+        lojas.map(async (loja) => {
+          try {
+            const vendas = await buscarVendasSaipos(
+              loja.saipos_id_store,
+              dataInicio,
+              dataFim
+            );
+
+            return vendas
+              .filter((venda) => venda.canceled === "Y")
+              .map((venda) => ({
+                id_sale: venda.id_sale,
+                loja_id: loja.id,
+                loja_nome: loja.nome,
+                valor: Number(
+                  venda.total_amount ?? venda.totals?.total_amount ?? 0
+                ),
+                criado_em: venda.created_at,
+                operador: venda.cashier?.id_user || null,
+                canal: venda.partner_sale?.desc_partner_sale || "Balcão/Direto",
+              }));
+          } catch (erroLoja) {
+            console.error(
+              `Erro ao buscar vendas canceladas da loja ${loja.nome}:`,
+              erroLoja.message
+            );
+            return [];
+          }
+        })
+      );
+
+      res.json(resultadosPorLoja.flat());
+    } catch (erro) {
+      console.error("Erro ao buscar vendas canceladas de hoje:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar as vendas canceladas de hoje.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 const PAGSEGURO_API_BASE = "https://ws.pagseguro.uol.com.br/v3";
 
 // Mapa conhecido dos códigos da PagSeguro (API clássica). Pode precisar de

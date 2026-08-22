@@ -92,6 +92,8 @@ import {
   criarFichaTecnica,
   editarFichaTecnica,
   excluirFichaTecnica,
+  buscarVendasCanceladasHoje,
+  buscarLogAuditoria,
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
@@ -111,6 +113,7 @@ import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
 import CadastroInsumos from "./components/CadastroInsumos";
 import FichaTecnica from "./components/FichaTecnica";
+import Notificacoes from "./components/Notificacoes";
 import UserMenu from "./components/UserMenu";
 
 const gruposFinanceiros = [
@@ -1177,6 +1180,106 @@ function FinanceApp() {
     carregarStatusWhatsapp();
     const intervalo = setInterval(carregarStatusWhatsapp, 3 * 60 * 1000);
     return () => clearInterval(intervalo);
+  }, [ehAdministrador]);
+
+  // Pedido do usuário (21/08/2026): notificação em tempo real na tela —
+  // venda cancelada (Saipos) e lançamento excluído — visível em
+  // QUALQUER página do sistema, não só numa tela específica. "Tempo
+  // real" aqui é por polling (a Saipos é uma API consultada, não manda
+  // aviso sozinha) — a cada 1 minuto é rápido o bastante pra sentir como
+  // instantâneo sem sobrecarregar a Saipos. Só admin (mesma
+  // sensibilidade dos dados: log de auditoria e vendas por loja).
+  const [notificacoes, setNotificacoes] = useState([]);
+  const idsVendasCanceladasVistasRef = useRef(new Set());
+  const primeiraChecadaFeitaRef = useRef(false);
+  const ultimoLogVistoEmRef = useRef(null);
+
+  function adicionarNotificacao(notificacao) {
+    const id = `${Date.now()}-${Math.random()}`;
+    setNotificacoes((anteriores) => [...anteriores, { ...notificacao, id }]);
+    // Some sozinha depois de 20s, mas continua podendo fechar na mão antes.
+    setTimeout(() => {
+      setNotificacoes((anteriores) => anteriores.filter((item) => item.id !== id));
+    }, 20000);
+  }
+
+  function fecharNotificacao(id) {
+    setNotificacoes((anteriores) => anteriores.filter((item) => item.id !== id));
+  }
+
+  useEffect(() => {
+    if (!ehAdministrador) return;
+
+    async function verificarVendasCanceladas() {
+      try {
+        const vendas = await buscarVendasCanceladasHoje();
+
+        vendas.forEach((venda) => {
+          if (idsVendasCanceladasVistasRef.current.has(venda.id_sale)) return;
+          idsVendasCanceladasVistasRef.current.add(venda.id_sale);
+
+          // Na primeira checada do dia, só marca como "já visto" sem
+          // notificar tudo de uma vez — senão toda vez que a página
+          // carrega de manhã aparece uma enxurrada de avisos de
+          // cancelamentos de ontem/hoje cedo que já foram vistos.
+          if (!primeiraChecadaFeitaRef.current) return;
+
+          adicionarNotificacao({
+            titulo: "🚫 Venda cancelada",
+            mensagem: `${venda.loja_nome} — ${formatarMoeda(venda.valor)} (${venda.canal})`,
+            cor: "#ff3545",
+          });
+        });
+
+        primeiraChecadaFeitaRef.current = true;
+      } catch (erro) {
+        console.error("Erro ao verificar vendas canceladas:", erro);
+      }
+    }
+
+    async function verificarLogAuditoria() {
+      try {
+        const registros = await buscarLogAuditoria();
+        const exclusoesLancamento = registros.filter(
+          (item) => item.acao === "excluiu" && item.tabela_afetada === "lancamentos"
+        );
+
+        if (ultimoLogVistoEmRef.current == null) {
+          // Primeira checada: só marca o mais recente como referência,
+          // não notifica exclusões antigas de antes de abrir a tela.
+          ultimoLogVistoEmRef.current =
+            exclusoesLancamento[0]?.criado_em || new Date(0).toISOString();
+          return;
+        }
+
+        const novos = exclusoesLancamento.filter(
+          (item) => item.criado_em > ultimoLogVistoEmRef.current
+        );
+
+        novos.forEach((item) => {
+          adicionarNotificacao({
+            titulo: "🗑️ Lançamento excluído",
+            mensagem: `${item.usuario_nome || "Alguém"} excluiu: ${item.detalhes || "sem detalhes"}`,
+            cor: "#ff9800",
+          });
+        });
+
+        if (exclusoesLancamento[0]) {
+          ultimoLogVistoEmRef.current = exclusoesLancamento[0].criado_em;
+        }
+      } catch (erro) {
+        console.error("Erro ao verificar log de auditoria:", erro);
+      }
+    }
+
+    verificarVendasCanceladas();
+    verificarLogAuditoria();
+    const intervaloNotificacoes = setInterval(() => {
+      verificarVendasCanceladas();
+      verificarLogAuditoria();
+    }, 60 * 1000);
+
+    return () => clearInterval(intervaloNotificacoes);
   }, [ehAdministrador]);
 
   // Retiradas de Sócios (20/08/2026) — só admin, mesma regra da rota no
@@ -3437,6 +3540,8 @@ const pontoDeEquilibrio = useMemo(() => {
 
   return (
     <div className="app-shell">
+      <Notificacoes notificacoes={notificacoes} fechar={fecharNotificacao} />
+
       <aside className="sidebar">
         <div
           className="brand"

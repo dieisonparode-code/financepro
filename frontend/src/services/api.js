@@ -204,6 +204,14 @@ export async function buscarLogAuditoria() {
   });
 }
 
+// Pedido do usuário (21/08/2026): notificação em tempo real de venda
+// cancelada — todas as lojas, só o dia de hoje.
+export async function buscarVendasCanceladasHoje() {
+  return requisicao("/vendas-canceladas-hoje", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarFechamentoSaipos(lojaId, data) {
   return requisicao(
     `/fechamento-saipos/${lojaId}?data=${encodeURIComponent(data)}`,
