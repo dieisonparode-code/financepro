@@ -123,6 +123,7 @@ import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
 import CadastroInsumos from "./components/CadastroInsumos";
 import FichaTecnica from "./components/FichaTecnica";
+import CampoValor, { paraNumero } from "./components/CampoValor";
 import Notificacoes from "./components/Notificacoes";
 import UserMenu from "./components/UserMenu";
 
@@ -375,6 +376,7 @@ function criarFormularioInicial(tipo = "receita") {
     forma_pagamento_id: "",
     pago_em_dinheiro: false,
     fundo_retirada_id: "",
+    valor_pago_cofre: "",
     data: hojeLocal(),
   };
 }
@@ -2052,17 +2054,22 @@ const divergenciasAberturaFechamento = useMemo(() => {
         (item) =>
           item.tipo === "despesa" &&
           lojaCombinaComSaldo(item) &&
-          item.data > SALDO_INICIAL_DATA &&
-          // Pedido do usuário (22/08/2026): despesa paga com o Cofre
-          // (fundo de retirada) NUNCA desconta o Saldo geral — o
-          // dinheiro já tinha saído do caixa antes (retirada) e ficou
-          // guardado; só abate do Cofre, não do Saldo de novo (o
-          // backend só marca fundo_retirada_id quando o Cofre tinha
-          // saldo suficiente pra cobrir, senão volta a ser despesa
-          // normal — então essa exclusão aqui é sempre segura).
-          !item.fundo_retirada_id
+          item.data > SALDO_INICIAL_DATA
       )
-      .reduce((total, item) => total + Number(item.valor || 0), 0);
+      .reduce((total, item) => {
+        // Pedido do usuário (22/08/2026): despesa paga com o Cofre
+        // (fundo de retirada) NUNCA desconta o Saldo geral na parte
+        // que veio de lá — o dinheiro já tinha saído do caixa antes
+        // (retirada) e ficou guardado. Pode ser PARCIAL: só a parte
+        // que sobrou (valor − valor_pago_cofre) desconta o Saldo,
+        // igual sempre. O backend só permite valor_pago_cofre até o
+        // que o Cofre realmente tinha disponível — então subtrair
+        // aqui é sempre seguro (nunca fica negativo).
+        const valorQueDescontaSaldo =
+          Number(item.valor || 0) - Number(item.valor_pago_cofre || 0);
+
+        return total + valorQueDescontaSaldo;
+      }, 0);
 
     // Pedido do usuário (20/08/2026): retirada de dinheiro pros sócios
     // também dá baixa no Saldo, igual uma despesa — só que não aparece
@@ -2941,6 +2948,10 @@ const pontoDeEquilibrio = useMemo(() => {
         tipoLancamento === "despesa" && formulario.fundo_retirada_id
           ? formulario.fundo_retirada_id
           : null,
+      valor_pago_cofre:
+        tipoLancamento === "despesa" && formulario.fundo_retirada_id
+          ? paraNumero(formulario.valor_pago_cofre)
+          : 0,
       valor_bruto:
         tipoLancamento === "receita" && formaPagamentoSelecionada
           ? valorNumerico
@@ -4473,9 +4484,16 @@ const pontoDeEquilibrio = useMemo(() => {
                       {item.tipo === "despesa" && item.fundo_retirada_id && (
                         <span
                           className="badge-status badge-status-pendente"
-                          title="Pago com dinheiro do Cofre — não descontou o Saldo geral"
+                          title={
+                            Number(item.valor_pago_cofre || 0) >= Number(item.valor || 0) - 0.01
+                              ? "Pago inteiro com dinheiro do Cofre — não descontou o Saldo geral"
+                              : `Pago parcial: ${formatarMoeda(item.valor_pago_cofre)} do Cofre + ${formatarMoeda(Number(item.valor || 0) - Number(item.valor_pago_cofre || 0))} do Saldo geral`
+                          }
                         >
-                          💰 Pago com Cofre
+                          💰{" "}
+                          {Number(item.valor_pago_cofre || 0) >= Number(item.valor || 0) - 0.01
+                            ? "Pago com Cofre"
+                            : `Cofre ${formatarMoeda(item.valor_pago_cofre)} + Saldo`}
                         </span>
                       )}
                       {item.exclusao_solicitada_em && (
@@ -6184,31 +6202,73 @@ const pontoDeEquilibrio = useMemo(() => {
                     fundo.status === "aberto" &&
                     String(fundo.loja_id) === String(formulario.loja_id)
                 ) && (
-                  <label>
-                    💰 Pago com dinheiro do Cofre
-                    <select
-                      value={formulario.fundo_retirada_id}
-                      onChange={(evento) =>
-                        alterarCampo("fundo_retirada_id", evento.target.value)
-                      }
-                    >
-                      <option value="">Não — descontar do Saldo normal</option>
-                      {fundosRetiradas
-                        .filter(
-                          (fundo) =>
-                            fundo.status === "aberto" &&
-                            String(fundo.loja_id) === String(formulario.loja_id)
-                        )
-                        .map((fundo) => (
-                          <option key={fundo.id} value={fundo.id}>
-                            {fundo.descricao || "Cofre"} — disponível{" "}
-                            {formatarMoeda(
-                              Number(fundo.valor) - Number(fundo.valor_usado || 0)
-                            )}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
+                  <div className="form-row">
+                    <label>
+                      💰 Pago com dinheiro do Cofre
+                      <select
+                        value={formulario.fundo_retirada_id}
+                        onChange={(evento) => {
+                          const novoFundoId = evento.target.value;
+                          alterarCampo("fundo_retirada_id", novoFundoId);
+
+                          // Pedido do usuário (22/08/2026): pode ser
+                          // pagamento PARCIAL (ex: conta de R$600, R$200
+                          // do Cofre e R$400 do Saldo) — ao escolher um
+                          // Cofre, já sugere o valor total da despesa
+                          // (ou o disponível no Cofre, o que for menor)
+                          // como ponto de partida, editável.
+                          if (novoFundoId) {
+                            const fundoEscolhido = fundosRetiradas.find(
+                              (fundo) => String(fundo.id) === String(novoFundoId)
+                            );
+                            const disponivel = fundoEscolhido
+                              ? Number(fundoEscolhido.valor) -
+                                Number(fundoEscolhido.valor_usado || 0)
+                              : 0;
+                            const valorDespesa = paraNumero(formulario.valor) || 0;
+                            const sugestao = Math.min(disponivel, valorDespesa);
+                            alterarCampo(
+                              "valor_pago_cofre",
+                              sugestao.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            );
+                          } else {
+                            alterarCampo("valor_pago_cofre", "");
+                          }
+                        }}
+                      >
+                        <option value="">Não — descontar do Saldo normal</option>
+                        {fundosRetiradas
+                          .filter(
+                            (fundo) =>
+                              fundo.status === "aberto" &&
+                              String(fundo.loja_id) === String(formulario.loja_id)
+                          )
+                          .map((fundo) => (
+                            <option key={fundo.id} value={fundo.id}>
+                              {fundo.descricao || "Cofre"} — disponível{" "}
+                              {formatarMoeda(
+                                Number(fundo.valor) - Number(fundo.valor_usado || 0)
+                              )}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    {formulario.fundo_retirada_id && (
+                      <label>
+                        Quanto vem do Cofre? (resto desconta do Saldo)
+                        <CampoValor
+                          value={formulario.valor_pago_cofre}
+                          onChange={(novoValor) =>
+                            alterarCampo("valor_pago_cofre", novoValor)
+                          }
+                        />
+                      </label>
+                    )}
+                  </div>
                 )}
 
               {tipoLancamento === "receita" && (

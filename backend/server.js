@@ -286,12 +286,16 @@ function prepararLancamento(dados = {}) {
         ? Number(dados.valor_liquido_esperado)
         : null,
     data_prevista_recebimento: dados.data_prevista_recebimento || null,
-    // Pedido do usuário (22/08/2026): despesa paga com dinheiro de um
-    // Fundo de Retirada (retirada genérica de caixa ainda não gasta) —
-    // liga aqui e desconta de lá em vez de contar como saída "nova".
+    // Pedido do usuário (22/08/2026): despesa paga com dinheiro do
+    // Cofre (fundo de retirada genérica ainda não gasta) — liga aqui e
+    // desconta de lá em vez de contar como saída nova do Saldo. Pode
+    // ser PARCIAL (valor_pago_cofre menor que o valor total da
+    // despesa) — ex: conta de R$600, R$200 do Cofre e R$400 do Saldo.
     fundo_retirada_id: dados.fundo_retirada_id
       ? Number(dados.fundo_retirada_id)
       : null,
+    valor_pago_cofre:
+      dados.valor_pago_cofre != null ? Number(dados.valor_pago_cofre) : 0,
   };
 }
 
@@ -576,7 +580,7 @@ setInterval(function () {
 }, 60 * 1000);
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao, fundo_retirada_id, exclusao_solicitada_em, exclusao_solicitada_por";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao, fundo_retirada_id, valor_pago_cofre, exclusao_solicitada_em, exclusao_solicitada_por";
 
 app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
@@ -878,14 +882,17 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       }
     }
 
-    // Pedido do usuário (22/08/2026): despesa marcada como "paga com o
-    // Cofre" (fundo de retirada) NUNCA desconta o Saldo geral — o
-    // dinheiro já tinha saído do caixa antes (retirada) e ficou
-    // guardado; só quando é gasto de verdade é que sai do Cofre.
-    // Só cai no Saldo normal se: não marcou o Cofre, OU o Cofre não
-    // tem saldo suficiente pra cobrir esse valor (nesse caso vira uma
-    // despesa normal mesmo, como se não tivesse marcado nada).
+    // Pedido do usuário (22/08/2026): despesa paga com o Cofre (fundo de
+    // retirada) NUNCA desconta do Saldo geral a parte que veio de lá —
+    // o dinheiro já tinha saído do caixa antes (retirada) e ficou
+    // guardado; só quando é gasto de verdade é que sai do Cofre. Pode
+    // ser PARCIAL: ex conta de R$600, R$200 do Cofre (não mexe no
+    // Saldo) e R$400 do Saldo geral normal (desconta igual sempre).
+    // Se o Cofre não tiver saldo suficiente pro valor pedido, usa só o
+    // que tiver disponível — nunca bloqueia o lançamento por causa
+    // disso, o resto sempre cai no Saldo geral.
     let fundoValido = null;
+    let valorPagoCofreEfetivo = 0;
 
     if (dadosPreparados.fundo_retirada_id) {
       const { data: fundo } = await supabase
@@ -898,12 +905,27 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
         ? Number(fundo.valor || 0) - Number(fundo.valor_usado || 0)
         : 0;
 
-      if (fundo && disponivelNoFundo >= Number(dadosPreparados.valor || 0) - 0.01) {
+      // Se não veio valor_pago_cofre específico (formulário antigo),
+      // assume que quis pagar o valor INTEIRO da despesa com o Cofre.
+      const valorPedido =
+        dadosPreparados.valor_pago_cofre > 0
+          ? Number(dadosPreparados.valor_pago_cofre)
+          : Number(dadosPreparados.valor || 0);
+
+      valorPagoCofreEfetivo = Math.min(
+        valorPedido,
+        disponivelNoFundo,
+        Number(dadosPreparados.valor || 0)
+      );
+
+      if (fundo && valorPagoCofreEfetivo > 0.01) {
         fundoValido = fundo;
+        dadosPreparados.valor_pago_cofre = Number(valorPagoCofreEfetivo.toFixed(2));
       } else {
-        // Cofre esgotado/insuficiente — cai pro comportamento padrão
-        // (desconta do Saldo normal), não bloqueia o lançamento.
+        // Cofre esgotado/sem saldo nenhum — cai pro comportamento
+        // padrão (desconta tudo do Saldo normal), não bloqueia.
         dadosPreparados.fundo_retirada_id = null;
+        dadosPreparados.valor_pago_cofre = 0;
       }
     }
 
@@ -927,8 +949,14 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
     // ser rastreável" — deixa explícito no Log de Auditoria se a
     // despesa saiu do Cofre ou do Saldo geral, e se alguém tentou
     // marcar Cofre mas caiu pra Saldo normal por falta de saldo lá.
+    const restanteParaSaldo = Number(
+      (Number(data.valor || 0) - valorPagoCofreEfetivo).toFixed(2)
+    );
+
     const rastroPagamento = fundoValido
-      ? ` — pago com o Cofre #${fundoValido.id} (não descontou o Saldo geral)`
+      ? valorPagoCofreEfetivo >= Number(data.valor || 0) - 0.01
+        ? ` — pago inteiro com o Cofre #${fundoValido.id} (não descontou o Saldo geral)`
+        : ` — pago parcial: R$${valorPagoCofreEfetivo.toFixed(2)} do Cofre #${fundoValido.id} + R$${restanteParaSaldo.toFixed(2)} do Saldo geral`
       : dadosPreparados.tipo === "despesa"
       ? req.body.fundo_retirada_id
         ? " — tentou marcar Cofre, mas não tinha saldo suficiente lá — descontou do Saldo geral"
@@ -946,7 +974,7 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
     if (fundoValido) {
       try {
         const novoValorUsado = Number(
-          (Number(fundoValido.valor_usado || 0) + Number(data.valor || 0)).toFixed(2)
+          (Number(fundoValido.valor_usado || 0) + valorPagoCofreEfetivo).toFixed(2)
         );
 
         await supabase
