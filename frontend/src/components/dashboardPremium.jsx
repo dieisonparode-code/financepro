@@ -122,6 +122,12 @@ function Anel({ valor, cor, texto }) {
   );
 }
 
+// Pedido do usuário (22/08/2026): olho de privacidade no card do Saldo
+// — clica e esconde/mostra os valores (útil quando tem gente do lado
+// olhando a tela). Fica salvo (localStorage), então continua escondido
+// mesmo recarregando a página, até clicar de novo pra mostrar.
+const MASCARA = "••••••";
+
 function CartaoPrincipal({
   classe,
   titulo,
@@ -133,26 +139,65 @@ function CartaoPrincipal({
   taxa,
   emDinheiro,
   fundoRetirada,
+  mascaravel = false,
 }) {
   const temTaxa = bruto != null && taxa != null;
+  const [visivel, setVisivel] = useState(() => {
+    if (!mascaravel) return true;
+    try {
+      return localStorage.getItem("financepro_saldo_visivel") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  function alternarVisibilidade() {
+    setVisivel((anterior) => {
+      const novo = !anterior;
+      try {
+        localStorage.setItem("financepro_saldo_visivel", String(novo));
+      } catch {
+        // localStorage indisponível — só não persiste entre recarregamentos.
+      }
+      return novo;
+    });
+  }
 
   return (
     <article className={`fp-kpi fp-kpi-${classe}`}>
       <div className="fp-kpi-cabecalho">
         <span>{titulo}</span>
-        <Icone className={classe}>{icone}</Icone>
+        {mascaravel ? (
+          <button
+            type="button"
+            onClick={alternarVisibilidade}
+            title={visivel ? "Esconder valores" : "Mostrar valores"}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              fontSize: 16,
+              lineHeight: 1,
+            }}
+          >
+            {visivel ? "👁️" : "🙈"}
+          </button>
+        ) : (
+          <Icone className={classe}>{icone}</Icone>
+        )}
       </div>
 
       {temTaxa && (
         <div className="fp-kpi-bruto-taxa">
-          <span>{bruto}</span>
-          <span>Taxas {taxa}</span>
+          <span>{visivel ? bruto : MASCARA}</span>
+          <span>Taxas {visivel ? taxa : MASCARA}</span>
         </div>
       )}
 
       {emDinheiro != null && (
         <div className="fp-kpi-bruto-taxa">
-          <span>💵 fundo de caixa {emDinheiro}</span>
+          <span>💵 fundo de caixa {visivel ? emDinheiro : MASCARA}</span>
         </div>
       )}
 
@@ -162,14 +207,14 @@ function CartaoPrincipal({
           tela em quem não usa isso. */}
       {fundoRetirada && (
         <div className="fp-kpi-bruto-taxa">
-          <span>💰 fundo de retirada {fundoRetirada}</span>
+          <span>💰 fundo de retirada {visivel ? fundoRetirada : MASCARA}</span>
         </div>
       )}
 
       {temTaxa || emDinheiro != null ? (
-        <strong className="fp-kpi-liquido">{valor}</strong>
+        <strong className="fp-kpi-liquido">{visivel ? valor : MASCARA}</strong>
       ) : (
-        <strong>{valor}</strong>
+        <strong>{visivel ? valor : MASCARA}</strong>
       )}
 
       <small>{legenda}</small>
@@ -770,6 +815,7 @@ export default function DashboardPremium({
         <CartaoPrincipal
           classe="azul"
           titulo="Saldo"
+          mascaravel
           valor={formatarMoeda(saldo)}
           // Pedido do usuário (18/08/2026): não é pra sumir com a linha de
           // Bruto/Taxas quando não há taxa nenhuma desde o ajuste do saldo —
