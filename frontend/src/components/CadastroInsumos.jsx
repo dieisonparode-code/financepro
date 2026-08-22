@@ -302,6 +302,13 @@ function CadastroInsumos({
             </label>
           </div>
 
+          {/* Pedido do usuário (22/08/2026): esses dois campos deixavam
+              confuso — o segundo ficava travado até preencher o
+              primeiro, sem nenhum aviso do porquê. Agora os dois ficam
+              sempre liberados pra digitar, com uma explicação simples
+              embaixo (esses dois campos só são opcionais mesmo — dá pra
+              ignorar os dois se você compra sempre na mesma unidade que
+              usa, ex: compra carne já em kg e usa em kg). */}
           <div className="form-row">
             <label>
               Unidade de compra (opcional)
@@ -320,10 +327,16 @@ function CadastroInsumos({
                 value={fatorConversao}
                 onChange={(evento) => setFatorConversao(evento.target.value)}
                 placeholder="Ex.: 12"
-                disabled={!unidadeCompra.trim()}
               />
             </label>
           </div>
+
+          <small className="foto-ajuda">
+            Só preenche esses dois se você COMPRA numa unidade diferente
+            da que USA (ex: compra "Fardo" com 12 dentro, mas usa 1 por
+            1). Se compra e usa igual (ex: compra carne em kg, usa em
+            kg), pode deixar os dois em branco.
+          </small>
 
           {vePermissaoTotal && !editandoId && (
             <label
