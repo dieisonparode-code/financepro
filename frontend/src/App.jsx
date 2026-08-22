@@ -1664,6 +1664,55 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
   return maisRecente ? Number(maisRecente.em_caixa || 0) : 0;
 }, [registrosDinheiroInformado, lojaDashboard]);
 
+// Pedido do usuário (21/08/2026): antes era um botão manual dentro da
+// Conciliação ("conferirAberturaVsFechamentoAnterior") — só avisava se
+// alguém lembrasse de clicar. Agora é automático, igual o aviso de
+// "Contas a pagar precisando de atenção": compara sozinho, pra TODAS
+// as lojas, a Abertura do fechamento mais recente com o "Em caixa" do
+// fechamento anterior — se não bater, é sinal de que alguém mexeu no
+// dinheiro do caixa entre os dois turnos sem registrar.
+const divergenciasAberturaFechamento = useMemo(() => {
+  const porLoja = new Map();
+
+  registrosDinheiroInformado
+    .filter((registro) => registro.fechamento_id != null) // só fechamento de verdade (lido de foto), não ajuste manual
+    .forEach((registro) => {
+      const chave = String(registro.loja_id || "");
+      if (!porLoja.has(chave)) porLoja.set(chave, []);
+      porLoja.get(chave).push(registro);
+    });
+
+  const divergencias = [];
+
+  porLoja.forEach((registros, lojaIdChave) => {
+    if (registros.length < 2) return;
+
+    const ordenados = [...registros].sort(
+      (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
+    );
+    const maisRecente = ordenados[ordenados.length - 1];
+    const anterior = ordenados[ordenados.length - 2];
+
+    const aberturaMaisRecente = Number(maisRecente.abertura || 0);
+    const fechamentoAnterior = Number(anterior.em_caixa || 0);
+    const diferenca = Number(
+      (aberturaMaisRecente - fechamentoAnterior).toFixed(2)
+    );
+
+    if (Math.abs(diferenca) > 0.02) {
+      divergencias.push({
+        loja_id: lojaIdChave,
+        loja_nome: lojas.find((loja) => String(loja.id) === lojaIdChave)?.nome || "Loja",
+        diferenca,
+        aberturaMaisRecente,
+        fechamentoAnterior,
+      });
+    }
+  });
+
+  return divergencias;
+}, [registrosDinheiroInformado, lojas]);
+
   const totais = useMemo(() => {
    const receitas = lancamentosDashboard
       .filter((item) => item.tipo === "receita")
@@ -3927,6 +3976,24 @@ const pontoDeEquilibrio = useMemo(() => {
         </div>
       );
     })()}
+
+  {temPermissaoFechamento("conciliacao") &&
+    divergenciasAberturaFechamento.length > 0 && (
+      <div className="alerta-contas-pagar" style={{ background: "rgba(239, 68, 68, 0.15)" }}>
+        <strong>⚠️ Abertura de caixa não bate com o fechamento anterior:</strong>
+
+        <ul>
+          {divergenciasAberturaFechamento.map((divergencia) => (
+            <li key={divergencia.loja_id}>
+              {divergencia.loja_nome}: fechou com {formatarMoeda(divergencia.fechamentoAnterior)},
+              abriu com {formatarMoeda(divergencia.aberturaMaisRecente)} —{" "}
+              {divergencia.diferenca > 0 ? "sobrou" : "faltou"}{" "}
+              {formatarMoeda(Math.abs(divergencia.diferenca))}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
 
   {ehAdministrador &&
     statusWhatsappBot &&
