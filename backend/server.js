@@ -5109,6 +5109,37 @@ app.post(
       }
 
       const { usuario, perfil } = await obterPerfilOpcional(req);
+      const descricaoFinal = (descricao || "Retirada de frente de caixa").trim();
+
+      // Mesmo critério usado em toda parte: motivo específico (nome de
+      // entregador, taxa, diária, etc) desconta o Saldo na hora; sem
+      // motivo específico ("retirada" genérica) só entra no Fundo de
+      // Retirada, sem descontar nada ainda.
+      if (!retiradaTemMotivoEspecifico(descricaoFinal)) {
+        const { data: fundoCriado, error: erroFundo } = await supabase
+          .from("fundo_retiradas_caixa")
+          .insert({
+            loja_id: Number(lojaId),
+            valor,
+            data,
+            descricao: `${descricaoFinal} — lançado com foto de comprovante direto na Conciliação.`,
+            criado_por: perfil?.nome || usuario?.email || "",
+          })
+          .select("*")
+          .single();
+
+        if (erroFundo) throw erroFundo;
+
+        registrarAuditoria(
+          req,
+          "criou",
+          "fundo_retiradas_caixa",
+          fundoCriado.id,
+          `Fundo de retirada com foto: ${descricaoFinal} (${valor})`
+        );
+
+        return res.status(201).json({ ...fundoCriado, ehFundo: true });
+      }
 
       const { data: despesaCriada, error } = await supabase
         .from("lancamentos")
@@ -5116,7 +5147,7 @@ app.post(
           {
             id: Date.now(),
             tipo: "despesa",
-            descricao: (descricao || "Retirada de frente de caixa").trim(),
+            descricao: descricaoFinal,
             valor,
             data,
             grupo: "",
@@ -5258,13 +5289,27 @@ app.post(
   }
 );
 
-// Pedido do usuário (22/08/2026): confere cada retirada de frente de
-// caixa lida na foto contra as despesas já lançadas (mesma loja, valor
-// batendo, dentro de uma janela de 2 dias em volta da abertura do
-// turno — cobre o caso comum de o fechamento acontecer de madrugada,
-// já no dia seguinte). O que não achar despesa correspondente, lança
-// sozinha (categoria "Retirada de Caixa", pago em dinheiro), do mesmo
-// jeito que já acontece ao pagar uma Conta a Pagar.
+// Pedido do usuário (22/08/2026): critério ÚNICO usado em TODO lugar
+// que lida com retirada de frente de caixa (detecção automática na
+// leitura do fechamento, e o botão manual de "registrar retirada com
+// foto"). Retirada GENÉRICA (sem nome de entregador/motivo específico
+// escrito — ex: só "retirada de caixa") não é despesa ainda, o
+// dinheiro só mudou de lugar — vira Fundo de Retirada, sem descontar o
+// Saldo na hora. Com motivo específico (entregador, taxa de motoboy,
+// diária, etc), já sabe pra onde foi o dinheiro — lança como despesa
+// de verdade, desconta o Saldo na hora.
+function retiradaTemMotivoEspecifico(descricao) {
+  return /entregador|motoboy|moto boy|di[aá]ria|acerto|taxa|fornecedor/i.test(
+    (descricao || "").toLowerCase()
+  );
+}
+
+// Confere cada retirada de frente de caixa lida na foto contra as
+// despesas já lançadas (mesma loja, valor batendo, dentro de uma
+// janela de 2 dias em volta da abertura do turno — cobre o caso comum
+// de o fechamento acontecer de madrugada, já no dia seguinte). O que
+// não achar despesa correspondente, lança sozinha (categoria "Retirada
+// de Caixa" ou Fundo de Retirada, conforme o critério acima).
 async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
   const dataSeguinte = diaSeguinteStr(dataAbertura);
   const diaAnterior = (() => {
@@ -5305,18 +5350,7 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
 
     const descricao = (retirada.descricao || "Retirada de frente de caixa").trim();
 
-    // Pedido do usuário (22/08/2026): retirada GENÉRICA (sem nome de
-    // entregador/motivo específico impresso — ex: só "retirada de
-    // caixa") não é despesa ainda, o dinheiro só mudou de lugar — vira
-    // um Fundo de Retirada à parte, sem descontar o Saldo na hora. Com
-    // motivo específico (entregador, taxa de motoboy, diária, etc), já
-    // sabe pra onde foi o dinheiro — lança como despesa de verdade.
-    const descricaoMinuscula = descricao.toLowerCase();
-    const temMotivoEspecifico = /entregador|motoboy|moto boy|di[aá]ria|acerto|taxa|fornecedor/i.test(
-      descricaoMinuscula
-    );
-
-    if (!temMotivoEspecifico) {
+    if (!retiradaTemMotivoEspecifico(descricao)) {
       const { data: fundoCriado, error: erroFundo } = await supabase
         .from("fundo_retiradas_caixa")
         .insert({
