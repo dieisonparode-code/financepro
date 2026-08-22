@@ -10,6 +10,7 @@ import {
   salvarDinheiroInformado,
   buscarDinheiroInformado,
   registrarRetiradaComFoto,
+  lerValorFechamentoCaixa,
 } from "../services/api";
 import CampoValor, { paraNumero } from "./CampoValor";
 
@@ -294,6 +295,85 @@ function Conciliacao({ lojaId }) {
       alert(erro.message || "Não foi possível conferir as retiradas agora.");
     } finally {
       setConferindoRetiradas(false);
+    }
+  }
+
+  // Pedido do usuário (22/08/2026): retirada de frente de caixa não tem
+  // confronto (Esperado x Informado) como as formas de pagamento — é só
+  // um lugar pra anexar a foto do comprovante. A IA lê o valor e já
+  // lança direto como despesa (desconta o Saldo na hora).
+  const [enviandoRetiradaFoto, setEnviandoRetiradaFoto] = useState(false);
+  const [descricaoRetiradaFoto, setDescricaoRetiradaFoto] = useState("");
+
+  async function enviarRetiradaComFoto(arquivo) {
+    if (!arquivo) return;
+
+    if (!lojaId) {
+      alert("Escolha uma loja específica antes de registrar a retirada.");
+      return;
+    }
+
+    setEnviandoRetiradaFoto(true);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const dataDoTurno =
+        grupoEscolhido?.dataChave ||
+        new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+      const despesa = await registrarRetiradaComFoto(
+        fotoComprimida,
+        lojaId,
+        dataDoTurno,
+        descricaoRetiradaFoto
+      );
+
+      if (despesa?.erro_leitura) {
+        alert(despesa.erro_leitura);
+        return;
+      }
+
+      alert(
+        `✅ Retirada lançada: ${despesa.descricao} — ${formatarMoeda(despesa.valor)}`
+      );
+      setDescricaoRetiradaFoto("");
+    } catch (erro) {
+      alert(erro.message || "Não foi possível registrar a retirada.");
+    } finally {
+      setEnviandoRetiradaFoto(false);
+    }
+  }
+
+  // Pedido do usuário (22/08/2026): linha "Cortesia" do Confronto ganha
+  // opção de anexar foto (do vale/comprovante de cortesia) — a IA lê o
+  // valor e preenche o "Informado" sozinha, sem precisar digitar.
+  const [lendoFotoInformado, setLendoFotoInformado] = useState(null);
+
+  async function lerFotoParaInformado(forma, arquivo) {
+    if (!arquivo) return;
+
+    setLendoFotoInformado(forma);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const resultado = await lerValorFechamentoCaixa(fotoComprimida);
+
+      if (resultado.erro_leitura || resultado.valor == null) {
+        alert(resultado.erro_leitura || "Não consegui ler um valor nessa foto.");
+        return;
+      }
+
+      setValoresInformados((anterior) => ({
+        ...anterior,
+        [forma]: Number(resultado.valor).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      }));
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a foto.");
+    } finally {
+      setLendoFotoInformado(null);
     }
   }
 
@@ -1685,6 +1765,40 @@ function Conciliacao({ lojaId }) {
               </button>
             )}
 
+            {/* Pedido do usuário (22/08/2026): retirada não tem
+                confronto — é só um lugar pra anexar a foto do
+                comprovante. A IA lê o valor e já lança direto como
+                despesa, desconta o Saldo na hora. */}
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="Descrição da retirada (opcional, ex: acerto com entregador)"
+                value={descricaoRetiradaFoto}
+                onChange={(evento) => setDescricaoRetiradaFoto(evento.target.value)}
+                style={{ maxWidth: 260 }}
+                disabled={enviandoRetiradaFoto}
+              />
+
+              <label
+                className="secondary-button"
+                style={{ cursor: "pointer", margin: 0 }}
+              >
+                {enviandoRetiradaFoto ? "Lendo foto..." : "📷 Registrar retirada com foto"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  disabled={enviandoRetiradaFoto}
+                  onChange={(evento) => {
+                    const arquivo = evento.target.files?.[0];
+                    evento.target.value = "";
+                    enviarRetiradaComFoto(arquivo);
+                  }}
+                />
+              </label>
+            </div>
+
             {avisoAberturaFechamento && (
               <div
                 className="empty-state"
@@ -1976,16 +2090,39 @@ function Conciliacao({ lojaId }) {
                                   )}
                                 </td>
                                 <td data-label="Informado">
-                                  <CampoValor
-                                    value={valoresInformados[forma] ?? ""}
-                                    onChange={(novoValor) =>
-                                      setValoresInformados((anterior) => ({
-                                        ...anterior,
-                                        [forma]: novoValor,
-                                      }))
-                                    }
-                                    style={{ maxWidth: "120px" }}
-                                  />
+                                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    <CampoValor
+                                      value={valoresInformados[forma] ?? ""}
+                                      onChange={(novoValor) =>
+                                        setValoresInformados((anterior) => ({
+                                          ...anterior,
+                                          [forma]: novoValor,
+                                        }))
+                                      }
+                                      style={{ maxWidth: "120px" }}
+                                    />
+
+                                    {forma === "Cortesia" && (
+                                      <label
+                                        title="Anexar foto do comprovante/vale de cortesia — a IA lê o valor sozinha"
+                                        style={{ cursor: "pointer", fontSize: "14px" }}
+                                      >
+                                        {lendoFotoInformado === forma ? "⏳" : "📷"}
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          capture="environment"
+                                          style={{ display: "none" }}
+                                          disabled={lendoFotoInformado === forma}
+                                          onChange={(evento) => {
+                                            const arquivo = evento.target.files?.[0];
+                                            evento.target.value = "";
+                                            lerFotoParaInformado(forma, arquivo);
+                                          }}
+                                        />
+                                      </label>
+                                    )}
+                                  </div>
                                 </td>
                                 {/* Pedido do usuário (15/08/2026): valor que
                                 REALMENTE caiu na PagSeguro — só existe pra
