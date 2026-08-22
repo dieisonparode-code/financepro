@@ -153,7 +153,7 @@ function CartaoPrincipal({
 
       {temTaxa && (
         <div className="fp-kpi-bruto-taxa">
-          <span>{bruto}</span>
+          <span>{mascarar ? MASCARA : bruto}</span>
           <span>Taxas {taxa}</span>
         </div>
       )}
