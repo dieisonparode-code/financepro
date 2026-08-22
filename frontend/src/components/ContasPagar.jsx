@@ -213,6 +213,13 @@ function ContasPagar({
   const [carregandoFotoDetalhe, setCarregandoFotoDetalhe] = useState(false);
   const [selecionadas, setSelecionadas] = useState([]);
   const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
+  // Pedido do usuário (21/08/2026): "paguei essa conta com o saldo de
+  // outra loja" — em vez de tela separada, é uma marcação aqui mesmo
+  // na hora de confirmar o pagamento. Cria um Empréstimo entre Lojas
+  // automático, vinculado a essa conta, sem precisar digitar nada à
+  // parte.
+  const [pagoComOutraLoja, setPagoComOutraLoja] = useState(false);
+  const [lojaCredoraId, setLojaCredoraId] = useState("");
   const [busca, setBusca] = useState("");
   const [buscaData, setBuscaData] = useState("");
   const [salvandoValorId, setSalvandoValorId] = useState(null);
@@ -449,6 +456,11 @@ function ContasPagar({
   async function confirmarPagamentoSelecionadas() {
     if (selecionadas.length === 0) return;
 
+    if (pagoComOutraLoja && !lojaCredoraId) {
+      alert("Escolha qual loja emprestou o saldo pra pagar.");
+      return;
+    }
+
     const confirmar = window.confirm(
       selecionadas.length === 1
         ? "Marcar a conta selecionada como paga?"
@@ -464,13 +476,15 @@ function ContasPagar({
 
       for (const id of selecionadas) {
         try {
-          await marcarComoPaga(id);
+          await marcarComoPaga(id, pagoComOutraLoja ? lojaCredoraId : undefined);
         } catch (erro) {
           falhas.push(erro.message || "erro desconhecido");
         }
       }
 
       setSelecionadas([]);
+      setPagoComOutraLoja(false);
+      setLojaCredoraId("");
       // Vai direto pra página de Contas Pagas, já com acesso ao "Ver
       // detalhes" de tudo que acabou de ser pago.
       aoConfirmarPagamento?.();
@@ -944,16 +958,47 @@ function ContasPagar({
             </button>
 
             {selecionadas.length > 0 && (
-              <button
-                type="button"
-                className="approve-button"
-                onClick={confirmarPagamentoSelecionadas}
-                disabled={confirmandoPagamento}
-              >
-                {confirmandoPagamento
-                  ? "Confirmando..."
-                  : `✅ Confirmar pagamento (${selecionadas.length})`}
-              </button>
+              <>
+                <label
+                  className="toque-alvo"
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={pagoComOutraLoja}
+                    onChange={(evento) => {
+                      setPagoComOutraLoja(evento.target.checked);
+                      if (!evento.target.checked) setLojaCredoraId("");
+                    }}
+                  />
+                  💰 Paguei com o saldo de outra loja
+                </label>
+
+                {pagoComOutraLoja && (
+                  <select
+                    value={lojaCredoraId}
+                    onChange={(evento) => setLojaCredoraId(evento.target.value)}
+                  >
+                    <option value="">Qual loja emprestou?</option>
+                    {lojas.map((loja) => (
+                      <option key={loja.id} value={loja.id}>
+                        {loja.nome}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <button
+                  type="button"
+                  className="approve-button"
+                  onClick={confirmarPagamentoSelecionadas}
+                  disabled={confirmandoPagamento}
+                >
+                  {confirmandoPagamento
+                    ? "Confirmando..."
+                    : `✅ Confirmar pagamento (${selecionadas.length})`}
+                </button>
+              </>
             )}
           </div>
         )}

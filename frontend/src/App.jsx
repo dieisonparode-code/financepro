@@ -32,6 +32,11 @@ import {
   buscarRetiradasSocios,
   criarRetiradaSocio,
   excluirRetiradaSocio,
+  buscarResumoEmprestimosEntreLojas,
+  buscarEmprestimosEntreLojas,
+  criarEmprestimoEntreLojas,
+  registrarPagamentoEmprestimo,
+  excluirEmprestimoEntreLojas,
   buscarNotasFiscais,
   criarNotaFiscal,
   excluirNotaFiscal,
@@ -103,6 +108,7 @@ import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
 import DespesasRecorrentes from "./components/DespesasRecorrentes";
 import RetiradasSocios from "./components/RetiradasSocios";
+import EmprestimosEntreLojas from "./components/EmprestimosEntreLojas";
 import Fornecedores from "./components/Fornecedores";
 import ContasReceber from "./components/ContasReceber";
 import LogAuditoria from "./components/LogAuditoria";
@@ -576,6 +582,24 @@ function FinanceApp() {
       .then((dados) => setResumoRetiradasSocios(Array.isArray(dados) ? dados : []))
       .catch((erro) =>
         console.error("Erro ao buscar resumo de retiradas de sócios:", erro)
+      );
+  }, []);
+
+  // Empréstimo entre Lojas (21/08/2026) — só admin gerencia, mas o
+  // resumo (sem detalhe sensível, é operacional) é buscado por
+  // QUALQUER usuário, pra dar baixa no Saldo certo de cada loja.
+  const [emprestimosEntreLojas, setEmprestimosEntreLojas] = useState([]);
+  const [carregandoEmprestimosEntreLojas, setCarregandoEmprestimosEntreLojas] =
+    useState(true);
+  const [resumoEmprestimosEntreLojas, setResumoEmprestimosEntreLojas] = useState([]);
+
+  useEffect(() => {
+    buscarResumoEmprestimosEntreLojas()
+      .then((dados) =>
+        setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : [])
+      )
+      .catch((erro) =>
+        console.error("Erro ao buscar resumo de empréstimos entre lojas:", erro)
       );
   }, []);
 
@@ -1319,6 +1343,56 @@ function FinanceApp() {
     );
   }
 
+  // Empréstimo entre Lojas (21/08/2026) — só admin gerencia.
+  useEffect(() => {
+    if (!ehAdministrador) {
+      setCarregandoEmprestimosEntreLojas(false);
+      return;
+    }
+
+    async function carregarEmprestimosEntreLojas() {
+      try {
+        setCarregandoEmprestimosEntreLojas(true);
+        const dados = await buscarEmprestimosEntreLojas();
+        setEmprestimosEntreLojas(Array.isArray(dados) ? dados : []);
+      } catch (erro) {
+        console.error("Erro ao carregar empréstimos entre lojas:", erro);
+      } finally {
+        setCarregandoEmprestimosEntreLojas(false);
+      }
+    }
+
+    carregarEmprestimosEntreLojas();
+  }, [ehAdministrador]);
+
+  async function adicionarEmprestimoEntreLojasHandler(dados) {
+    const criado = await criarEmprestimoEntreLojas(dados);
+    setEmprestimosEntreLojas((anteriores) => [criado, ...anteriores]);
+    buscarResumoEmprestimosEntreLojas()
+      .then((dados) => setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : []))
+      .catch(() => {});
+  }
+
+  async function registrarPagamentoEmprestimoHandler(id, dados) {
+    const atualizado = await registrarPagamentoEmprestimo(id, dados);
+    setEmprestimosEntreLojas((anteriores) =>
+      anteriores.map((item) => (item.id === id ? atualizado : item))
+    );
+    buscarResumoEmprestimosEntreLojas()
+      .then((dados) => setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : []))
+      .catch(() => {});
+  }
+
+  async function removerEmprestimoEntreLojasHandler(id) {
+    await excluirEmprestimoEntreLojas(id);
+    setEmprestimosEntreLojas((anteriores) =>
+      anteriores.filter((item) => item.id !== id)
+    );
+    buscarResumoEmprestimosEntreLojas()
+      .then((dados) => setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : []))
+      .catch(() => {});
+  }
+
   async function removerItemWhatsappFilaHandler(id) {
     await removerItemWhatsappFila(id);
     setWhatsappFila((anteriores) => anteriores.filter((item) => item.id !== id));
@@ -1910,6 +1984,37 @@ const divergenciasAberturaFechamento = useMemo(() => {
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
+    // Pedido do usuário (21/08/2026): Empréstimo entre Lojas — a loja
+    // credora (emprestou) desconta do Saldo o quanto ainda não recebeu
+    // de volta; a devedora (pegou emprestado) aumenta o Saldo pelo
+    // mesmo tanto (recebeu ajuda, ainda não é despesa própria dela até
+    // pagar de volta). Com "Todas as lojas", as duas pontas se cancelam
+    // — dinheiro só mudou de loja, não sumiu nem apareceu do nada.
+    const emprestimosEntreLojasAjusteSaldo = resumoEmprestimosEntreLojas
+      .filter((item) => item.data > SALDO_INICIAL_DATA)
+      .reduce((total, item) => {
+        const dividaRestante = Number(
+          (Number(item.valor || 0) - Number(item.valor_pago || 0)).toFixed(2)
+        );
+        let ajuste = 0;
+
+        if (
+          lojaDashboard === "todas" ||
+          String(item.loja_devedora_id) === String(lojaDashboard)
+        ) {
+          ajuste += dividaRestante;
+        }
+
+        if (
+          lojaDashboard === "todas" ||
+          String(item.loja_credora_id) === String(lojaDashboard)
+        ) {
+          ajuste -= dividaRestante;
+        }
+
+        return total + ajuste;
+      }, 0);
+
     // Base de R$106.430,13 só entra quando "Todas as lojas" ou a própria
     // Uberlândia estiver selecionada — outra loja específica começa do
     // zero (não tem esse dinheiro).
@@ -1922,12 +2027,14 @@ const divergenciasAberturaFechamento = useMemo(() => {
       baseSaldoAplicavel +
       receitasRecebidasDesdeAjusteSaldo -
       despesasDesdeAjusteSaldo -
-      retiradasSociosDesdeAjusteSaldo;
+      retiradasSociosDesdeAjusteSaldo +
+      emprestimosEntreLojasAjusteSaldo;
     const saldoBruto =
       baseSaldoAplicavel +
       receitasRecebidasBrutoDesdeAjusteSaldo -
       despesasDesdeAjusteSaldo -
-      retiradasSociosDesdeAjusteSaldo;
+      retiradasSociosDesdeAjusteSaldo +
+      emprestimosEntreLojasAjusteSaldo;
     const totalTaxas =
       receitasRecebidasBrutoDesdeAjusteSaldo -
       receitasRecebidasDesdeAjusteSaldo;
@@ -1961,6 +2068,7 @@ const divergenciasAberturaFechamento = useMemo(() => {
     lancamentosAprovados,
     dinheiroEmCaixaFiltrado,
     resumoRetiradasSocios,
+    resumoEmprestimosEntreLojas,
   ]);
 
   // Pedido do usuário (21/08/2026): mesmo Ponto de Equilíbrio do
@@ -3215,11 +3323,20 @@ const pontoDeEquilibrio = useMemo(() => {
     );
   }
 
-  async function pagarContaPagar(id) {
-    const salva = await marcarContaPagarComoPaga(id);
+  async function pagarContaPagar(id, lojaCredoraId) {
+    const salva = await marcarContaPagarComoPaga(id, lojaCredoraId);
     setContasPagar((anteriores) =>
       anteriores.map((item) => (item.id === id ? salva : item))
     );
+
+    // Se foi paga com saldo de outra loja, o backend já criou o
+    // Empréstimo entre Lojas vinculado — busca o resumo de novo pra
+    // refletir no Saldo na hora, sem precisar recarregar a página.
+    if (lojaCredoraId) {
+      buscarResumoEmprestimosEntreLojas()
+        .then((dados) => setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : []))
+        .catch(() => {});
+    }
   }
 
   async function removerContaPagar(id) {
@@ -3759,6 +3876,15 @@ const pontoDeEquilibrio = useMemo(() => {
               onClick={() => setPagina("retiradas-socios")}
             >
               💸 Retiradas de Sócios
+            </button>
+          )}
+
+          {ehAdministrador && (
+            <button
+              className={pagina === "emprestimos-entre-lojas" ? "active" : ""}
+              onClick={() => setPagina("emprestimos-entre-lojas")}
+            >
+              🔁 Empréstimo entre Lojas
             </button>
           )}
 
@@ -4691,6 +4817,17 @@ const pontoDeEquilibrio = useMemo(() => {
           />
         )}
 
+        {pagina === "emprestimos-entre-lojas" && ehAdministrador && (
+          <EmprestimosEntreLojas
+            emprestimos={emprestimosEntreLojas}
+            carregando={carregandoEmprestimosEntreLojas}
+            lojas={lojas}
+            adicionar={adicionarEmprestimoEntreLojasHandler}
+            registrarPagamento={registrarPagamentoEmprestimoHandler}
+            remover={removerEmprestimoEntreLojasHandler}
+          />
+        )}
+
         {pagina === "fornecedores" && (
           <Fornecedores
             historico={historicoFornecedores}
@@ -5415,6 +5552,28 @@ const pontoDeEquilibrio = useMemo(() => {
                       .reduce((soma, item) => soma + Number(item.valor || 0), 0)
                   )}
                 </strong>
+              </article>
+
+              {/* Pedido do usuário (21/08/2026): Empréstimo entre Lojas —
+                  mostra o total emprestado (bruto) no período; dívidas
+                  em aberto vs quitadas dá pra ver na tela própria. */}
+              <article className="panel report-card">
+                <span>🔁 Empréstimo entre Lojas</span>
+                <strong>
+                  {formatarMoeda(
+                    emprestimosEntreLojas
+                      .filter(
+                        (item) =>
+                          item.data >= dataInicialRelatorio &&
+                          item.data <= dataFinalRelatorio
+                      )
+                      .reduce((soma, item) => soma + Number(item.valor || 0), 0)
+                  )}
+                </strong>
+                <small>
+                  {emprestimosEntreLojas.filter((item) => item.status === "aberto").length}{" "}
+                  em aberto
+                </small>
               </article>
 
               <article className="panel report-card">

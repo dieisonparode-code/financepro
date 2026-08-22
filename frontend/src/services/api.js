@@ -308,10 +308,13 @@ export async function atualizarContaPagar(id, dados) {
   });
 }
 
-export async function marcarContaPagarComoPaga(id) {
+export async function marcarContaPagarComoPaga(id, lojaCredoraId) {
   return requisicao(`/contas-pagar/${id}/pagar`, {
     method: "PUT",
     headers: await cabecalhoAutenticado(),
+    body: lojaCredoraId
+      ? JSON.stringify({ loja_credora_id: lojaCredoraId })
+      : undefined,
   });
 }
 
@@ -421,6 +424,42 @@ export async function editarFichaTecnica(id, dados) {
 
 export async function excluirFichaTecnica(id) {
   return requisicao(`/fichas-tecnicas/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+// Empréstimo entre lojas (21/08/2026).
+export async function buscarResumoEmprestimosEntreLojas() {
+  return requisicao("/emprestimos-entre-lojas/resumo", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function buscarEmprestimosEntreLojas() {
+  return requisicao("/emprestimos-entre-lojas", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarEmprestimoEntreLojas(dados) {
+  return requisicao("/emprestimos-entre-lojas", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function registrarPagamentoEmprestimo(id, dados) {
+  return requisicao(`/emprestimos-entre-lojas/${id}/pagamento`, {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function excluirEmprestimoEntreLojas(id) {
+  return requisicao(`/emprestimos-entre-lojas/${id}`, {
     method: "DELETE",
     headers: await cabecalhoAutenticado(),
   });

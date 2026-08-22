@@ -2345,6 +2345,49 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       `${data.descricao} (${data.valor}) — despesa #${despesaCriada.id} lançada no saldo`
     );
 
+    // Pedido do usuário (21/08/2026): "paguei essa conta com o saldo de
+    // OUTRA loja" — em vez de um formulário separado, é uma marcação
+    // aqui mesmo na hora de pagar. A despesa acima já ficou lançada
+    // normal na loja da conta (devedora); aqui só cria o registro do
+    // empréstimo, que soma de volta o valor no Saldo da devedora
+    // (cancela o efeito da despesa que acabou de sair da própria
+    // loja, já que quem realmente desembolsou foi a credora) e
+    // desconta o mesmo valor da loja credora.
+    const lojaCredoraId = Number(req.body?.loja_credora_id) || null;
+
+    if (lojaCredoraId && lojaCredoraId !== Number(contaAtual.loja_id)) {
+      const { usuario, perfil } = await obterPerfilOpcional(req);
+
+      const { data: emprestimoCriado, error: erroEmprestimo } = await supabase
+        .from("emprestimos_entre_lojas")
+        .insert({
+          loja_credora_id: lojaCredoraId,
+          loja_devedora_id: contaAtual.loja_id,
+          valor: Number(contaAtual.valor || 0),
+          data: dataPagamento,
+          descricao: `Pagamento da conta "${contaAtual.descricao}"`,
+          origem_conta_pagar_id: contaAtual.id,
+          criado_por: perfil?.nome || usuario?.email || "",
+        })
+        .select("*")
+        .single();
+
+      if (erroEmprestimo) {
+        console.error(
+          "Conta paga, mas falhou ao criar o empréstimo entre lojas vinculado:",
+          erroEmprestimo.message
+        );
+      } else {
+        registrarAuditoria(
+          req,
+          "criou",
+          "emprestimos_entre_lojas",
+          emprestimoCriado.id,
+          `Empréstimo automático ao pagar a conta #${contaAtual.id} — loja ${lojaCredoraId} emprestou pra loja ${contaAtual.loja_id}`
+        );
+      }
+    }
+
     res.json(data);
   } catch (erro) {
     console.error("Erro ao marcar conta como paga:", erro.message);
@@ -5648,6 +5691,233 @@ app.delete("/retiradas-socios/:id", verificarAdmin, async function (req, res) {
     });
   }
 });
+
+// Pedido do usuário (21/08/2026): Empréstimo entre lojas — ex: loja A
+// paga uma conta da loja B porque B estava sem saldo. A loja credora
+// desconta do Saldo dela; a devedora aumenta o Saldo (recebeu ajuda) e
+// fica com dívida em aberto, abatida conforme paga de volta.
+// Resumo (sem detalhe sensível nenhum aqui, é operacional entre lojas,
+// não é sigiloso como Retiradas de Sócios) — pra QUALQUER usuário
+// recalcular o Saldo certo da loja dele.
+app.get(
+  "/emprestimos-entre-lojas/resumo",
+  verificarPermissao(["saldo", "financeiro"]),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("emprestimos_entre_lojas")
+        .select("id, loja_credora_id, loja_devedora_id, valor, valor_pago, data, status");
+
+      if (error) throw error;
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar resumo de empréstimos entre lojas:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar o resumo de empréstimos entre lojas.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/emprestimos-entre-lojas",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("emprestimos_entre_lojas")
+        .select("*, pagamentos:emprestimos_entre_lojas_pagamentos(*)")
+        .order("data", { ascending: false });
+
+      if (error) throw error;
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar empréstimos entre lojas:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar os empréstimos entre lojas.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/emprestimos-entre-lojas",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const lojaCredoraId = Number(req.body.loja_credora_id);
+      const lojaDevedoraId = Number(req.body.loja_devedora_id);
+      const valor = Number(req.body.valor);
+      const data = req.body.data;
+
+      if (!Number.isFinite(lojaCredoraId) || !Number.isFinite(lojaDevedoraId)) {
+        return res.status(400).json({ erro: "Escolha as duas lojas." });
+      }
+
+      if (lojaCredoraId === lojaDevedoraId) {
+        return res.status(400).json({
+          erro: "A loja que emprestou e a que pegou emprestado não podem ser a mesma.",
+        });
+      }
+
+      if (!valor || valor <= 0) {
+        return res.status(400).json({ erro: "Informe um valor válido." });
+      }
+
+      if (!data) {
+        return res.status(400).json({ erro: "Informe a data." });
+      }
+
+      const { usuario, perfil } = await obterPerfilOpcional(req);
+
+      const { data: criado, error } = await supabase
+        .from("emprestimos_entre_lojas")
+        .insert({
+          loja_credora_id: lojaCredoraId,
+          loja_devedora_id: lojaDevedoraId,
+          valor,
+          data,
+          descricao: (req.body.descricao || "").trim(),
+          criado_por: perfil?.nome || usuario?.email || "",
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      registrarAuditoria(
+        req,
+        "criou",
+        "emprestimos_entre_lojas",
+        criado.id,
+        `Empréstimo de ${valor} entre lojas ${lojaCredoraId} → ${lojaDevedoraId}`
+      );
+
+      res.status(201).json({ ...criado, pagamentos: [] });
+    } catch (erro) {
+      console.error("Erro ao criar empréstimo entre lojas:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível salvar o empréstimo.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/emprestimos-entre-lojas/:id/pagamento",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+      const valorPagamento = Number(req.body.valor);
+      const dataPagamento = req.body.data;
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      if (!valorPagamento || valorPagamento <= 0) {
+        return res.status(400).json({ erro: "Informe um valor válido." });
+      }
+
+      if (!dataPagamento) {
+        return res.status(400).json({ erro: "Informe a data do pagamento." });
+      }
+
+      const { data: emprestimo, error: erroBusca } = await supabase
+        .from("emprestimos_entre_lojas")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (erroBusca) throw erroBusca;
+
+      const novoValorPago = Number(
+        (Number(emprestimo.valor_pago || 0) + valorPagamento).toFixed(2)
+      );
+
+      if (novoValorPago > Number(emprestimo.valor) + 0.01) {
+        return res.status(400).json({
+          erro: `Esse pagamento deixaria o total pago (${novoValorPago}) maior que a dívida (${emprestimo.valor}).`,
+        });
+      }
+
+      const { usuario, perfil } = await obterPerfilOpcional(req);
+
+      await supabase.from("emprestimos_entre_lojas_pagamentos").insert({
+        emprestimo_id: id,
+        valor: valorPagamento,
+        data: dataPagamento,
+        criado_por: perfil?.nome || usuario?.email || "",
+      });
+
+      const { data: atualizado, error: erroUpdate } = await supabase
+        .from("emprestimos_entre_lojas")
+        .update({
+          valor_pago: novoValorPago,
+          status: novoValorPago >= Number(emprestimo.valor) - 0.01 ? "quitado" : "aberto",
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select("*, pagamentos:emprestimos_entre_lojas_pagamentos(*)")
+        .single();
+
+      if (erroUpdate) throw erroUpdate;
+
+      registrarAuditoria(
+        req,
+        "registrou pagamento",
+        "emprestimos_entre_lojas",
+        id,
+        `Pagamento de ${valorPagamento} — total pago agora: ${novoValorPago}`
+      );
+
+      res.json(atualizado);
+    } catch (erro) {
+      console.error("Erro ao registrar pagamento de empréstimo:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível registrar o pagamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.delete(
+  "/emprestimos-entre-lojas/:id",
+  verificarAdmin,
+  async function (req, res) {
+    try {
+      const { error } = await supabase
+        .from("emprestimos_entre_lojas")
+        .delete()
+        .eq("id", req.params.id);
+
+      if (error) throw error;
+
+      registrarAuditoria(
+        req,
+        "excluiu",
+        "emprestimos_entre_lojas",
+        req.params.id,
+        null
+      );
+
+      res.status(204).send();
+    } catch (erro) {
+      console.error("Erro ao excluir empréstimo entre lojas:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível excluir o empréstimo.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 app.get("/usuarios", verificarAdmin, async function (req, res) {
   try {
