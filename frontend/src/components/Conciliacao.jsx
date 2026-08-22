@@ -200,6 +200,41 @@ function Conciliacao({ lojaId }) {
   const [avisoAberturaFechamento, setAvisoAberturaFechamento] = useState(null);
   const [conferindoAbertura, setConferindoAbertura] = useState(false);
 
+  // Pedido do usuário (22/08/2026): botão manual pra forçar a conferência
+  // de retiradas de frente de caixa não lançadas — reler a mesma foto já
+  // salva desse fechamento e rodar de novo a checagem (a automática já
+  // roda sozinha toda vez que a foto é lida, esse botão é só pra
+  // forçar de novo sem precisar reenviar a foto).
+  const [conferindoRetiradas, setConferindoRetiradas] = useState(false);
+
+  async function conferirRetiradasDeNovo() {
+    if (!grupoEscolhido?.itens?.length) return;
+
+    const itemCaixa =
+      grupoEscolhido.itens.find((item) => item.tipo === "caixa") ||
+      grupoEscolhido.itens[0];
+
+    setConferindoRetiradas(true);
+
+    try {
+      const fotoResultado = await buscarFotoFechamentoCaixa(itemCaixa.id);
+
+      if (!fotoResultado?.foto) {
+        alert("Esse fechamento não tem foto salva pra reler.");
+        return;
+      }
+
+      await conferirFotoDataUrl(fotoResultado.foto, {
+        salvarEm: itemCaixa.id,
+        dataChaveAlvo: grupoEscolhido.dataChave,
+      });
+    } catch (erro) {
+      alert(erro.message || "Não foi possível conferir as retiradas agora.");
+    } finally {
+      setConferindoRetiradas(false);
+    }
+  }
+
   async function conferirAberturaVsFechamentoAnterior() {
     setConferindoAbertura(true);
     setAvisoAberturaFechamento(null);
@@ -791,7 +826,7 @@ function Conciliacao({ lojaId }) {
     }
 
     try {
-      const resultado = await conferirFechamentoFoto(fotoDataUrl);
+      const resultado = await conferirFechamentoFoto(fotoDataUrl, lojaId);
 
       // Usuário já trocou de fechamento enquanto a IA lia a foto — descarta
       // essa resposta atrasada, não pode pintar a tabela do fechamento
@@ -838,6 +873,8 @@ function Conciliacao({ lojaId }) {
         sucesso: true,
         formasNaoLidas,
         avisoSomaNaoBate: resultado.aviso_soma_nao_bate || null,
+        despesasLancadasAutomaticamente:
+          resultado.despesas_lancadas_automaticamente || [],
       };
       if (!silencioso) setResultadoFoto(resultadoOk);
 
@@ -1572,6 +1609,20 @@ function Conciliacao({ lojaId }) {
                 : "🔍 Conferir se a abertura de hoje bate com o fechamento de ontem"}
             </button>
 
+            {grupoEscolhido && (
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ marginLeft: 8 }}
+                onClick={conferirRetiradasDeNovo}
+                disabled={conferindoRetiradas}
+              >
+                {conferindoRetiradas
+                  ? "Conferindo..."
+                  : "💸 Conferir retiradas de frente de caixa não lançadas"}
+              </button>
+            )}
+
             {avisoAberturaFechamento && (
               <div
                 className="empty-state"
@@ -1666,6 +1717,24 @@ function Conciliacao({ lojaId }) {
                   ` Não consegui ler: ${resultadoFoto.formasNaoLidas.join(", ")} — preencha essa(s) manualmente.`}
               </>
             )}
+          </div>
+        )}
+
+        {resultadoFoto?.despesasLancadasAutomaticamente?.length > 0 && (
+          <div
+            className="empty-state"
+            style={{ color: "#16ca50", marginBottom: "10px" }}
+          >
+            💸 {resultadoFoto.despesasLancadasAutomaticamente.length} retirada(s)
+            de frente de caixa não estava(m) lançada(s) — foi lançada
+            automaticamente como despesa:
+            <ul>
+              {resultadoFoto.despesasLancadasAutomaticamente.map((despesa) => (
+                <li key={despesa.id}>
+                  {despesa.descricao} — {formatarMoeda(despesa.valor)}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

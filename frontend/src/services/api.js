@@ -242,11 +242,11 @@ export async function importarReceitasSaipos(lojaId, data) {
   });
 }
 
-export async function conferirFechamentoFoto(foto) {
+export async function conferirFechamentoFoto(foto, lojaId) {
   return requisicao("/pagseguro/conferir-fechamento", {
     method: "POST",
     headers: await cabecalhoAutenticado(),
-    body: JSON.stringify({ foto }),
+    body: JSON.stringify({ foto, loja_id: lojaId || null }),
   });
 }
 
