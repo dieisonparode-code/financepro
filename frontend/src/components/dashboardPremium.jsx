@@ -122,10 +122,11 @@ function Anel({ valor, cor, texto }) {
   );
 }
 
-// Pedido do usuário (22/08/2026): olho de privacidade no card do Saldo
-// — clica e esconde/mostra os valores (útil quando tem gente do lado
-// olhando a tela). Fica salvo (localStorage), então continua escondido
-// mesmo recarregando a página, até clicar de novo pra mostrar.
+// Pedido do usuário (22/08/2026): olho de privacidade GERAL (fora dos
+// cards, um botão só) — esconde só o número PRINCIPAL de Receitas,
+// Despesas, Fluxo de Caixa, Saldo e Próximos Recebimentos. Os detalhes
+// menores (Taxa, Fundo de Caixa, Fundo de Retirada) continuam sempre
+// visíveis, não precisam esconder. Fica salvo (localStorage).
 const MASCARA = "••••••";
 
 function CartaoPrincipal({
@@ -139,65 +140,27 @@ function CartaoPrincipal({
   taxa,
   emDinheiro,
   fundoRetirada,
-  mascaravel = false,
+  mascarar = false,
 }) {
   const temTaxa = bruto != null && taxa != null;
-  const [visivel, setVisivel] = useState(() => {
-    if (!mascaravel) return true;
-    try {
-      return localStorage.getItem("financepro_saldo_visivel") !== "false";
-    } catch {
-      return true;
-    }
-  });
-
-  function alternarVisibilidade() {
-    setVisivel((anterior) => {
-      const novo = !anterior;
-      try {
-        localStorage.setItem("financepro_saldo_visivel", String(novo));
-      } catch {
-        // localStorage indisponível — só não persiste entre recarregamentos.
-      }
-      return novo;
-    });
-  }
 
   return (
     <article className={`fp-kpi fp-kpi-${classe}`}>
       <div className="fp-kpi-cabecalho">
         <span>{titulo}</span>
-        {mascaravel ? (
-          <button
-            type="button"
-            onClick={alternarVisibilidade}
-            title={visivel ? "Esconder valores" : "Mostrar valores"}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-              fontSize: 16,
-              lineHeight: 1,
-            }}
-          >
-            {visivel ? "👁️" : "🙈"}
-          </button>
-        ) : (
-          <Icone className={classe}>{icone}</Icone>
-        )}
+        <Icone className={classe}>{icone}</Icone>
       </div>
 
       {temTaxa && (
         <div className="fp-kpi-bruto-taxa">
-          <span>{visivel ? bruto : MASCARA}</span>
-          <span>Taxas {visivel ? taxa : MASCARA}</span>
+          <span>{bruto}</span>
+          <span>Taxas {taxa}</span>
         </div>
       )}
 
       {emDinheiro != null && (
         <div className="fp-kpi-bruto-taxa">
-          <span>💵 fundo de caixa {visivel ? emDinheiro : MASCARA}</span>
+          <span>💵 fundo de caixa {emDinheiro}</span>
         </div>
       )}
 
@@ -207,14 +170,14 @@ function CartaoPrincipal({
           tela em quem não usa isso. */}
       {fundoRetirada && (
         <div className="fp-kpi-bruto-taxa">
-          <span>💰 fundo de retirada {visivel ? fundoRetirada : MASCARA}</span>
+          <span>💰 fundo de retirada {fundoRetirada}</span>
         </div>
       )}
 
       {temTaxa || emDinheiro != null ? (
-        <strong className="fp-kpi-liquido">{visivel ? valor : MASCARA}</strong>
+        <strong className="fp-kpi-liquido">{mascarar ? MASCARA : valor}</strong>
       ) : (
-        <strong>{visivel ? valor : MASCARA}</strong>
+        <strong>{mascarar ? MASCARA : valor}</strong>
       )}
 
       <small>{legenda}</small>
@@ -254,6 +217,31 @@ export default function DashboardPremium({
   acessoCardProximosRecebimentos = true,
   pontoDeEquilibrio = null,
 }) {
+  // Pedido do usuário (22/08/2026): olho de privacidade GERAL, fora dos
+  // cards — um botão só que esconde o número principal de Receitas,
+  // Despesas, Fluxo de Caixa, Saldo e Próximos Recebimentos de uma vez.
+  // Fica salvo (localStorage), então continua escondido mesmo
+  // recarregando a página.
+  const [valoresVisiveis, setValoresVisiveis] = useState(() => {
+    try {
+      return localStorage.getItem("financepro_valores_visiveis") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  function alternarValoresVisiveis() {
+    setValoresVisiveis((anterior) => {
+      const novo = !anterior;
+      try {
+        localStorage.setItem("financepro_valores_visiveis", String(novo));
+      } catch {
+        // localStorage indisponível — só não persiste entre recarregamentos.
+      }
+      return novo;
+    });
+  }
+
   // Pedido do usuário (19/08/2026): ordem fixa dos botões de loja no
   // Dashboard — Sinop, Sorriso, Rondonópolis, Uberlândia. Qualquer loja
   // nova cadastrada que não bata com nenhum desses 4 nomes (ex: lojas de
@@ -772,11 +760,32 @@ export default function DashboardPremium({
       )}
 
       {temAcessoFinanceiro && (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: 4,
+        }}
+      >
+        <button
+          type="button"
+          onClick={alternarValoresVisiveis}
+          title={valoresVisiveis ? "Esconder valores" : "Mostrar valores"}
+          className="secondary-button"
+          style={{ padding: "4px 10px", fontSize: 14 }}
+        >
+          {valoresVisiveis ? "👁️ Esconder valores" : "🙈 Mostrar valores"}
+        </button>
+      </div>
+      )}
+
+      {temAcessoFinanceiro && (
       <section className="fp-kpis">
         {acessoCardReceitas && (
         <CartaoPrincipal
           classe="verde"
           titulo="Receitas"
+          mascarar={!valoresVisiveis}
           valor={formatarMoeda(receitas)}
           legenda="↗ Faturamento do período"
           icone="↑"
@@ -788,6 +797,7 @@ export default function DashboardPremium({
         <CartaoPrincipal
           classe="vermelho"
           titulo="Despesas"
+          mascarar={!valoresVisiveis}
           valor={formatarMoeda(despesas)}
           legenda="↘ Custos totais do período"
           icone="↓"
@@ -799,6 +809,7 @@ export default function DashboardPremium({
         <CartaoPrincipal
           classe="roxo"
           titulo="Fluxo de caixa"
+          mascarar={!valoresVisiveis}
           valor={formatarMoeda(fluxoCaixa)}
           legenda={fluxoCaixa >= 0 ? "Positivo" : "Negativo"}
           icone="⌁"
@@ -815,7 +826,7 @@ export default function DashboardPremium({
         <CartaoPrincipal
           classe="azul"
           titulo="Saldo"
-          mascaravel
+          mascarar={!valoresVisiveis}
           valor={formatarMoeda(saldo)}
           // Pedido do usuário (18/08/2026): não é pra sumir com a linha de
           // Bruto/Taxas quando não há taxa nenhuma desde o ajuste do saldo —
@@ -840,6 +851,7 @@ export default function DashboardPremium({
         <CartaoPrincipal
           classe="ciano"
           titulo="Próximos Recebimentos"
+          mascarar={!valoresVisiveis}
           valor={formatarMoeda(aReceber)}
           bruto={taxaAReceber > 0 ? formatarMoeda(aReceberBruto) : null}
           taxa={
