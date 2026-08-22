@@ -318,6 +318,46 @@ function VendasSaipos({ lojas = [], ehAdministrador = false }) {
               </div>
             </div>
 
+            {/* Pedido do usuário (21/08/2026): visibilidade sobre venda
+                cancelada — golpe clássico de caixa (registra, cancela,
+                fica com o dinheiro). Mostra o detalhe de cada
+                cancelamento do dia, com aviso quando o padrão foge do
+                normal (muitas ou valor alto). */}
+            {resumo.vendas_canceladas_detalhe?.length > 0 && (
+              <>
+                {resumo.alerta_cancelamento && (
+                  <div
+                    className="alerta-contas-pagar"
+                    style={{ background: "rgba(239, 68, 68, 0.15)" }}
+                  >
+                    <strong>
+                      ⚠️ Cancelamento de venda fora do normal hoje — confere
+                      com o operador do caixa.
+                    </strong>
+                  </div>
+                )}
+
+                <div className="categoria-item categoria-item-titulo">
+                  <strong>🚫 Vendas canceladas</strong>
+                </div>
+
+                {resumo.vendas_canceladas_detalhe.map((venda) => (
+                  <div className="categoria-item" key={venda.id_sale}>
+                    <div className="categoria-identificacao">
+                      <div className="categoria-icone">🚫</div>
+                      <div>
+                        <strong>{formatarMoeda(venda.valor)}</strong>
+                        <div>
+                          {formatarHora(venda.criado_em)} — {venda.canal}
+                          {venda.operador && ` — operador #${venda.operador}`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
             {canais.length > 0 && (
               <div className="categoria-item categoria-item-titulo">
                 <strong>Por canal de venda</strong>

@@ -4200,7 +4200,35 @@ app.get(
         { onConflict: "loja_id,data" }
       );
 
-      res.json(resumo);
+      // Pedido do usuário (21/08/2026): visibilidade sobre cancelamento de
+      // venda — um dos golpes clássicos de caixa (registra, cancela, fica
+      // com o dinheiro). Só CONTAR já existia (quantidade_canceladas);
+      // agora manda o detalhe de cada cancelamento também, e um aviso
+      // quando o padrão do dia parece fora do normal. Não entra no
+      // upsert acima de propósito — é só pra exibir na tela, não precisa
+      // virar coluna nova na tabela fechamento_saipos.
+      const vendasCanceladas = vendas.filter((venda) => venda.canceled === "Y");
+      const valorTotalCancelado = vendasCanceladas.reduce(
+        (soma, venda) =>
+          soma + Number(venda.total_amount ?? venda.totals?.total_amount ?? 0),
+        0
+      );
+      const LIMITE_QUANTIDADE_CANCELAMENTOS_SUSPEITO = 3;
+      const LIMITE_VALOR_CANCELADO_SUSPEITO = 150;
+
+      res.json({
+        ...resumo,
+        vendas_canceladas_detalhe: vendasCanceladas.map((venda) => ({
+          id_sale: venda.id_sale,
+          valor: Number(venda.total_amount ?? venda.totals?.total_amount ?? 0),
+          criado_em: venda.created_at,
+          operador: venda.cashier?.id_user || null,
+          canal: venda.partner_sale?.desc_partner_sale || "Balcão/Direto",
+        })),
+        alerta_cancelamento:
+          vendasCanceladas.length >= LIMITE_QUANTIDADE_CANCELAMENTOS_SUSPEITO ||
+          valorTotalCancelado >= LIMITE_VALOR_CANCELADO_SUSPEITO,
+      });
     } catch (erro) {
       console.error("Erro ao buscar fechamento na Saipos:", erro.message);
 
