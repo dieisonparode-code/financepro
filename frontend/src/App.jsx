@@ -613,6 +613,11 @@ function FinanceApp() {
   // esse fundo".
   const [fundosRetiradas, setFundosRetiradas] = useState([]);
 
+  // Pedido do usuário (22/08/2026): dá pra fechar (X) o aviso de
+  // "abertura não bate com fechamento anterior" — some da tela até uma
+  // divergência NOVA aparecer (fechamento diferente), não é permanente.
+  const [divergenciasFechadas, setDivergenciasFechadas] = useState(new Set());
+
   function carregarFundosRetiradas() {
     buscarFundoRetiradasCaixa()
       .then((dados) => setFundosRetiradas(Array.isArray(dados) ? dados : []))
@@ -1816,11 +1821,21 @@ const divergenciasAberturaFechamento = useMemo(() => {
 
     if (Math.abs(diferenca) > 0.02) {
       divergencias.push({
+        // Pedido do usuário (22/08/2026): usa o próprio ID do fechamento
+        // como chave — assim, se a mesma divergência aparecer nas
+        // checagens seguintes (nada mudou), o "fechado" continua
+        // fechado; some sozinho da lista só quando um NOVO fechamento
+        // realmente muda o cálculo.
+        chave: `${lojaIdChave}-${maisRecente.id}`,
         loja_id: lojaIdChave,
         loja_nome: lojas.find((loja) => String(loja.id) === lojaIdChave)?.nome || "Loja",
         diferenca,
         aberturaMaisRecente,
         fechamentoAnterior,
+        // Data de abertura desse turno, pra identificar QUAL caixa é —
+        // sem isso não dava pra saber a qual fechamento a divergência
+        // se referia.
+        criadoEm: maisRecente.criado_em,
       });
     }
   });
@@ -4158,22 +4173,60 @@ const pontoDeEquilibrio = useMemo(() => {
     })()}
 
   {temPermissaoFechamento("conciliacao") &&
-    divergenciasAberturaFechamento.length > 0 && (
+    (() => {
+      const divergenciasVisiveis = divergenciasAberturaFechamento.filter(
+        (divergencia) => !divergenciasFechadas.has(divergencia.chave)
+      );
+
+      if (divergenciasVisiveis.length === 0) return null;
+
+      return (
       <div className="alerta-contas-pagar" style={{ background: "rgba(239, 68, 68, 0.15)" }}>
         <strong>⚠️ Abertura de caixa não bate com o fechamento anterior:</strong>
 
         <ul>
-          {divergenciasAberturaFechamento.map((divergencia) => (
-            <li key={divergencia.loja_id}>
-              {divergencia.loja_nome}: fechou com {formatarMoeda(divergencia.fechamentoAnterior)},
-              abriu com {formatarMoeda(divergencia.aberturaMaisRecente)} —{" "}
-              {divergencia.diferenca > 0 ? "sobrou" : "faltou"}{" "}
-              {formatarMoeda(Math.abs(divergencia.diferenca))}
+          {divergenciasVisiveis.map((divergencia) => (
+            <li
+              key={divergencia.chave}
+              style={{ display: "flex", justifyContent: "space-between", gap: 8 }}
+            >
+              <span>
+                {divergencia.loja_nome} — fechamento de{" "}
+                {paraDataUtc(divergencia.criadoEm)?.toLocaleString("pt-BR", {
+                  timeZone: "America/Sao_Paulo",
+                }) || "data desconhecida"}
+                : fechou com{" "}
+                {formatarMoeda(divergencia.fechamentoAnterior)}, abriu com{" "}
+                {formatarMoeda(divergencia.aberturaMaisRecente)} —{" "}
+                {divergencia.diferenca > 0 ? "sobrou" : "faltou"}{" "}
+                {formatarMoeda(Math.abs(divergencia.diferenca))}
+              </span>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setDivergenciasFechadas(
+                    (anteriores) => new Set([...anteriores, divergencia.chave])
+                  )
+                }
+                title="Fechar esse aviso"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  padding: 0,
+                }}
+              >
+                ✖️
+              </button>
             </li>
           ))}
         </ul>
       </div>
-    )}
+      );
+    })()}
 
   {ehAdministrador &&
     statusWhatsappBot &&
