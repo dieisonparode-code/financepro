@@ -132,6 +132,7 @@ function CartaoPrincipal({
   bruto,
   taxa,
   emDinheiro,
+  fundoRetirada,
 }) {
   const temTaxa = bruto != null && taxa != null;
 
@@ -152,6 +153,16 @@ function CartaoPrincipal({
       {emDinheiro != null && (
         <div className="fp-kpi-bruto-taxa">
           <span>💵 fundo de caixa {emDinheiro}</span>
+        </div>
+      )}
+
+      {/* Pedido do usuário (22/08/2026): retirada genérica de caixa
+          guardada pra gasto futuro (ainda não é despesa) — só mostra a
+          linha quando tem algum valor disponível, pra não poluir a
+          tela em quem não usa isso. */}
+      {fundoRetirada && (
+        <div className="fp-kpi-bruto-taxa">
+          <span>💰 fundo de retirada {fundoRetirada}</span>
         </div>
       )}
 
@@ -239,6 +250,7 @@ export default function DashboardPremium({
   const totalTaxas = numero(totais.totalTaxas);
   const percentualTaxas = numero(totais.percentualTaxas);
   const dinheiroEmCaixa = numero(totais.dinheiroEmCaixa);
+  const fundoRetirada = numero(totais.fundoRetirada);
   const cmv = numero(totais.cmvPercentual);
   const margem = numero(totais.margemPercentual);
 
@@ -771,6 +783,7 @@ export default function DashboardPremium({
           // mesmo zerado, pra dar pra confirmar visualmente que zerou de
           // verdade (em vez de simplesmente não aparecer nada).
           emDinheiro={formatarMoeda(dinheiroEmCaixa)}
+          fundoRetirada={fundoRetirada > 0 ? formatarMoeda(fundoRetirada) : null}
           legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}

@@ -286,6 +286,12 @@ function prepararLancamento(dados = {}) {
         ? Number(dados.valor_liquido_esperado)
         : null,
     data_prevista_recebimento: dados.data_prevista_recebimento || null,
+    // Pedido do usuário (22/08/2026): despesa paga com dinheiro de um
+    // Fundo de Retirada (retirada genérica de caixa ainda não gasta) —
+    // liga aqui e desconta de lá em vez de contar como saída "nova".
+    fundo_retirada_id: dados.fundo_retirada_id
+      ? Number(dados.fundo_retirada_id)
+      : null,
   };
 }
 
@@ -895,6 +901,38 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       data.id,
       `${data.tipo}: ${data.descricao} (${data.valor})`
     );
+
+    // Pedido do usuário (22/08/2026): despesa marcada como "paga com
+    // fundo de retirada" — abate do fundo em vez de contar como saída
+    // nova (o dinheiro já tinha saído do caixa antes, só estava
+    // guardado). Não bloqueia a criação da despesa se isso falhar — só
+    // loga, a despesa em si já foi criada normal.
+    if (dadosPreparados.fundo_retirada_id) {
+      try {
+        const { data: fundo, error: erroFundo } = await supabase
+          .from("fundo_retiradas_caixa")
+          .select("*")
+          .eq("id", dadosPreparados.fundo_retirada_id)
+          .single();
+
+        if (!erroFundo && fundo) {
+          const novoValorUsado = Number(
+            (Number(fundo.valor_usado || 0) + Number(data.valor || 0)).toFixed(2)
+          );
+
+          await supabase
+            .from("fundo_retiradas_caixa")
+            .update({
+              valor_usado: novoValorUsado,
+              status: novoValorUsado >= Number(fundo.valor) - 0.01 ? "esgotado" : "aberto",
+              atualizado_em: new Date().toISOString(),
+            })
+            .eq("id", fundo.id);
+        }
+      } catch (erroAbaterFundo) {
+        console.error("Erro ao abater do fundo de retirada:", erroAbaterFundo.message);
+      }
+    }
 
     res.status(201).json(data);
   } catch (erro) {
@@ -5174,6 +5212,38 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
 
     const descricao = (retirada.descricao || "Retirada de frente de caixa").trim();
 
+    // Pedido do usuário (22/08/2026): retirada GENÉRICA (sem nome de
+    // entregador/motivo específico impresso — ex: só "retirada de
+    // caixa") não é despesa ainda, o dinheiro só mudou de lugar — vira
+    // um Fundo de Retirada à parte, sem descontar o Saldo na hora. Com
+    // motivo específico (entregador, taxa de motoboy, diária, etc), já
+    // sabe pra onde foi o dinheiro — lança como despesa de verdade.
+    const descricaoMinuscula = descricao.toLowerCase();
+    const temMotivoEspecifico = /entregador|motoboy|moto boy|di[aá]ria|acerto|taxa|fornecedor/i.test(
+      descricaoMinuscula
+    );
+
+    if (!temMotivoEspecifico) {
+      const { data: fundoCriado, error: erroFundo } = await supabase
+        .from("fundo_retiradas_caixa")
+        .insert({
+          loja_id: lojaId,
+          valor,
+          data: dataAbertura,
+          descricao: `${descricao} (${retirada.data_hora || "sem horário"}) — detectado automaticamente na leitura do fechamento de caixa.`,
+        })
+        .select("*")
+        .single();
+
+      if (erroFundo) {
+        console.error("Erro ao criar fundo de retirada automático:", erroFundo.message);
+        continue;
+      }
+
+      lancadas.push({ ...fundoCriado, ehFundo: true });
+      continue;
+    }
+
     const { data: criada, error: erroCriar } = await supabase
       .from("lancamentos")
       .insert([
@@ -5801,6 +5871,90 @@ app.delete("/retiradas-socios/:id", verificarAdmin, async function (req, res) {
     });
   }
 });
+
+// Pedido do usuário (22/08/2026): Fundo de Retirada de Caixa — dinheiro
+// retirado do caixa sem destino específico ainda (ex: "retirada de
+// caixa -500,00"), guardado pra gasto futuro. Não desconta o Saldo na
+// hora (o dinheiro só mudou de lugar) — só quando uma despesa marcar
+// "pago com esse fundo" é que desconta de verdade.
+app.get(
+  "/fundo-retiradas-caixa",
+  verificarPermissao(["saldo", "financeiro"]),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("fundo_retiradas_caixa")
+        .select("*")
+        .order("data", { ascending: false });
+
+      if (error) throw error;
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar fundo de retiradas de caixa:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar o fundo de retiradas de caixa.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/fundo-retiradas-caixa",
+  verificarPermissao(["saldo", "financeiro"]),
+  async function (req, res) {
+    try {
+      const lojaId = Number(req.body.loja_id);
+      const valor = Number(req.body.valor);
+      const data = req.body.data;
+
+      if (!Number.isFinite(lojaId)) {
+        return res.status(400).json({ erro: "Escolha a loja." });
+      }
+
+      if (!valor || valor <= 0) {
+        return res.status(400).json({ erro: "Informe um valor válido." });
+      }
+
+      if (!data) {
+        return res.status(400).json({ erro: "Informe a data." });
+      }
+
+      const { usuario, perfil } = await obterPerfilOpcional(req);
+
+      const { data: criado, error } = await supabase
+        .from("fundo_retiradas_caixa")
+        .insert({
+          loja_id: lojaId,
+          valor,
+          data,
+          descricao: (req.body.descricao || "").trim(),
+          criado_por: perfil?.nome || usuario?.email || "",
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      registrarAuditoria(
+        req,
+        "criou",
+        "fundo_retiradas_caixa",
+        criado.id,
+        `Fundo de retirada de ${valor}`
+      );
+
+      res.status(201).json(criado);
+    } catch (erro) {
+      console.error("Erro ao criar fundo de retirada:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível salvar o fundo de retirada.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 // Pedido do usuário (21/08/2026): Empréstimo entre lojas — ex: loja A
 // paga uma conta da loja B porque B estava sem saldo. A loja credora

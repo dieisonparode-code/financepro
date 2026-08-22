@@ -465,6 +465,21 @@ export async function excluirEmprestimoEntreLojas(id) {
   });
 }
 
+// Fundo de Retirada de Caixa (22/08/2026).
+export async function buscarFundoRetiradasCaixa() {
+  return requisicao("/fundo-retiradas-caixa", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarFundoRetiradaCaixa(dados) {
+  return requisicao("/fundo-retiradas-caixa", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
 export async function buscarDinheiroInformado() {
   return requisicao("/caixa-dinheiro-informado", {
     headers: await cabecalhoAutenticado(),

@@ -99,6 +99,8 @@ import {
   excluirFichaTecnica,
   buscarVendasCanceladasHoje,
   buscarLogAuditoria,
+  buscarFundoRetiradasCaixa,
+  criarFundoRetiradaCaixa,
   aprovarExclusaoLancamento,
   rejeitarExclusaoLancamento,
 } from "./services/api";
@@ -372,6 +374,7 @@ function criarFormularioInicial(tipo = "receita") {
     loja_id: "",
     forma_pagamento_id: "",
     pago_em_dinheiro: false,
+    fundo_retirada_id: "",
     data: hojeLocal(),
   };
 }
@@ -601,6 +604,25 @@ function FinanceApp() {
       .catch((erro) =>
         console.error("Erro ao buscar resumo de empréstimos entre lojas:", erro)
       );
+  }, []);
+
+  // Fundo de Retirada de Caixa (22/08/2026) — retirada genérica de
+  // frente de caixa (sem destino específico ainda) guardada pra gasto
+  // futuro. Buscado por QUALQUER usuário (não é sigiloso), pra mostrar
+  // no Dashboard e pra escolher na hora de lançar uma despesa "paga com
+  // esse fundo".
+  const [fundosRetiradas, setFundosRetiradas] = useState([]);
+
+  function carregarFundosRetiradas() {
+    buscarFundoRetiradasCaixa()
+      .then((dados) => setFundosRetiradas(Array.isArray(dados) ? dados : []))
+      .catch((erro) =>
+        console.error("Erro ao buscar fundo de retiradas de caixa:", erro)
+      );
+  }
+
+  useEffect(() => {
+    carregarFundosRetiradas();
   }, []);
 
   const [clientes, setClientes] = useState([]);
@@ -1738,6 +1760,25 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
   return maisRecente ? Number(maisRecente.em_caixa || 0) : 0;
 }, [registrosDinheiroInformado, lojaDashboard]);
 
+// Pedido do usuário (22/08/2026): saldo disponível do Fundo de
+// Retirada de Caixa (retirada genérica ainda não gasta) — soma
+// (valor - valor_usado) de todos os fundos "aberto" da loja
+// selecionada (ou de todas, se "Todas as lojas").
+const fundoRetiradaDisponivel = useMemo(() => {
+  return fundosRetiradas
+    .filter(
+      (fundo) =>
+        fundo.status === "aberto" &&
+        (lojaDashboard === "todas" ||
+          String(fundo.loja_id || "") === String(lojaDashboard))
+    )
+    .reduce(
+      (total, fundo) =>
+        total + Number(fundo.valor || 0) - Number(fundo.valor_usado || 0),
+      0
+    );
+}, [fundosRetiradas, lojaDashboard]);
+
 // Pedido do usuário (21/08/2026): antes era um botão manual dentro da
 // Conciliação ("conferirAberturaVsFechamentoAnterior") — só avisava se
 // alguém lembrasse de clicar. Agora é automático, igual o aviso de
@@ -2062,6 +2103,7 @@ const divergenciasAberturaFechamento = useMemo(() => {
       cmvPercentual,
       margemPercentual,
       dinheiroEmCaixa: dinheiroEmCaixaFiltrado,
+      fundoRetirada: fundoRetiradaDisponivel,
     };
   }, [
     lancamentosDashboard,
@@ -2069,6 +2111,7 @@ const divergenciasAberturaFechamento = useMemo(() => {
     dinheiroEmCaixaFiltrado,
     resumoRetiradasSocios,
     resumoEmprestimosEntreLojas,
+    fundoRetiradaDisponivel,
   ]);
 
   // Pedido do usuário (21/08/2026): mesmo Ponto de Equilíbrio do
@@ -2844,6 +2887,10 @@ const pontoDeEquilibrio = useMemo(() => {
       forma_pagamento_id: formulario.forma_pagamento_id || null,
       pago_em_dinheiro:
         tipoLancamento === "despesa" ? Boolean(formulario.pago_em_dinheiro) : false,
+      fundo_retirada_id:
+        tipoLancamento === "despesa" && formulario.fundo_retirada_id
+          ? formulario.fundo_retirada_id
+          : null,
       valor_bruto:
         tipoLancamento === "receita" && formaPagamentoSelecionada
           ? valorNumerico
@@ -2885,6 +2932,13 @@ const pontoDeEquilibrio = useMemo(() => {
             )
           : [salvo, ...anteriores]
       );
+
+      // Se a despesa foi paga com um Fundo de Retirada, o backend já
+      // abateu de lá — busca o fundo de novo pra refletir o saldo
+      // atualizado na tela.
+      if (dados.fundo_retirada_id) {
+        carregarFundosRetiradas();
+      }
 
       fecharModal();
 
@@ -6021,6 +6075,44 @@ const pontoDeEquilibrio = useMemo(() => {
                   💵 Pago em dinheiro (saiu do caixa)
                 </label>
               )}
+
+              {/* Pedido do usuário (22/08/2026): despesa paga com dinheiro
+                  de um Fundo de Retirada (retirada genérica de caixa
+                  ainda não gasta) — se não marcar nada aqui, desconta do
+                  Saldo geral normal, sem mexer em fundo nenhum. Só
+                  aparece se tiver algum fundo aberto pra loja escolhida. */}
+              {tipoLancamento === "despesa" &&
+                fundosRetiradas.some(
+                  (fundo) =>
+                    fundo.status === "aberto" &&
+                    String(fundo.loja_id) === String(formulario.loja_id)
+                ) && (
+                  <label>
+                    💰 Pago com fundo de retirada de caixa
+                    <select
+                      value={formulario.fundo_retirada_id}
+                      onChange={(evento) =>
+                        alterarCampo("fundo_retirada_id", evento.target.value)
+                      }
+                    >
+                      <option value="">Não — descontar do Saldo normal</option>
+                      {fundosRetiradas
+                        .filter(
+                          (fundo) =>
+                            fundo.status === "aberto" &&
+                            String(fundo.loja_id) === String(formulario.loja_id)
+                        )
+                        .map((fundo) => (
+                          <option key={fundo.id} value={fundo.id}>
+                            {fundo.descricao || "Fundo de retirada"} — disponível{" "}
+                            {formatarMoeda(
+                              Number(fundo.valor) - Number(fundo.valor_usado || 0)
+                            )}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
 
               {tipoLancamento === "receita" && (
                 <label>
