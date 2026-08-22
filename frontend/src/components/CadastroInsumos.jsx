@@ -22,6 +22,10 @@ function CadastroInsumos({
   // Técnica pra calcular o custo real de cada prato.
   const [custoUnitario, setCustoUnitario] = useState("");
   const [lojaId, setLojaId] = useState(lojaFixaId || "");
+  // Pedido do usuário (21/08/2026): cadastrar o mesmo insumo em todas as
+  // lojas de uma vez, em vez de repetir o cadastro uma por uma. Só faz
+  // sentido pra insumo NOVO (editar é sempre de um registro específico).
+  const [paraTodasAsLojas, setParaTodasAsLojas] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -37,6 +41,8 @@ function CadastroInsumos({
     setFatorConversao("1");
     setCustoUnitario("");
     setLojaId(lojaFixaId || "");
+    // Pedido do usuário (21/08/2026): fica marcado depois de salvar, pra
+    // não precisar marcar de novo cadastrando vários insumos seguidos.
     setEditandoId(null);
   }
 
@@ -50,7 +56,17 @@ function CadastroInsumos({
       return;
     }
 
-    if (!lojaId) {
+    if (!editandoId && paraTodasAsLojas && lojas.length === 0) {
+      alert("Não tem nenhuma loja cadastrada ainda.");
+      return;
+    }
+
+    if (!editandoId && !paraTodasAsLojas && !lojaId) {
+      alert("Selecione a loja do insumo (ou marque \"Cadastrar em todas as lojas\").");
+      return;
+    }
+
+    if (editandoId && !lojaId) {
       alert("Selecione a loja do insumo.");
       return;
     }
@@ -68,6 +84,32 @@ function CadastroInsumos({
           custo_unitario: paraNumero(custoUnitario),
           loja_id: lojaId,
         });
+      } else if (paraTodasAsLojas) {
+        // Pedido do usuário (21/08/2026): mesmo insumo em todas as lojas
+        // de uma vez — um registro por loja (o estoque é por loja, não
+        // dá pra compartilhar uma linha só entre lojas diferentes).
+        const falhas = [];
+
+        for (const loja of lojas) {
+          try {
+            await adicionarInsumo({
+              nome: nomeLimpo,
+              unidade_medida: unidadeMedida,
+              estoque_atual: estoqueInicial || 0,
+              estoque_minimo: estoqueMinimo || 0,
+              unidade_compra: unidadeCompra.trim(),
+              fator_conversao: fatorConversao || 1,
+              custo_unitario: paraNumero(custoUnitario),
+              loja_id: loja.id,
+            });
+          } catch (erro) {
+            falhas.push(loja.nome);
+          }
+        }
+
+        if (falhas.length > 0) {
+          alert(`Não foi possível cadastrar em: ${falhas.join(", ")}`);
+        }
       } else {
         await adicionarInsumo({
           nome: nomeLimpo,
@@ -314,6 +356,7 @@ function CadastroInsumos({
                 <select
                   value={lojaId}
                   onChange={(evento) => setLojaId(evento.target.value)}
+                  disabled={!editandoId && paraTodasAsLojas}
                 >
                   <option value="">Selecione</option>
                   {lojas.map((loja) => (
@@ -322,6 +365,23 @@ function CadastroInsumos({
                     </option>
                   ))}
                 </select>
+              </label>
+            )}
+
+            {vePermissaoTotal && !editandoId && (
+              <label
+                className="toque-alvo"
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={paraTodasAsLojas}
+                  onChange={(evento) => {
+                    setParaTodasAsLojas(evento.target.checked);
+                    if (evento.target.checked) setLojaId("");
+                  }}
+                />
+                Cadastrar em todas as lojas ({lojas.length})
               </label>
             )}
           </div>
