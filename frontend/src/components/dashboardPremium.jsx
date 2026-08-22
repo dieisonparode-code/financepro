@@ -771,10 +771,17 @@ export default function DashboardPremium({
           type="button"
           onClick={alternarValoresVisiveis}
           title={valoresVisiveis ? "Esconder valores" : "Mostrar valores"}
-          className="secondary-button"
-          style={{ padding: "4px 10px", fontSize: 14 }}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 4,
+            fontSize: 18,
+            lineHeight: 1,
+            opacity: 0.7,
+          }}
         >
-          {valoresVisiveis ? "👁️ Esconder valores" : "🙈 Mostrar valores"}
+          {valoresVisiveis ? "👁️" : "🙈"}
         </button>
       </div>
       )}
