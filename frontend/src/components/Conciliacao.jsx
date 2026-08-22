@@ -377,7 +377,16 @@ function Conciliacao({ lojaId }) {
     if (salvos) {
       Object.entries(salvos).forEach(([forma, valor]) => {
         if (valor != null) {
-          base[forma] = Number(valor).toFixed(2);
+          // Bug real corrigido (22/08/2026): .toFixed(2) sempre usa ponto
+          // decimal ("374.20", formato americano) — mas o resto do
+          // sistema (CampoValor, paraNumero) espera formato brasileiro
+          // (vírgula decimal, ponto de milhar). "374.20" salvo assim era
+          // lido de volta como 37420 (o ponto sendo tratado como
+          // separador de milhar), inflando a diferença em ~100x.
+          base[forma] = Number(valor).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
         }
       });
     }
@@ -652,7 +661,11 @@ function Conciliacao({ lojaId }) {
 
       Object.entries(valoresSalvos).forEach(([forma, valor]) => {
         if (valor != null) {
-          novo[forma] = Number(valor).toFixed(2);
+          // Mesmo bug de .toFixed(2) corrigido acima em baseInformadoDoGrupo.
+          novo[forma] = Number(valor).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
         }
       });
 
@@ -806,7 +819,11 @@ function Conciliacao({ lojaId }) {
 
         Object.entries(resultado.valores).forEach(([forma, valor]) => {
           if (valor != null) {
-            novo[forma] = valor.toFixed(2);
+            // Mesmo bug de .toFixed(2) corrigido acima.
+            novo[forma] = Number(valor).toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            });
           }
         });
 
@@ -1805,7 +1822,12 @@ function Conciliacao({ lojaId }) {
                                         onClick={() => {
                                           setEditandoEsperado(forma);
                                           setValorEsperadoDigitado(
-                                            temSistema ? valorSistema.toFixed(2) : ""
+                                            temSistema
+                                              ? valorSistema.toLocaleString("pt-BR", {
+                                                  minimumFractionDigits: 2,
+                                                  maximumFractionDigits: 2,
+                                                })
+                                              : ""
                                           );
                                         }}
                                         style={{
