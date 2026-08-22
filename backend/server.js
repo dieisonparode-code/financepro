@@ -6182,9 +6182,14 @@ app.post("/insumos", verificarPermissao("estoque"), async function (req, res) {
       });
     }
 
-    if (!dadosInsumo.loja_id) {
+    // Pedido do usuário (22/08/2026): insumo "de todas as lojas" — um
+    // registro só (loja_id null), aparece em qualquer loja que filtrar,
+    // sem duplicar. Só aceita loja_id vazio quando vier explicitamente
+    // marcado como "todas_as_lojas" — sem isso, continua exigindo
+    // escolher uma loja (evita registro órfão por esquecimento).
+    if (!dadosInsumo.loja_id && !req.body.todas_as_lojas) {
       return res.status(400).json({
-        erro: "Selecione a loja do insumo.",
+        erro: "Selecione a loja do insumo (ou marque \"Todas as lojas\").",
       });
     }
 

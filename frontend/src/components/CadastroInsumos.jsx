@@ -56,18 +56,8 @@ function CadastroInsumos({
       return;
     }
 
-    if (!editandoId && paraTodasAsLojas && lojas.length === 0) {
-      alert("Não tem nenhuma loja cadastrada ainda.");
-      return;
-    }
-
     if (!editandoId && !paraTodasAsLojas && !lojaId) {
-      alert("Selecione a loja do insumo (ou marque \"Cadastrar em todas as lojas\").");
-      return;
-    }
-
-    if (editandoId && !lojaId) {
-      alert("Selecione a loja do insumo.");
+      alert("Selecione a loja do insumo (ou marque \"Todas as lojas\").");
       return;
     }
 
@@ -82,35 +72,13 @@ function CadastroInsumos({
           unidade_compra: unidadeCompra.trim(),
           fator_conversao: fatorConversao || 1,
           custo_unitario: paraNumero(custoUnitario),
-          loja_id: lojaId,
+          loja_id: lojaId || null,
         });
-      } else if (paraTodasAsLojas) {
-        // Pedido do usuário (21/08/2026): mesmo insumo em todas as lojas
-        // de uma vez — um registro por loja (o estoque é por loja, não
-        // dá pra compartilhar uma linha só entre lojas diferentes).
-        const falhas = [];
-
-        for (const loja of lojas) {
-          try {
-            await adicionarInsumo({
-              nome: nomeLimpo,
-              unidade_medida: unidadeMedida,
-              estoque_atual: estoqueInicial || 0,
-              estoque_minimo: estoqueMinimo || 0,
-              unidade_compra: unidadeCompra.trim(),
-              fator_conversao: fatorConversao || 1,
-              custo_unitario: paraNumero(custoUnitario),
-              loja_id: loja.id,
-            });
-          } catch (erro) {
-            falhas.push(loja.nome);
-          }
-        }
-
-        if (falhas.length > 0) {
-          alert(`Não foi possível cadastrar em: ${falhas.join(", ")}`);
-        }
       } else {
+        // Pedido do usuário (22/08/2026): "todas as lojas" é UM registro
+        // só (loja_id nulo) — não duplica por loja. Aparece em qualquer
+        // loja que filtrar na lista, com um estoque único e
+        // compartilhado (não é um estoque por loja nesse caso).
         await adicionarInsumo({
           nome: nomeLimpo,
           unidade_medida: unidadeMedida,
@@ -119,7 +87,8 @@ function CadastroInsumos({
           unidade_compra: unidadeCompra.trim(),
           fator_conversao: fatorConversao || 1,
           custo_unitario: paraNumero(custoUnitario),
-          loja_id: lojaId,
+          loja_id: paraTodasAsLojas ? null : lojaId,
+          todas_as_lojas: paraTodasAsLojas,
         });
       }
 
@@ -148,6 +117,7 @@ function CadastroInsumos({
         : ""
     );
     setLojaId(insumo.loja_id || "");
+    setParaTodasAsLojas(!insumo.loja_id);
   }
 
   async function confirmarExclusao(insumo) {
@@ -246,11 +216,17 @@ function CadastroInsumos({
     }
   }
 
+  // Pedido do usuário (22/08/2026): insumo "de todas as lojas" (loja_id
+  // nulo) aparece SEMPRE, mesmo filtrando por uma loja específica —
+  // ele não pertence só a uma, então some ao contrário do esperado se
+  // fosse filtrado igual aos outros.
   const insumosFiltrados =
     lojaFiltro === "todas"
       ? insumos
       : insumos.filter(
-          (insumo) => String(insumo.loja_id) === String(lojaFiltro)
+          (insumo) =>
+            insumo.loja_id == null ||
+            String(insumo.loja_id) === String(lojaFiltro)
         );
 
   return (
@@ -367,7 +343,7 @@ function CadastroInsumos({
                   if (evento.target.checked) setLojaId("");
                 }}
               />
-              Cadastrar esse insumo em todas as lojas ({lojas.length})
+              🌐 Todas as lojas (um cadastro só, aparece em qualquer loja)
             </label>
           )}
 
@@ -379,7 +355,9 @@ function CadastroInsumos({
                   value={lojaId}
                   onChange={(evento) => setLojaId(evento.target.value)}
                 >
-                  <option value="">Selecione</option>
+                  <option value="">
+                    {editandoId ? "🌐 Todas as lojas" : "Selecione"}
+                  </option>
                   {lojas.map((loja) => (
                     <option key={loja.id} value={loja.id}>
                       {loja.nome}
@@ -486,9 +464,13 @@ function CadastroInsumos({
                         )}
                       </span>
                       <span>
-                        🏬{" "}
-                        {lojas.find((loja) => loja.id === insumo.loja_id)
-                          ?.nome || "Sem loja"}
+                        {insumo.loja_id == null
+                          ? "🌐 Todas as lojas"
+                          : `🏬 ${
+                              lojas.find(
+                                (loja) => String(loja.id) === String(insumo.loja_id)
+                              )?.nome || "Sem loja"
+                            }`}
                       </span>
                     </div>
                   </div>
