@@ -576,7 +576,7 @@ setInterval(function () {
 }, 60 * 1000);
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao, fundo_retirada_id, exclusao_solicitada_em, exclusao_solicitada_por";
 
 app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {
@@ -878,6 +878,35 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       }
     }
 
+    // Pedido do usuário (22/08/2026): despesa marcada como "paga com o
+    // Cofre" (fundo de retirada) NUNCA desconta o Saldo geral — o
+    // dinheiro já tinha saído do caixa antes (retirada) e ficou
+    // guardado; só quando é gasto de verdade é que sai do Cofre.
+    // Só cai no Saldo normal se: não marcou o Cofre, OU o Cofre não
+    // tem saldo suficiente pra cobrir esse valor (nesse caso vira uma
+    // despesa normal mesmo, como se não tivesse marcado nada).
+    let fundoValido = null;
+
+    if (dadosPreparados.fundo_retirada_id) {
+      const { data: fundo } = await supabase
+        .from("fundo_retiradas_caixa")
+        .select("*")
+        .eq("id", dadosPreparados.fundo_retirada_id)
+        .single();
+
+      const disponivelNoFundo = fundo
+        ? Number(fundo.valor || 0) - Number(fundo.valor_usado || 0)
+        : 0;
+
+      if (fundo && disponivelNoFundo >= Number(dadosPreparados.valor || 0) - 0.01) {
+        fundoValido = fundo;
+      } else {
+        // Cofre esgotado/insuficiente — cai pro comportamento padrão
+        // (desconta do Saldo normal), não bloqueia o lançamento.
+        dadosPreparados.fundo_retirada_id = null;
+      }
+    }
+
     const novoLancamento = {
       id: Date.now(),
       ...dadosPreparados,
@@ -894,43 +923,42 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       throw error;
     }
 
+    // Pedido do usuário (22/08/2026): "tudo que envolva dinheiro tem que
+    // ser rastreável" — deixa explícito no Log de Auditoria se a
+    // despesa saiu do Cofre ou do Saldo geral, e se alguém tentou
+    // marcar Cofre mas caiu pra Saldo normal por falta de saldo lá.
+    const rastroPagamento = fundoValido
+      ? ` — pago com o Cofre #${fundoValido.id} (não descontou o Saldo geral)`
+      : dadosPreparados.tipo === "despesa"
+      ? req.body.fundo_retirada_id
+        ? " — tentou marcar Cofre, mas não tinha saldo suficiente lá — descontou do Saldo geral"
+        : " — descontou do Saldo geral"
+      : "";
+
     registrarAuditoria(
       req,
       "criou",
       "lancamentos",
       data.id,
-      `${data.tipo}: ${data.descricao} (${data.valor})`
+      `${data.tipo}: ${data.descricao} (${data.valor})${rastroPagamento}`
     );
 
-    // Pedido do usuário (22/08/2026): despesa marcada como "paga com
-    // fundo de retirada" — abate do fundo em vez de contar como saída
-    // nova (o dinheiro já tinha saído do caixa antes, só estava
-    // guardado). Não bloqueia a criação da despesa se isso falhar — só
-    // loga, a despesa em si já foi criada normal.
-    if (dadosPreparados.fundo_retirada_id) {
+    if (fundoValido) {
       try {
-        const { data: fundo, error: erroFundo } = await supabase
+        const novoValorUsado = Number(
+          (Number(fundoValido.valor_usado || 0) + Number(data.valor || 0)).toFixed(2)
+        );
+
+        await supabase
           .from("fundo_retiradas_caixa")
-          .select("*")
-          .eq("id", dadosPreparados.fundo_retirada_id)
-          .single();
-
-        if (!erroFundo && fundo) {
-          const novoValorUsado = Number(
-            (Number(fundo.valor_usado || 0) + Number(data.valor || 0)).toFixed(2)
-          );
-
-          await supabase
-            .from("fundo_retiradas_caixa")
-            .update({
-              valor_usado: novoValorUsado,
-              status: novoValorUsado >= Number(fundo.valor) - 0.01 ? "esgotado" : "aberto",
-              atualizado_em: new Date().toISOString(),
-            })
-            .eq("id", fundo.id);
-        }
+          .update({
+            valor_usado: novoValorUsado,
+            status: novoValorUsado >= Number(fundoValido.valor) - 0.01 ? "esgotado" : "aberto",
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("id", fundoValido.id);
       } catch (erroAbaterFundo) {
-        console.error("Erro ao abater do fundo de retirada:", erroAbaterFundo.message);
+        console.error("Erro ao abater do Cofre:", erroAbaterFundo.message);
       }
     }
 

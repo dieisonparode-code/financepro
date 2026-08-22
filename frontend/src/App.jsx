@@ -2052,7 +2052,15 @@ const divergenciasAberturaFechamento = useMemo(() => {
         (item) =>
           item.tipo === "despesa" &&
           lojaCombinaComSaldo(item) &&
-          item.data > SALDO_INICIAL_DATA
+          item.data > SALDO_INICIAL_DATA &&
+          // Pedido do usuário (22/08/2026): despesa paga com o Cofre
+          // (fundo de retirada) NUNCA desconta o Saldo geral — o
+          // dinheiro já tinha saído do caixa antes (retirada) e ficou
+          // guardado; só abate do Cofre, não do Saldo de novo (o
+          // backend só marca fundo_retirada_id quando o Cofre tinha
+          // saldo suficiente pra cobrir, senão volta a ser despesa
+          // normal — então essa exclusão aqui é sempre segura).
+          !item.fundo_retirada_id
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
@@ -4457,6 +4465,19 @@ const pontoDeEquilibrio = useMemo(() => {
                           💵 Dinheiro
                         </span>
                       )}
+                      {/* Pedido do usuário (22/08/2026): rastro visível de
+                          se uma despesa foi paga com o Cofre (não desconta
+                          o Saldo geral) ou não (desconta o Saldo normal) —
+                          "tudo que envolva dinheiro tem que ser
+                          rastreável". */}
+                      {item.tipo === "despesa" && item.fundo_retirada_id && (
+                        <span
+                          className="badge-status badge-status-pendente"
+                          title="Pago com dinheiro do Cofre — não descontou o Saldo geral"
+                        >
+                          💰 Pago com Cofre
+                        </span>
+                      )}
                       {item.exclusao_solicitada_em && (
                         <span
                           className="badge-status badge-status-rejeitado"
@@ -6164,7 +6185,7 @@ const pontoDeEquilibrio = useMemo(() => {
                     String(fundo.loja_id) === String(formulario.loja_id)
                 ) && (
                   <label>
-                    💰 Pago com fundo de retirada de caixa
+                    💰 Pago com dinheiro do Cofre
                     <select
                       value={formulario.fundo_retirada_id}
                       onChange={(evento) =>
@@ -6180,7 +6201,7 @@ const pontoDeEquilibrio = useMemo(() => {
                         )
                         .map((fundo) => (
                           <option key={fundo.id} value={fundo.id}>
-                            {fundo.descricao || "Fundo de retirada"} — disponível{" "}
+                            {fundo.descricao || "Cofre"} — disponível{" "}
                             {formatarMoeda(
                               Number(fundo.valor) - Number(fundo.valor_usado || 0)
                             )}

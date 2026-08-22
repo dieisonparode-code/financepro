@@ -335,7 +335,7 @@ function Conciliacao({ lojaId }) {
 
       alert(
         despesa.ehFundo
-          ? `💰 Sem motivo específico — guardado no Fundo de Retirada: ${formatarMoeda(despesa.valor)}`
+          ? `💰 Sem motivo específico — guardado no Cofre: ${formatarMoeda(despesa.valor)}`
           : `✅ Retirada lançada como despesa: ${despesa.descricao} — ${formatarMoeda(despesa.valor)}`
       );
       setDescricaoRetiradaFoto("");

@@ -170,7 +170,7 @@ function CartaoPrincipal({
           tela em quem não usa isso. */}
       {fundoRetirada && (
         <div className="fp-kpi-bruto-taxa">
-          <span>💰 fundo de retirada {fundoRetirada}</span>
+          <span>💰 cofre {fundoRetirada}</span>
         </div>
       )}
 
