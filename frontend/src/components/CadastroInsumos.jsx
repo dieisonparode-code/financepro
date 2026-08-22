@@ -349,14 +349,35 @@ function CadastroInsumos({
             </label>
           </div>
 
-          <div className="form-row">
-            {vePermissaoTotal && (
+          {vePermissaoTotal && !editandoId && (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexDirection: "row",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={paraTodasAsLojas}
+                style={{ width: "auto" }}
+                onChange={(evento) => {
+                  setParaTodasAsLojas(evento.target.checked);
+                  if (evento.target.checked) setLojaId("");
+                }}
+              />
+              Cadastrar esse insumo em todas as lojas ({lojas.length})
+            </label>
+          )}
+
+          {vePermissaoTotal && (!paraTodasAsLojas || editandoId) && (
+            <div className="form-row">
               <label>
                 Loja
                 <select
                   value={lojaId}
                   onChange={(evento) => setLojaId(evento.target.value)}
-                  disabled={!editandoId && paraTodasAsLojas}
                 >
                   <option value="">Selecione</option>
                   {lojas.map((loja) => (
@@ -366,25 +387,8 @@ function CadastroInsumos({
                   ))}
                 </select>
               </label>
-            )}
-
-            {vePermissaoTotal && !editandoId && (
-              <label
-                className="toque-alvo"
-                style={{ display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <input
-                  type="checkbox"
-                  checked={paraTodasAsLojas}
-                  onChange={(evento) => {
-                    setParaTodasAsLojas(evento.target.checked);
-                    if (evento.target.checked) setLojaId("");
-                  }}
-                />
-                Cadastrar em todas as lojas ({lojas.length})
-              </label>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="modal-actions">
             {editandoId && (
