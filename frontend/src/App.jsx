@@ -94,6 +94,8 @@ import {
   excluirFichaTecnica,
   buscarVendasCanceladasHoje,
   buscarLogAuditoria,
+  aprovarExclusaoLancamento,
+  rejeitarExclusaoLancamento,
 } from "./services/api";
 
 import CadastroCategorias from "./components/CadastroCategorias";
@@ -2752,7 +2754,16 @@ const pontoDeEquilibrio = useMemo(() => {
   // backend rejeita e pede senha, então avisa em vez de travar calado.
   async function removerDespesaDeContasPagas(id) {
     try {
-      await excluirLancamento(id);
+      const resultado = await excluirLancamento(id);
+
+      if (resultado?.pendente) {
+        setLancamentos((anteriores) =>
+          anteriores.map((item) => (item.id === id ? resultado.lancamento : item))
+        );
+        alert(resultado.mensagem);
+        return;
+      }
+
       setLancamentos((anteriores) => anteriores.filter((item) => item.id !== id));
     } catch (erro) {
       alert(
@@ -2778,7 +2789,18 @@ const pontoDeEquilibrio = useMemo(() => {
     if (!id) return;
 
     try {
-      await excluirLancamento(id, senhaExclusaoMesEncerrado || undefined);
+      const resultado = await excluirLancamento(
+        id,
+        senhaExclusaoMesEncerrado || undefined
+      );
+
+      if (resultado?.pendente) {
+        setLancamentos((anteriores) =>
+          anteriores.map((item) => (item.id === id ? resultado.lancamento : item))
+        );
+        alert(resultado.mensagem);
+        return;
+      }
 
       setLancamentos((anteriores) =>
         anteriores.filter((item) => item.id !== id)
@@ -2791,6 +2813,35 @@ const pontoDeEquilibrio = useMemo(() => {
     } finally {
       setConfirmandoExclusao(null);
       setSenhaExclusaoMesEncerrado("");
+    }
+  }
+
+  // Pedido do usuário (21/08/2026): aprovação de exclusão de lançamento.
+  async function aprovarExclusaoLancamentoHandler(id) {
+    setProcessandoAprovacaoId(id);
+
+    try {
+      await aprovarExclusaoLancamento(id);
+      setLancamentos((anteriores) => anteriores.filter((item) => item.id !== id));
+    } catch (erro) {
+      alert(erro.message || "Não foi possível aprovar a exclusão.");
+    } finally {
+      setProcessandoAprovacaoId(null);
+    }
+  }
+
+  async function rejeitarExclusaoLancamentoHandler(id) {
+    setProcessandoAprovacaoId(id);
+
+    try {
+      const atualizado = await rejeitarExclusaoLancamento(id);
+      setLancamentos((anteriores) =>
+        anteriores.map((item) => (item.id === id ? atualizado : item))
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível rejeitar a exclusão.");
+    } finally {
+      setProcessandoAprovacaoId(null);
     }
   }
 
@@ -4083,6 +4134,14 @@ const pontoDeEquilibrio = useMemo(() => {
                           💵 Dinheiro
                         </span>
                       )}
+                      {item.exclusao_solicitada_em && (
+                        <span
+                          className="badge-status badge-status-rejeitado"
+                          title={`Pedido de exclusão por ${item.exclusao_solicitada_por || "alguém"}`}
+                        >
+                          🗑️ Exclusão pendente
+                        </span>
+                      )}
                     </strong>
                     <span>{item.grupo || "-"}</span>
                     <span>{item.categoria || "-"}</span>
@@ -4319,6 +4378,33 @@ const pontoDeEquilibrio = useMemo(() => {
                               }
                             >
                               ❌ Rejeitar
+                            </button>
+                          </>
+                        )}
+
+                      {temPermissao("aprovar_despesas") &&
+                        item.exclusao_solicitada_em && (
+                          <>
+                            <button
+                              type="button"
+                              className="approve-button"
+                              disabled={processandoAprovacaoId === item.id}
+                              onClick={() =>
+                                aprovarExclusaoLancamentoHandler(item.id)
+                              }
+                            >
+                              ✅ Confirmar exclusão
+                            </button>
+
+                            <button
+                              type="button"
+                              className="reject-button"
+                              disabled={processandoAprovacaoId === item.id}
+                              onClick={() =>
+                                rejeitarExclusaoLancamentoHandler(item.id)
+                              }
+                            >
+                              ❌ Cancelar exclusão
                             </button>
                           </>
                         )}

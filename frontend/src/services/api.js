@@ -121,6 +121,21 @@ export async function excluirLancamento(id, senhaConfirmacao) {
   });
 }
 
+// Pedido do usuário (21/08/2026): aprovação de exclusão de lançamento.
+export async function aprovarExclusaoLancamento(id) {
+  return requisicao(`/lancamentos/${id}/aprovar-exclusao`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function rejeitarExclusaoLancamento(id) {
+  return requisicao(`/lancamentos/${id}/rejeitar-exclusao`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function aprovarLancamento(id) {
   return requisicao(`/lancamentos/${id}/aprovar`, {
     method: "PUT",

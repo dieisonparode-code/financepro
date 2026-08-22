@@ -1068,6 +1068,46 @@ app.delete(
         );
       }
 
+      // Pedido do usuário (21/08/2026): aprovação de exclusão — mesma
+      // trava que já existia pra CRIAR despesa (aprovacao_despesas_ativa),
+      // agora também pra EXCLUIR. Quem não é admin não apaga na hora —
+      // só fica marcado como "pedido de exclusão pendente", visível pra
+      // um admin aprovar ou rejeitar. O admin sempre exclui direto (é
+      // ele mesmo quem aprovaria, não faz sentido pedir pra si mesmo).
+      const { perfil: perfilQuemExclui } = await obterPerfilOpcional(req);
+      const ehAdminExcluindo = perfilQuemExclui?.perfil === "administrador";
+
+      if (!ehAdminExcluindo && (await aprovacaoDespesasAtiva())) {
+        const { data: pendente, error: erroPendente } = await supabase
+          .from("lancamentos")
+          .update({
+            exclusao_solicitada_em: new Date().toISOString(),
+            exclusao_solicitada_por: perfilQuemExclui?.nome || "",
+          })
+          .eq("id", id)
+          .select("*")
+          .single();
+
+        if (erroPendente) {
+          throw erroPendente;
+        }
+
+        registrarAuditoria(
+          req,
+          "solicitou exclusão",
+          "lancamentos",
+          id,
+          `Aguardando aprovação de um administrador.`
+        );
+
+        return res.status(202).json({
+          pendente: true,
+          mensagem:
+            "Pedido de exclusão enviado — aguardando aprovação de um administrador.",
+          lancamento: pendente,
+        });
+      }
+
       // BUG REAL corrigido (18/08/2026): excluir uma despesa que nasceu de
       // pagar uma Conta a Pagar (ou que o admin excluiu direto pela tela
       // Contas Pagas) deixava a Conta a Pagar "órfã" — continuava marcada
@@ -1195,6 +1235,98 @@ app.put(
 
       res.status(500).json({
         erro: "Não foi possível rejeitar o lançamento.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Pedido do usuário (21/08/2026): aprovação de EXCLUSÃO de lançamento —
+// mesmo espírito de aprovar-foto acima, só que pra apagar em vez de
+// trocar foto. "Aprovar exclusão" de fato apaga (reaproveita a mesma
+// lógica de reverter conta a pagar vinculada que o DELETE normal já
+// tinha). "Rejeitar exclusão" só limpa a marcação, o lançamento
+// continua existindo normal.
+app.put(
+  "/lancamentos/:id/aprovar-exclusao",
+  verificarPermissao("aprovar_despesas"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do lançamento inválido." });
+      }
+
+      const { data: contaVinculada } = await supabase
+        .from("contas_pagar")
+        .select("id, descricao, valor")
+        .eq("lancamento_id", id)
+        .maybeSingle();
+
+      if (contaVinculada) {
+        await supabase
+          .from("contas_pagar")
+          .update({ status: "pendente", data_pagamento: null, lancamento_id: null })
+          .eq("id", contaVinculada.id);
+
+        registrarAuditoria(
+          req,
+          "reverteu pra pendente (despesa excluída)",
+          "contas_pagar",
+          contaVinculada.id,
+          `${contaVinculada.descricao} (${contaVinculada.valor}) voltou a ser Conta a Pagar pendente porque a despesa vinculada foi excluída.`
+        );
+      }
+
+      const { error } = await supabase.from("lancamentos").delete().eq("id", id);
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "excluiu", "lancamentos", id, "Exclusão aprovada.");
+
+      res.status(204).send();
+    } catch (erro) {
+      console.error("Erro ao aprovar exclusão de lançamento:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível aprovar a exclusão.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/lancamentos/:id/rejeitar-exclusao",
+  verificarPermissao("aprovar_despesas"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do lançamento inválido." });
+      }
+
+      const { data, error } = await supabase
+        .from("lancamentos")
+        .update({ exclusao_solicitada_em: null, exclusao_solicitada_por: null })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      registrarAuditoria(req, "rejeitou exclusão", "lancamentos", id, null);
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao rejeitar exclusão de lançamento:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível rejeitar a exclusão.",
         detalhes: erro.message,
       });
     }
