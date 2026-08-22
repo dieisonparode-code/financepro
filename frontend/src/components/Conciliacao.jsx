@@ -9,8 +9,70 @@ import {
   finalizarConciliacaoFechamento,
   salvarDinheiroInformado,
   buscarDinheiroInformado,
+  registrarRetiradaComFoto,
 } from "../services/api";
 import CampoValor, { paraNumero } from "./CampoValor";
+
+// Mesma compressão já usada em Contas a Pagar/Despesas — reduz o
+// tamanho antes de mandar pra IA e guardar.
+function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
+  function comImageElement(resolve, reject) {
+    const leitor = new FileReader();
+
+    leitor.onload = () => {
+      const imagem = new Image();
+
+      imagem.onload = () => {
+        const escala = Math.min(1, larguraMaxima / imagem.width);
+        const largura = Math.round(imagem.width * escala);
+        const altura = Math.round(imagem.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(imagem, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      };
+
+      imagem.onerror = () =>
+        reject(new Error("Não foi possível ler a imagem selecionada."));
+
+      imagem.src = leitor.result;
+    };
+
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+
+    leitor.readAsDataURL(arquivo);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof createImageBitmap !== "function") {
+      comImageElement(resolve, reject);
+      return;
+    }
+
+    createImageBitmap(arquivo, { imageOrientation: "from-image" })
+      .then((bitmap) => {
+        const escala = Math.min(1, larguraMaxima / bitmap.width);
+        const largura = Math.round(bitmap.width * escala);
+        const altura = Math.round(bitmap.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(bitmap, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      })
+      .catch(() => comImageElement(resolve, reject));
+  });
+}
 
 // A pedido do usuário: iFood/Brendi ("Pago Online"), Voucher Parceiro, A
 // prazo (funcionários), Vale e Cortesia já são contabilizados

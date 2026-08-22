@@ -616,7 +616,34 @@ function FinanceApp() {
   // Pedido do usuário (22/08/2026): dá pra fechar (X) o aviso de
   // "abertura não bate com fechamento anterior" — some da tela até uma
   // divergência NOVA aparecer (fechamento diferente), não é permanente.
-  const [divergenciasFechadas, setDivergenciasFechadas] = useState(new Set());
+  // Bug real corrigido (22/08/2026): fechar (X) esse aviso só ficava
+  // guardado em memória — clicar na marca (que dá um reload de página
+  // de verdade) ou fechar/abrir o navegador fazia o aviso já fechado
+  // voltar a aparecer. Agora fica salvo no localStorage, sobrevive a
+  // reload de página de verdade.
+  const [divergenciasFechadas, setDivergenciasFechadas] = useState(() => {
+    try {
+      const salvo = localStorage.getItem("financepro_divergencias_fechadas");
+      return salvo ? new Set(JSON.parse(salvo)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  function fecharDivergencia(chave) {
+    setDivergenciasFechadas((anteriores) => {
+      const novo = new Set([...anteriores, chave]);
+      try {
+        localStorage.setItem(
+          "financepro_divergencias_fechadas",
+          JSON.stringify([...novo])
+        );
+      } catch {
+        // localStorage indisponível — só não persiste entre recarregamentos.
+      }
+      return novo;
+    });
+  }
 
   function carregarFundosRetiradas() {
     buscarFundoRetiradasCaixa()
@@ -4204,11 +4231,7 @@ const pontoDeEquilibrio = useMemo(() => {
 
               <button
                 type="button"
-                onClick={() =>
-                  setDivergenciasFechadas(
-                    (anteriores) => new Set([...anteriores, divergencia.chave])
-                  )
-                }
+                onClick={() => fecharDivergencia(divergencia.chave)}
                 title="Fechar esse aviso"
                 style={{
                   background: "none",

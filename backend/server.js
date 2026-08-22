@@ -5061,6 +5061,99 @@ app.post(
   }
 );
 
+// Pedido do usuário (22/08/2026): retirada de frente de caixa não tem
+// confronto (Esperado x Informado) como as formas de pagamento — é só
+// um lugar pra anexar a foto do comprovante (ex: Pix pro entregador),
+// a IA lê o valor e já lança direto como despesa (desconta o Saldo na
+// hora, sobe no Dashboard) — sem precisar digitar nada na mão.
+app.post(
+  "/fechamentos-caixa/registrar-retirada-foto",
+  verificarPermissao(PERM_CONCILIACAO),
+  async function (req, res) {
+    try {
+      const { foto, loja_id: lojaId, data, descricao } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({ erro: "Envie a foto do comprovante." });
+      }
+
+      if (!lojaId || !data) {
+        return res.status(400).json({ erro: "Escolha a loja e a data." });
+      }
+
+      const textoResposta = await lerImagemComIA(
+        foto,
+        'Essa é a foto de um comprovante de retirada de frente de caixa de uma hamburgueria (pode ser um comprovante de Pix pra um entregador/motoboy, uma anotação manuscrita, ou qualquer recibo de pagamento em dinheiro). Extraia o VALOR TOTAL do comprovante. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45}. Se não conseguir ler nenhum valor, use {"valor": null}.',
+        8192
+      );
+
+      let dadosLidos;
+
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(jsonEncontrado ? jsonEncontrado[0] : textoResposta);
+      } catch {
+        return res.json({
+          valor: null,
+          erro_leitura: "Não foi possível ler o valor dessa foto. Tente outra foto.",
+        });
+      }
+
+      const valor = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
+
+      if (!valor || valor <= 0) {
+        return res.json({
+          valor: null,
+          erro_leitura: "Não consegui identificar um valor válido nessa foto.",
+        });
+      }
+
+      const { usuario, perfil } = await obterPerfilOpcional(req);
+
+      const { data: despesaCriada, error } = await supabase
+        .from("lancamentos")
+        .insert([
+          {
+            id: Date.now(),
+            tipo: "despesa",
+            descricao: (descricao || "Retirada de frente de caixa").trim(),
+            valor,
+            data,
+            grupo: "",
+            categoria: "Retirada de Caixa",
+            subcategoria: "",
+            fornecedor: "",
+            pago_em_dinheiro: true,
+            observacao: "Lançado com foto de comprovante direto na Conciliação.",
+            foto,
+            loja_id: Number(lojaId),
+            status: "aprovado",
+          },
+        ])
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      registrarAuditoria(
+        req,
+        "criou",
+        "lancamentos",
+        despesaCriada.id,
+        `Retirada de caixa com foto: ${despesaCriada.descricao} (${valor})`
+      );
+
+      res.status(201).json(despesaCriada);
+    } catch (erro) {
+      console.error("Erro ao registrar retirada com foto:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível registrar a retirada.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.post(
   "/fechamentos-caixa/ler-foto",
   verificarPermissao(PERM_FECHAMENTO_CAIXA),

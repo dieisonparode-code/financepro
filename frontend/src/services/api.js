@@ -686,6 +686,16 @@ export async function lerValorFechamentoCaixa(foto) {
   });
 }
 
+// Pedido do usuário (22/08/2026): retirada de frente de caixa não tem
+// confronto, é só uma foto — a IA lê o valor e já lança a despesa.
+export async function registrarRetiradaComFoto(foto, lojaId, data, descricao) {
+  return requisicao("/fechamentos-caixa/registrar-retirada-foto", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto, loja_id: lojaId, data, descricao }),
+  });
+}
+
 // Fila de fotos do WhatsApp que o robô não conseguiu classificar sozinho
 // (legenda não reconhecida) — só admin.
 export async function buscarWhatsappFila() {
