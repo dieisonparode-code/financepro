@@ -103,6 +103,15 @@ const MAPA_SAIPOS_PARA_CONFRONTO = {
 // igual.
 const FORMAS_COM_REAL_EM_CONTA = ["Cartão de crédito", "Cartão de débito", "PIX"];
 
+// Pedido do usuário (23/08/2026): "Pix Conta Bancária" cai direto no banco,
+// sem passar pela maquininha/PagSeguro — nunca vai ter "Real em conta"
+// automático (diferente do "PIX" QrCode, que a PagSeguro confirma sozinha).
+// Pra essas formas o Informado vem pré-preenchido com o próprio Esperado
+// (única fonte que existe), mas a Diferença NUNCA mostra "✅ Bateu"
+// sozinha — sempre aparece em vermelho com "conferir", porque é um valor
+// assumido, não confirmado por nenhuma fonte independente.
+const FORMAS_PRECISAM_CONFERIR = ["Pix Conta Bancária"];
+
 import ConciliacaoDespesas from "./ConciliacaoDespesas";
 
 // Converte o horário de um registro (o momento em que um fechamento foi
@@ -1289,10 +1298,14 @@ function Conciliacao({ lojaId }) {
           // tem que ser checado ANTES do "pix" genérico.
           if (/pago online/i.test(nomeSaipos)) {
             nomeConfronto = "Pago Online";
+          } else if (/conta.*banc|banc.*conta/i.test(nomeSaipos)) {
+            // Pedido do usuário (23/08/2026): "Pix Conta Bancária" cai
+            // direto no banco, sem passar pela PagSeguro — por isso vira
+            // linha PRÓPRIA (não funde mais dentro de "PIX"), já que não
+            // tem como confirmar ela sozinha do mesmo jeito que o Pix
+            // QrCode/maquininha (ver FORMAS_PRECISAM_CONFERIR mais abaixo).
+            nomeConfronto = "Pix Conta Bancária";
           } else if (/pix/i.test(nomeSaipos)) {
-            // Saipos pode reportar Pix em mais de uma linha (ex.: "Pix
-            // Conta Bancária" + "Pix QrCode") — some tudo numa única
-            // categoria "PIX".
             nomeConfronto = "PIX";
           } else if (nomeSaipos === "Crédito") {
             nomeConfronto = "Cartão de crédito";
@@ -1306,17 +1319,6 @@ function Conciliacao({ lojaId }) {
 
           totaisBrutos[nomeConfronto] =
             (totaisBrutos[nomeConfronto] || 0) + Number(valor || 0);
-
-          // Pedido do usuário (23/08/2026): dentro do PIX fundido acima,
-          // guarda à parte (chave interna, nunca vira linha própria na
-          // tabela) só o pedaço que é "Pix Conta Bancária" — dinheiro que
-          // cai direto no banco, sem passar pela PagSeguro. É usado mais
-          // abaixo (confrontoCalculado) pra completar o "Real em conta" do
-          // PIX, que sozinho (só PagSeguro) nunca vai enxergar esse pedaço.
-          if (nomeConfronto === "PIX" && /conta.*banc|banc.*conta/i.test(nomeSaipos)) {
-            totaisBrutos["__pixContaBancariaEsperado"] =
-              (totaisBrutos["__pixContaBancariaEsperado"] || 0) + Number(valor || 0);
-          }
         }
       );
     }
@@ -1352,31 +1354,41 @@ function Conciliacao({ lojaId }) {
   // guardado no banco — precisam clicar "🔄 Ler foto de novo" pra
   // corrigir.
 
+  // Pedido do usuário (23/08/2026): "Pix Conta Bancária" nunca teve fonte
+  // pra confirmar sozinha (nem PagSeguro nem foto costumam trazer ela
+  // separada) — em vez de deixar o campo em branco esperando o operador
+  // digitar um número que ele não tem como conferir de outro jeito, pré-
+  // preenche o Informado com o próprio Esperado (Saipos) assim que
+  // aparecer, só quando ainda estiver vazio (não sobrescreve se o
+  // operador já digitou ou já leu de uma foto). Diferente do useEffect
+  // removido em 16/08 (comentário acima), isso é seguro aqui porque a
+  // Diferença dessa linha NUNCA mostra "✅ Bateu" sozinha (ver
+  // FORMAS_PRECISAM_CONFERIR) — sempre aparece em vermelho pedindo pra
+  // conferir, então não mascara divergência nenhuma.
+  useEffect(() => {
+    const esperadoContaBancaria = totaisBrutosSistema["Pix Conta Bancária"];
+    if (esperadoContaBancaria == null) return;
+
+    setValoresInformados((anterior) => {
+      if (anterior["Pix Conta Bancária"] != null && anterior["Pix Conta Bancária"] !== "") {
+        return anterior;
+      }
+      return {
+        ...anterior,
+        "Pix Conta Bancária": esperadoContaBancaria.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      };
+    });
+  }, [totaisBrutosSistema]);
+
   // Confronto Sistema/Real em conta × Informado calculado aqui (não só
   // dentro da tabela) pra poder mostrar um aviso no topo da tela quando
   // tiver diferença, igual o aviso de CMV alto do Dashboard.
   const confrontoCalculado = useMemo(() => {
     const totaisBrutos = { ...totaisBrutosSistema };
     const totaisReaisConta = { ...(resumo?.totais_brutos_por_forma_pagamento || {}) };
-
-    // Pedido do usuário (23/08/2026): "Pix Conta Bancária" cai direto no
-    // banco, sem passar pela PagSeguro — por isso nunca vai aparecer em
-    // totaisReaisConta["PIX"] (que só vê o que passou pela PagSeguro, Pix
-    // QrCode/maquininha), mesmo que o Esperado/Informado já contem com ela
-    // (esses dois já fundem as duas linhas do PIX corretamente, ver o
-    // useMemo de totaisBrutosSistema acima). Isso gerava um "Falta R$X"
-    // falso na tela — o dinheiro tinha caído certinho, só não tinha como a
-    // PagSeguro enxergar a parte que foi direto pro banco. Como não existe
-    // fonte automática própria pra confirmar esse pedaço, soma ele
-    // (totaisBrutos.__pixContaBancariaEsperado, calculado a partir do que
-    // a própria Saipos já registrou pra essa linha) ao que a PagSeguro
-    // confirmou — não cria uma linha nova na tela, só completa o "Real em
-    // conta" do PIX.
-    const pixContaBancariaEsperado = totaisBrutos["__pixContaBancariaEsperado"] || 0;
-    if (pixContaBancariaEsperado > 0) {
-      totaisReaisConta["PIX"] = (totaisReaisConta["PIX"] || 0) + pixContaBancariaEsperado;
-    }
-    delete totaisBrutos["__pixContaBancariaEsperado"];
 
     // A lista de linhas é a união do que o operador informou (foto/OCR) com
     // o que a Saipos/PagSeguro reportou como Sistema — assim, se aparecer
@@ -2174,18 +2186,32 @@ function Conciliacao({ lojaId }) {
                                 <td
                                   data-label="Diferença"
                                   style={{
-                                    color:
-                                      diferenca == null
-                                        ? undefined
-                                        : bateu
-                                        ? "#16ca50"
-                                        : diferenca > 0
-                                        ? "#ff4655"
-                                        : "#16ca50",
+                                    color: FORMAS_PRECISAM_CONFERIR.includes(forma)
+                                      ? "#ff4655"
+                                      : diferenca == null
+                                      ? undefined
+                                      : bateu
+                                      ? "#16ca50"
+                                      : diferenca > 0
+                                      ? "#ff4655"
+                                      : "#16ca50",
                                     fontWeight: 700,
                                   }}
                                 >
-                                  {!temBase
+                                  {/* Pedido do usuário (23/08/2026): "Pix
+                                  Conta Bancária" não tem fonte pra
+                                  confirmar sozinha — o Informado vem
+                                  pré-preenchido com o Esperado (útil só
+                                  pra não ficar em branco), mas NUNCA
+                                  mostra "✅ Bateu" sozinho, sempre pede
+                                  conferência manual. */}
+                                  {FORMAS_PRECISAM_CONFERIR.includes(forma)
+                                    ? `⚠️ Conferir${
+                                        diferenca != null && !bateu
+                                          ? ` (dif. ${formatarMoeda(diferenca)})`
+                                          : ""
+                                      }`
+                                    : !temBase
                                     ? "(sem comparação ainda)"
                                     : diferenca == null
                                     ? "—"
