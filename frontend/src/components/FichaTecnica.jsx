@@ -23,6 +23,7 @@ function FichaTecnica({
   adicionarFicha,
   editarFichaExistente,
   removerFicha,
+  buscarProdutosVendidos,
 }) {
   const [editandoFichaId, setEditandoFichaId] = useState(null);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -30,6 +31,59 @@ function FichaTecnica({
   const [nomeItemSaipos, setNomeItemSaipos] = useState("");
   const [itensFicha, setItensFicha] = useState([]);
   const [salvandoFicha, setSalvandoFicha] = useState(false);
+
+  // Pedido do usuário (23/08/2026): puxar da Saipos os nomes dos produtos
+  // que realmente venderam, pra não precisar digitar "Calota Filé" do
+  // zero — só clica pra já vir preenchido no formulário acima.
+  const [produtosVendidos, setProdutosVendidos] = useState(null);
+  const [carregandoProdutosVendidos, setCarregandoProdutosVendidos] =
+    useState(false);
+  const [erroProdutosVendidos, setErroProdutosVendidos] = useState("");
+  const [mostrarJaCadastrados, setMostrarJaCadastrados] = useState(false);
+
+  async function carregarProdutosVendidos() {
+    if (!lojaPadrao) {
+      setErroProdutosVendidos(
+        "Escolha uma loja específica no seletor do topo pra puxar os produtos vendidos dela."
+      );
+      return;
+    }
+
+    setCarregandoProdutosVendidos(true);
+    setErroProdutosVendidos("");
+
+    try {
+      const dados = await buscarProdutosVendidos(lojaPadrao, 30);
+      setProdutosVendidos(Array.isArray(dados) ? dados : []);
+    } catch (erro) {
+      setErroProdutosVendidos(
+        erro.message || "Não foi possível buscar os produtos vendidos na Saipos."
+      );
+    } finally {
+      setCarregandoProdutosVendidos(false);
+    }
+  }
+
+  // Nomes já cadastrados (por nome_item_saipos OU nome_produto, o que
+  // tiver) — normalizado (minúsculo, sem espaço nas pontas) pra comparar
+  // com o que vem da Saipos sem depender de acento/caixa bater exato.
+  const nomesJaCadastrados = new Set(
+    fichas.map((ficha) =>
+      (ficha.nome_item_saipos || ficha.nome_produto || "").trim().toLowerCase()
+    )
+  );
+
+  const produtosVendidosVisiveis = (produtosVendidos || []).filter(
+    (produto) =>
+      mostrarJaCadastrados ||
+      !nomesJaCadastrados.has(produto.nome_item_saipos.trim().toLowerCase())
+  );
+
+  function usarNomeDoProdutoVendido(produto) {
+    setEditandoFichaId(null);
+    setNomeProduto(produto.nome_item_saipos);
+    setNomeItemSaipos(produto.nome_item_saipos);
+  }
 
   const insumosComCusto = insumos.filter(
     (insumo) => Number(insumo.custo_unitario) > 0
@@ -162,6 +216,125 @@ function FichaTecnica({
             </>
           )}
         </small>
+
+        {buscarProdutosVendidos && (
+          <div
+            style={{
+              margin: "12px 0",
+              padding: "12px",
+              border: "1px solid #2a2f3a",
+              borderRadius: "8px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "8px",
+              }}
+            >
+              <strong>📥 Produtos vendidos na Saipos (últimos 30 dias)</strong>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={carregandoProdutosVendidos}
+                onClick={carregarProdutosVendidos}
+              >
+                {carregandoProdutosVendidos
+                  ? "Buscando..."
+                  : produtosVendidos == null
+                  ? "Buscar na Saipos"
+                  : "🔄 Atualizar"}
+              </button>
+            </div>
+
+            {erroProdutosVendidos && (
+              <div className="empty-state" style={{ marginTop: 8 }}>
+                {erroProdutosVendidos}
+              </div>
+            )}
+
+            {produtosVendidos != null && !erroProdutosVendidos && (
+              <>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    margin: "10px 0",
+                    fontWeight: 400,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={mostrarJaCadastrados}
+                    onChange={(evento) =>
+                      setMostrarJaCadastrados(evento.target.checked)
+                    }
+                  />
+                  Mostrar os que já têm Ficha Técnica cadastrada
+                </label>
+
+                {produtosVendidosVisiveis.length === 0 ? (
+                  <div className="empty-state">
+                    {mostrarJaCadastrados
+                      ? "Nenhum produto vendido nesse período."
+                      : "Todos os produtos vendidos nesse período já têm Ficha Técnica. ✅"}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      maxHeight: "260px",
+                      overflowY: "auto",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                    }}
+                  >
+                    {produtosVendidosVisiveis.map((produto) => {
+                      const jaCadastrado = nomesJaCadastrados.has(
+                        produto.nome_item_saipos.trim().toLowerCase()
+                      );
+
+                      return (
+                        <div
+                          key={produto.nome_item_saipos}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "6px 4px",
+                            borderBottom: "1px solid #2a2f3a",
+                            gap: 8,
+                          }}
+                        >
+                          <span>
+                            {jaCadastrado && "✅ "}
+                            {produto.nome_item_saipos}
+                            <span style={{ color: "#9aa0ac" }}>
+                              {" "}
+                              — {produto.quantidade_vendida}x vendido
+                            </span>
+                          </span>
+
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => usarNomeDoProdutoVendido(produto)}
+                          >
+                            + Usar esse nome
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <form onSubmit={salvarFicha}>
           <label>

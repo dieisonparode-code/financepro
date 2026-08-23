@@ -2952,6 +2952,95 @@ app.delete(
   }
 );
 
+// Pedido do usuário (23/08/2026): facilitar o cadastro da Ficha Técnica —
+// em vez de digitar o nome de cada produto na mão, puxa da própria Saipos
+// (endpoint /sales_items, "Consultar Itens de venda" da API de Dados —
+// mesmo token já usado em /search_sales) a lista de produtos que
+// realmente venderam num período, já filtrando os que ainda não têm
+// Ficha Técnica cadastrada. Usuário só clica pra criar o rascunho com o
+// nome preenchido, em vez de digitar "Calota Filé" do zero.
+app.get(
+  "/fichas-tecnicas/produtos-vendidos/:lojaId",
+  verificarPermissao(PERM_FICHA_TECNICA),
+  async function (req, res) {
+    try {
+      const lojaId = Number(req.params.lojaId);
+
+      if (!Number.isFinite(lojaId)) {
+        return res.status(400).json({ erro: "ID da loja inválido." });
+      }
+
+      const { data: loja, error: erroLoja } = await supabase
+        .from("lojas")
+        .select("id, nome, saipos_id_store")
+        .eq("id", lojaId)
+        .single();
+
+      if (erroLoja) throw erroLoja;
+
+      if (!loja?.saipos_id_store) {
+        return res.status(400).json({
+          erro: `A loja "${loja?.nome || lojaId}" ainda não tem o ID da Saipos cadastrado. Configure em Lojas.`,
+        });
+      }
+
+      // Período configurável (padrão 30 dias) — produto vendido há mais
+      // tempo que isso ainda aparece pra cadastrar bastando abrir com
+      // "dias" maior, não precisa mudar código.
+      const dias = Number(req.query.dias) || 30;
+      const agora = new Date();
+      const inicio = new Date(agora.getTime() - dias * 24 * 60 * 60 * 1000);
+      const paraDataHora = (data) =>
+        data.toISOString().slice(0, 19).replace("T", " ");
+
+      const paginas = await consultarSaipos("/sales_items", {
+        p_date_column_filter: "shift_date",
+        p_filter_date_start: paraDataHora(inicio),
+        p_filter_date_end: paraDataHora(agora),
+      });
+
+      const vendasDaLoja = (paginas || []).filter(
+        (venda) => Number(venda.id_store) === Number(loja.saipos_id_store)
+      );
+
+      // Dedup por nome do produto (desc_sale_item) — soma a quantidade
+      // total vendida no período, útil pra priorizar quem cadastrar
+      // primeiro (o mais vendido).
+      const produtosPorNome = new Map();
+
+      vendasDaLoja.forEach((venda) => {
+        (venda.items || []).forEach((item) => {
+          if (item.deleted === "Y") return;
+
+          const nome = (item.desc_sale_item || "").trim();
+          if (!nome) return;
+
+          const atual = produtosPorNome.get(nome) || {
+            nome_item_saipos: nome,
+            id_store_item: item.id_store_item ?? null,
+            quantidade_vendida: 0,
+          };
+
+          atual.quantidade_vendida += Number(item.quantity || 0);
+          produtosPorNome.set(nome, atual);
+        });
+      });
+
+      const produtos = Array.from(produtosPorNome.values()).sort(
+        (a, b) => b.quantidade_vendida - a.quantidade_vendida
+      );
+
+      res.json(produtos);
+    } catch (erro) {
+      console.error("Erro ao buscar produtos vendidos da Saipos:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar os produtos vendidos na Saipos.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const id = Number(req.params.id);

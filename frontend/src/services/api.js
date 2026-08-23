@@ -429,6 +429,15 @@ export async function excluirFichaTecnica(id) {
   });
 }
 
+// Pedido do usuário (23/08/2026): lista de produtos que venderam de
+// verdade na Saipos num período, pra facilitar o cadastro da Ficha
+// Técnica (em vez de digitar o nome de cada produto na mão).
+export async function buscarProdutosVendidosSaipos(lojaId, dias = 30) {
+  return requisicao(`/fichas-tecnicas/produtos-vendidos/${lojaId}?dias=${dias}`, {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 // Empréstimo entre lojas (21/08/2026).
 export async function buscarResumoEmprestimosEntreLojas() {
   return requisicao("/emprestimos-entre-lojas/resumo", {

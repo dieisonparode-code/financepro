@@ -99,6 +99,7 @@ import {
   criarFichaTecnica,
   editarFichaTecnica,
   excluirFichaTecnica,
+  buscarProdutosVendidosSaipos,
   buscarVendasCanceladasHoje,
   buscarLogAuditoria,
   buscarFundoRetiradasCaixa,
@@ -4924,6 +4925,7 @@ const pontoDeEquilibrio = useMemo(() => {
             adicionarFicha={adicionarFichaTecnicaHandler}
             editarFichaExistente={editarFichaTecnicaHandler}
             removerFicha={removerFichaTecnicaHandler}
+            buscarProdutosVendidos={buscarProdutosVendidosSaipos}
           />
         )}
 
