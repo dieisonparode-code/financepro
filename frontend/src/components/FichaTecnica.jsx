@@ -7,6 +7,68 @@ import CampoValor, { paraNumero } from "./CampoValor";
 // aqui só monta a receita (quais insumos e quanto usa de cada), não
 // cadastra insumo novo nem mexe em estoque (isso continua só na tela
 // Estoque).
+// Mesma compressão já usada em Notas Fiscais/Contas a Pagar — sem forçar
+// orientação (diferente do comprovante de fechamento, o cardápio pode
+// legitimamente vir em pé ou deitado, foto ou print).
+function comprimirImagem(arquivo, larguraMaxima = 1400, qualidade = 0.75) {
+  function comImageElement(resolve, reject) {
+    const leitor = new FileReader();
+
+    leitor.onload = () => {
+      const imagem = new Image();
+
+      imagem.onload = () => {
+        const escala = Math.min(1, larguraMaxima / imagem.width);
+        const largura = Math.round(imagem.width * escala);
+        const altura = Math.round(imagem.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(imagem, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      };
+
+      imagem.onerror = () =>
+        reject(new Error("Não foi possível ler a imagem selecionada."));
+
+      imagem.src = leitor.result;
+    };
+
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+
+    leitor.readAsDataURL(arquivo);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof createImageBitmap !== "function") {
+      comImageElement(resolve, reject);
+      return;
+    }
+
+    createImageBitmap(arquivo, { imageOrientation: "from-image" })
+      .then((bitmap) => {
+        const escala = Math.min(1, larguraMaxima / bitmap.width);
+        const largura = Math.round(bitmap.width * escala);
+        const altura = Math.round(bitmap.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(bitmap, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      })
+      .catch(() => comImageElement(resolve, reject));
+  });
+}
+
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -59,6 +121,7 @@ function FichaTecnica({
   editarFichaExistente,
   removerFicha,
   buscarProdutosVendidos,
+  importarCardapioFoto,
 }) {
   const [editandoFichaId, setEditandoFichaId] = useState(null);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -67,6 +130,102 @@ function FichaTecnica({
   const [categoria, setCategoria] = useState("");
   const [itensFicha, setItensFicha] = useState([]);
   const [salvandoFicha, setSalvandoFicha] = useState(false);
+
+  // Pedido do usuário (23/08/2026): "manda a foto do cardápio e você
+  // adiciona tudo" — lê nome/preço/categoria de cada produto do cardápio
+  // (foto ou PDF) e cria a Ficha Técnica de cada um automaticamente
+  // (mesmo padrão do "Adicionar todos" dos produtos vendidos — só nome,
+  // sem insumo ainda).
+  const [lendoCardapio, setLendoCardapio] = useState(false);
+  const [criandoDoCardapio, setCriandoDoCardapio] = useState(false);
+  const [progressoCardapio, setProgressoCardapio] = useState(null);
+  const [erroCardapio, setErroCardapio] = useState("");
+
+  async function importarCardapio(arquivo) {
+    if (!arquivo) return;
+
+    setErroCardapio("");
+    setLendoCardapio(true);
+
+    try {
+      const ehPdf = arquivo.type === "application/pdf";
+      const fotoOuPdf = ehPdf
+        ? await new Promise((resolve, reject) => {
+            const leitor = new FileReader();
+            leitor.onload = () => resolve(leitor.result);
+            leitor.onerror = () =>
+              reject(new Error("Não foi possível abrir o arquivo selecionado."));
+            leitor.readAsDataURL(arquivo);
+          })
+        : await comprimirImagem(arquivo);
+
+      const resultado = await importarCardapioFoto(fotoOuPdf);
+      setLendoCardapio(false);
+
+      if (resultado.erro_leitura || !resultado.produtos?.length) {
+        setErroCardapio(
+          resultado.erro_leitura ||
+            "Não foi possível ler os produtos desse cardápio."
+        );
+        return;
+      }
+
+      const pendentes = resultado.produtos.filter(
+        (produto) => !nomesJaCadastrados.has(produto.nome.trim().toLowerCase())
+      );
+
+      if (pendentes.length === 0) {
+        alert(
+          `Lidos ${resultado.produtos.length} produto(s) do cardápio, mas todos já têm Ficha Técnica cadastrada.`
+        );
+        return;
+      }
+
+      const confirmar = window.confirm(
+        `Lidos ${resultado.produtos.length} produto(s) do cardápio. Cadastrar os ${pendentes.length} que ainda não têm Ficha Técnica? Cada um entra com nome, preço (quando lido) e categoria sugerida — sem insumo ainda, você completa a receita depois.`
+      );
+
+      if (!confirmar) return;
+
+      setCriandoDoCardapio(true);
+      setProgressoCardapio({ feito: 0, total: pendentes.length });
+
+      const falharam = [];
+
+      for (let i = 0; i < pendentes.length; i += 1) {
+        const produto = pendentes[i];
+
+        try {
+          await adicionarFicha({
+            nome_produto: produto.nome,
+            preco_venda: produto.preco,
+            nome_item_saipos: "",
+            categoria: produto.categoria || sugerirCategoria(produto.nome),
+            loja_id: lojaPadrao || null,
+            itens: [],
+          });
+        } catch (erro) {
+          falharam.push(produto.nome);
+        }
+
+        setProgressoCardapio({ feito: i + 1, total: pendentes.length });
+      }
+
+      setCriandoDoCardapio(false);
+      setProgressoCardapio(null);
+
+      if (falharam.length > 0) {
+        alert(
+          `Cadastrado ${pendentes.length - falharam.length} de ${pendentes.length}. Falharam: ${falharam.join(", ")}`
+        );
+      } else {
+        alert(`${pendentes.length} produto(s) do cardápio cadastrado(s)! Agora é só completar a receita (insumos) de cada um.`);
+      }
+    } catch (erro) {
+      setLendoCardapio(false);
+      setErroCardapio(erro.message || "Não foi possível ler o cardápio.");
+    }
+  }
 
   // Pedido do usuário (23/08/2026): puxar da Saipos os nomes dos produtos
   // que realmente venderam, pra não precisar digitar "Calota Filé" do
@@ -443,6 +602,58 @@ function FichaTecnica({
             </>
           )}
         </small>
+
+        {importarCardapioFoto && (
+          <div
+            style={{
+              margin: "12px 0",
+              padding: "12px",
+              border: "1px solid #2a2f3a",
+              borderRadius: "8px",
+            }}
+          >
+            <strong>📋 Importar cardápio (foto ou PDF)</strong>
+            <div style={{ margin: "8px 0" }}>
+              <label
+                className="secondary-button"
+                style={{
+                  display: "inline-block",
+                  cursor:
+                    lendoCardapio || criandoDoCardapio ? "default" : "pointer",
+                  opacity: lendoCardapio || criandoDoCardapio ? 0.6 : 1,
+                }}
+              >
+                {lendoCardapio
+                  ? "Lendo cardápio..."
+                  : criandoDoCardapio
+                  ? `Cadastrando... (${progressoCardapio?.feito ?? 0}/${progressoCardapio?.total ?? 0})`
+                  : "📷 Escolher foto ou PDF do cardápio"}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  style={{ display: "none" }}
+                  disabled={lendoCardapio || criandoDoCardapio}
+                  onChange={(evento) => {
+                    const arquivo = evento.target.files?.[0];
+                    evento.target.value = "";
+                    importarCardapio(arquivo);
+                  }}
+                />
+              </label>
+            </div>
+
+            {erroCardapio && (
+              <div className="empty-state">{erroCardapio}</div>
+            )}
+
+            <small className="foto-ajuda" style={{ display: "block" }}>
+              A IA lê o cardápio (cartaz, impresso ou PDF), separa cada
+              produto com nome/preço/categoria, e você confirma antes de
+              cadastrar tudo de uma vez — sem insumo ainda, você completa a
+              receita depois.
+            </small>
+          </div>
+        )}
 
         {buscarProdutosVendidos && (
           <div

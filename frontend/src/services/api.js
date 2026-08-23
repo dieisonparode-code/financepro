@@ -438,6 +438,16 @@ export async function buscarProdutosVendidosSaipos(lojaId, dias = 30) {
   });
 }
 
+// Pedido do usuário (23/08/2026): "manda a foto do cardápio e você
+// adiciona tudo" — lê nome/preço/categoria de cada produto do cardápio.
+export async function importarCardapioFoto(foto) {
+  return requisicao("/fichas-tecnicas/importar-cardapio-foto", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto }),
+  });
+}
+
 // Empréstimo entre lojas (21/08/2026).
 export async function buscarResumoEmprestimosEntreLojas() {
   return requisicao("/emprestimos-entre-lojas/resumo", {

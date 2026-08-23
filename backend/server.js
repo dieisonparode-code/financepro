@@ -3105,6 +3105,83 @@ app.get(
   }
 );
 
+// Pedido do usuário (23/08/2026): "vou mandar uma foto do cardápio e você
+// adiciona tudo" — lê a foto do cardápio (impresso, cartaz, PDF do
+// cardápio digital, etc) com a mesma IA já usada em toda leitura de
+// comprovante do sistema, extrai nome + preço de cada produto e já
+// sugere a categoria (mesma lista fixa usada no resto da tela). O
+// frontend usa essa lista pra criar as Fichas Técnicas (mesmo padrão do
+// "Adicionar todos" dos produtos vendidos) — aqui só lê, não grava nada
+// sozinho.
+app.post(
+  "/fichas-tecnicas/importar-cardapio-foto",
+  verificarPermissao(PERM_FICHA_TECNICA),
+  async function (req, res) {
+    try {
+      const { foto } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({ erro: "Envie a foto do cardápio." });
+      }
+
+      const textoResposta = await lerImagemComIA(
+        foto,
+        `Essa é a foto (ou print) de um cardápio de uma hamburgueria — pode ser um cardápio impresso, um cartaz, ou um print de cardápio digital (ex: iFood, site). Extraia TODOS os produtos/itens à venda listados, mesmo que a foto tenha várias seções/categorias diferentes — releia com atenção até o fim, não pare depois dos primeiros itens. Pra CADA produto, extraia: o NOME exatamente como está escrito (sem abreviar, sem corrigir ortografia), e o PREÇO (o valor em R$ ao lado do nome — se tiver mais de um preço/tamanho pro mesmo item, ex: "P: 15,00 / G: 25,00", crie uma linha separada pra CADA tamanho, com o nome incluindo o tamanho, ex: "X-Salada P" e "X-Salada G"). Além disso, tente identificar a CATEGORIA de cada produto pelo título da seção onde ele está impresso no cardápio (ex: um título "CALOTAS" ou "LANCHES" antes de um grupo de itens) — classifique CADA produto em uma dessas categorias exatas, a que fizer mais sentido: "Calotas", "Calotinhas", "Fritas", "Cachorro", "Porções", "Bebidas", ou "Outra" se não se encaixar em nenhuma. Se não conseguir ler o preço de algum item com confiança, use null nesse campo, mas ainda assim inclua o produto com o nome. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"produtos": [{"nome": "Calota Filé", "preco": 32.90, "categoria": "Calotas"}, {"nome": "Coca-Cola Lata", "preco": 6.00, "categoria": "Bebidas"}]}. Se a foto não for de um cardápio (foto errada, ilegível), responda {"produtos": []}.`,
+        8192
+      );
+
+      let dadosLidos;
+
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(
+          jsonEncontrado ? jsonEncontrado[0] : textoResposta
+        );
+      } catch {
+        return res.json({
+          produtos: [],
+          erro_leitura:
+            "Não foi possível ler os produtos dessa foto. Tente uma foto mais nítida ou de outro ângulo.",
+        });
+      }
+
+      const CATEGORIAS_VALIDAS = new Set([
+        "Calotas",
+        "Calotinhas",
+        "Fritas",
+        "Cachorro",
+        "Porções",
+        "Bebidas",
+        "Outra",
+      ]);
+
+      const produtos = (Array.isArray(dadosLidos.produtos) ? dadosLidos.produtos : [])
+        .map((item) => ({
+          nome: (item?.nome || "").trim(),
+          preco: item?.preco != null ? Number(item.preco) : null,
+          categoria: CATEGORIAS_VALIDAS.has(item?.categoria) ? item.categoria : "",
+        }))
+        .filter((item) => item.nome);
+
+      if (produtos.length === 0) {
+        return res.json({
+          produtos: [],
+          erro_leitura:
+            "Não consegui identificar nenhum produto nessa foto. Tente uma foto mais nítida, ou uma seção do cardápio por vez.",
+        });
+      }
+
+      res.json({ produtos });
+    } catch (erro) {
+      console.error("Erro ao ler cardápio da foto:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível ler a foto do cardápio.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async function (req, res) {
   try {
     const id = Number(req.params.id);
