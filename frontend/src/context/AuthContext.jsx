@@ -7,6 +7,15 @@ export function AuthProvider({ children }) {
   const [sessao, setSessao] = useState(null);
   const [perfil, setPerfil] = useState(null);
   const [carregando, setCarregando] = useState(true);
+  // BUG REAL corrigido (23/08/2026): "carregando" só esperava a SESSÃO
+  // carregar (rápido) — o PERFIL (perfis, com as permissões) vem de uma
+  // busca separada, um pouco mais lenta. O ProtectedRoute só olhava pra
+  // "carregando", então liberava a tela assim que a sessão confirmava,
+  // mesmo com perfil ainda null — nesse instante ehAdministrador dava
+  // false e toda permissão dava vazia, mostrando "sua conta não tem
+  // permissão" por um instante até o perfil terminar de chegar e a tela
+  // "voltar ao normal" sozinha. Esse estado novo deixa esperar os dois.
+  const [perfilCarregando, setPerfilCarregando] = useState(true);
   // Se a conta tem verificação em duas etapas ativada, uma sessão que ainda
   // não completou o código (2º fator) não conta como autenticada de
   // verdade — sem isso, dava pra recarregar a página logo depois de digitar
@@ -57,10 +66,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!sessao?.user) {
       setPerfil(null);
+      // Sem sessão não tem perfil pra esperar — libera a tela na hora
+      // (o ProtectedRoute já redireciona pro login sozinho).
+      setPerfilCarregando(false);
       return;
     }
 
     let ativo = true;
+    setPerfilCarregando(true);
 
     function buscarPerfil() {
       return supabase
@@ -71,6 +84,7 @@ export function AuthProvider({ children }) {
         .then(({ data }) => {
           if (ativo) {
             setPerfil(data || null);
+            setPerfilCarregando(false);
           }
         });
     }
@@ -122,6 +136,7 @@ export function AuthProvider({ children }) {
         logout,
         autenticado: Boolean(sessao) && !precisaSegundaEtapa,
         carregando,
+        perfilCarregando,
       }}
     >
       {children}
