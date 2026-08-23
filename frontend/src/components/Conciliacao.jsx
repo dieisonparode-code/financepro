@@ -1306,6 +1306,17 @@ function Conciliacao({ lojaId }) {
 
           totaisBrutos[nomeConfronto] =
             (totaisBrutos[nomeConfronto] || 0) + Number(valor || 0);
+
+          // Pedido do usuário (23/08/2026): dentro do PIX fundido acima,
+          // guarda à parte (chave interna, nunca vira linha própria na
+          // tabela) só o pedaço que é "Pix Conta Bancária" — dinheiro que
+          // cai direto no banco, sem passar pela PagSeguro. É usado mais
+          // abaixo (confrontoCalculado) pra completar o "Real em conta" do
+          // PIX, que sozinho (só PagSeguro) nunca vai enxergar esse pedaço.
+          if (nomeConfronto === "PIX" && /conta.*banc|banc.*conta/i.test(nomeSaipos)) {
+            totaisBrutos["__pixContaBancariaEsperado"] =
+              (totaisBrutos["__pixContaBancariaEsperado"] || 0) + Number(valor || 0);
+          }
         }
       );
     }
@@ -1345,8 +1356,27 @@ function Conciliacao({ lojaId }) {
   // dentro da tabela) pra poder mostrar um aviso no topo da tela quando
   // tiver diferença, igual o aviso de CMV alto do Dashboard.
   const confrontoCalculado = useMemo(() => {
-    const totaisBrutos = totaisBrutosSistema;
-    const totaisReaisConta = resumo?.totais_brutos_por_forma_pagamento || {};
+    const totaisBrutos = { ...totaisBrutosSistema };
+    const totaisReaisConta = { ...(resumo?.totais_brutos_por_forma_pagamento || {}) };
+
+    // Pedido do usuário (23/08/2026): "Pix Conta Bancária" cai direto no
+    // banco, sem passar pela PagSeguro — por isso nunca vai aparecer em
+    // totaisReaisConta["PIX"] (que só vê o que passou pela PagSeguro, Pix
+    // QrCode/maquininha), mesmo que o Esperado/Informado já contem com ela
+    // (esses dois já fundem as duas linhas do PIX corretamente, ver o
+    // useMemo de totaisBrutosSistema acima). Isso gerava um "Falta R$X"
+    // falso na tela — o dinheiro tinha caído certinho, só não tinha como a
+    // PagSeguro enxergar a parte que foi direto pro banco. Como não existe
+    // fonte automática própria pra confirmar esse pedaço, soma ele
+    // (totaisBrutos.__pixContaBancariaEsperado, calculado a partir do que
+    // a própria Saipos já registrou pra essa linha) ao que a PagSeguro
+    // confirmou — não cria uma linha nova na tela, só completa o "Real em
+    // conta" do PIX.
+    const pixContaBancariaEsperado = totaisBrutos["__pixContaBancariaEsperado"] || 0;
+    if (pixContaBancariaEsperado > 0) {
+      totaisReaisConta["PIX"] = (totaisReaisConta["PIX"] || 0) + pixContaBancariaEsperado;
+    }
+    delete totaisBrutos["__pixContaBancariaEsperado"];
 
     // A lista de linhas é a união do que o operador informou (foto/OCR) com
     // o que a Saipos/PagSeguro reportou como Sistema — assim, se aparecer
