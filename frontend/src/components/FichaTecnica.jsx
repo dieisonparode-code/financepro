@@ -90,6 +90,67 @@ function FichaTecnica({
     setNomeItemSaipos(produto.nome_item_saipos);
   }
 
+  // Pedido do usuário (23/08/2026): em vez de clicar "+ Usar esse nome" e
+  // salvar um por um, cadastra todos os produtos vendidos ainda sem Ficha
+  // Técnica de uma vez só — cada um entra com o nome preenchido, sem
+  // insumo nenhum ainda (itens: []) e sem custo (R$0,00), só pra existir
+  // na lista de Fichas Cadastradas; o usuário completa a receita
+  // (insumos/quantidades) depois, editando cada uma.
+  const [criandoTodos, setCriandoTodos] = useState(false);
+  const [progressoCriarTodos, setProgressoCriarTodos] = useState(null);
+
+  async function adicionarTodosProdutosVendidos() {
+    const pendentes = (produtosVendidos || []).filter(
+      (produto) =>
+        !nomesJaCadastrados.has(produto.nome_item_saipos.trim().toLowerCase())
+    );
+
+    if (pendentes.length === 0) {
+      alert("Não tem produto novo pra cadastrar — todos já têm Ficha Técnica.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Cadastrar ${pendentes.length} produto(s) de uma vez? Cada um entra só com o nome (sem insumo/receita ainda) — você completa depois editando cada ficha.`
+    );
+
+    if (!confirmar) return;
+
+    setCriandoTodos(true);
+    setProgressoCriarTodos({ feito: 0, total: pendentes.length });
+
+    const falharam = [];
+
+    for (let i = 0; i < pendentes.length; i += 1) {
+      const produto = pendentes[i];
+
+      try {
+        await adicionarFicha({
+          nome_produto: produto.nome_item_saipos,
+          preco_venda: null,
+          nome_item_saipos: produto.nome_item_saipos,
+          loja_id: lojaPadrao || null,
+          itens: [],
+        });
+      } catch (erro) {
+        falharam.push(produto.nome_item_saipos);
+      }
+
+      setProgressoCriarTodos({ feito: i + 1, total: pendentes.length });
+    }
+
+    setCriandoTodos(false);
+    setProgressoCriarTodos(null);
+
+    if (falharam.length > 0) {
+      alert(
+        `Cadastrado ${pendentes.length - falharam.length} de ${pendentes.length}. Falharam: ${falharam.join(", ")}`
+      );
+    } else {
+      alert(`${pendentes.length} produto(s) cadastrado(s)! Agora é só completar a receita (insumos) de cada um.`);
+    }
+  }
+
   const insumosComCusto = insumos.filter(
     (insumo) => Number(insumo.custo_unitario) > 0
   );
@@ -263,6 +324,30 @@ function FichaTecnica({
 
             {produtosVendidos != null && !erroProdutosVendidos && (
               <>
+                {produtosVendidosVisiveis.some(
+                  (produto) =>
+                    !nomesJaCadastrados.has(
+                      produto.nome_item_saipos.trim().toLowerCase()
+                    )
+                ) && (
+                  <div style={{ margin: "10px 0" }}>
+                    <button
+                      type="button"
+                      disabled={criandoTodos}
+                      onClick={adicionarTodosProdutosVendidos}
+                    >
+                      {criandoTodos
+                        ? `Cadastrando... (${progressoCriarTodos?.feito ?? 0}/${progressoCriarTodos?.total ?? 0})`
+                        : "➕ Adicionar todos de uma vez"}
+                    </button>
+                    <small className="foto-ajuda" style={{ display: "block", marginTop: 4 }}>
+                      Cria uma Ficha Técnica pra cada produto novo, só com o
+                      nome (sem insumo ainda) — você completa a receita de
+                      cada um depois.
+                    </small>
+                  </div>
+                )}
+
                 <label
                   style={{
                     display: "flex",
