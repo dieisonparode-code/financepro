@@ -3045,8 +3045,13 @@ app.get(
         );
 
       // Dedup por nome do produto (desc_sale_item) — soma a quantidade
-      // total vendida no período, útil pra priorizar quem cadastrar
-      // primeiro (o mais vendido).
+      // total vendida no período (útil pra priorizar quem cadastrar
+      // primeiro, o mais vendido) e guarda o preço de venda (unit_price)
+      // da venda MAIS RECENTE desse produto — pedido do usuário (23/08/
+      // 2026), pra já vir preenchido no campo "Preço de venda" da Ficha
+      // Técnica sem precisar digitar. Usa o mais recente (não uma média)
+      // porque preço muda com o tempo (promoção, reajuste) — o mais
+      // recente é o que reflete o preço "de hoje".
       const produtosPorNome = new Map();
 
       vendasDaLoja.forEach((venda) => {
@@ -3056,20 +3061,36 @@ app.get(
           const nome = (item.desc_sale_item || "").trim();
           if (!nome) return;
 
+          const criadoEm = item.created_at ? new Date(item.created_at) : null;
+
           const atual = produtosPorNome.get(nome) || {
             nome_item_saipos: nome,
             id_store_item: item.id_store_item ?? null,
             quantidade_vendida: 0,
+            preco_venda: null,
+            _precoReferenciaEm: null,
           };
 
           atual.quantidade_vendida += Number(item.quantity || 0);
+
+          const precoDoItem =
+            item.unit_price != null ? Number(item.unit_price) : null;
+          if (
+            precoDoItem != null &&
+            (!atual._precoReferenciaEm ||
+              (criadoEm && criadoEm > atual._precoReferenciaEm))
+          ) {
+            atual.preco_venda = precoDoItem;
+            atual._precoReferenciaEm = criadoEm;
+          }
+
           produtosPorNome.set(nome, atual);
         });
       });
 
-      const produtos = Array.from(produtosPorNome.values()).sort(
-        (a, b) => b.quantidade_vendida - a.quantidade_vendida
-      );
+      const produtos = Array.from(produtosPorNome.values())
+        .map(({ _precoReferenciaEm, ...produto }) => produto)
+        .sort((a, b) => b.quantidade_vendida - a.quantidade_vendida);
 
       res.json(produtos);
     } catch (erro) {

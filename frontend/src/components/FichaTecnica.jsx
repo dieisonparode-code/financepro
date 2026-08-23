@@ -88,6 +88,17 @@ function FichaTecnica({
     setEditandoFichaId(null);
     setNomeProduto(produto.nome_item_saipos);
     setNomeItemSaipos(produto.nome_item_saipos);
+    // Pedido do usuário (23/08/2026): preço de venda já vem preenchido
+    // com o valor da venda mais recente desse produto na Saipos — o
+    // operador ainda pode corrigir antes de salvar se quiser.
+    setPrecoVenda(
+      produto.preco_venda != null
+        ? Number(produto.preco_venda).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        : ""
+    );
   }
 
   // Pedido do usuário (23/08/2026): em vez de clicar "+ Usar esse nome" e
@@ -127,7 +138,7 @@ function FichaTecnica({
       try {
         await adicionarFicha({
           nome_produto: produto.nome_item_saipos,
-          preco_venda: null,
+          preco_venda: produto.preco_venda != null ? Number(produto.preco_venda) : null,
           nome_item_saipos: produto.nome_item_saipos,
           loja_id: lojaPadrao || null,
           itens: [],
@@ -406,6 +417,8 @@ function FichaTecnica({
                             <span style={{ color: "#9aa0ac" }}>
                               {" "}
                               — {produto.quantidade_vendida}x vendido
+                              {produto.preco_venda != null &&
+                                ` · ${formatarMoeda(produto.preco_venda)}`}
                             </span>
                           </span>
 
