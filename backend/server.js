@@ -3011,15 +3011,23 @@ app.get(
         fimJanela = inicioJanela;
       }
 
-      const resultadosPorJanela = await Promise.all(
-        janelas.map((janela) =>
-          consultarSaipos("/sales_items", {
-            p_date_column_filter: "shift_date",
-            p_filter_date_start: paraDataHora(janela.inicio),
-            p_filter_date_end: paraDataHora(janela.fim),
-          })
-        )
-      );
+      // BUG REAL corrigido (23/08/2026): buscando as janelas em paralelo
+      // (Promise.all) a Saipos devolveu 504 "Timed out acquiring
+      // connection from connection pool" — /sales_items é um endpoint
+      // mais pesado que /search_sales (devolve os itens de cada venda,
+      // não só o total), duas consultas ao mesmo tempo bastam pra
+      // sobrecarregar o pool de conexão deles. Busca uma janela de cada
+      // vez agora.
+      const resultadosPorJanela = [];
+
+      for (const janela of janelas) {
+        const resultado = await consultarSaipos("/sales_items", {
+          p_date_column_filter: "shift_date",
+          p_filter_date_start: paraDataHora(janela.inicio),
+          p_filter_date_end: paraDataHora(janela.fim),
+        });
+        resultadosPorJanela.push(resultado);
+      }
 
       const vendasDaLoja = resultadosPorJanela
         .flat()
