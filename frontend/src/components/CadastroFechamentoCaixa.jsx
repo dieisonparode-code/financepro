@@ -29,6 +29,18 @@ const tiposFechamento = [
     corVerde: true,
     semCapture: true,
   },
+  // Pedido do usuário (23/08/2026): retirada genérica de caixa (sem
+  // motivo específico ainda) que vai pro Cofre — diferente dos outros
+  // tipos dessa lista (que só arquivam a foto pra exibição), esse
+  // realmente cria um Fundo de Retirada de verdade, aumentando o saldo
+  // do Cofre no Dashboard.
+  {
+    valor: "retirada_cofre",
+    rotulo: "Retirada pro Cofre",
+    icone: "🔒",
+    semCapture: true,
+    ajuda: "Dinheiro tirado do caixa sem destino específico ainda (guardado pra gasto futuro) — vai direto pro saldo do Cofre, sem descontar o Saldo geral agora.",
+  },
   // Pedido do usuário (16/08/2026): arquivar foto das comandas canceladas
   // do turno — só evidência/auditoria (prova de que o cancelamento foi
   // legítimo), igual ao padrão já usado em Notas Fiscais: NÃO lê valor
@@ -174,6 +186,7 @@ const TIPOS_COM_VALOR_CONFERIDO = [
   "cozinha",
   "pago_dinheiro_caixa",
   "venda_prazo",
+  "retirada_cofre",
 ];
 
 function CadastroFechamentoCaixa({
@@ -182,6 +195,9 @@ function CadastroFechamentoCaixa({
   adicionarFechamento,
   removerFechamento,
   corrigirValor,
+  fundosRetiradas = [],
+  adicionarFundoRetirada,
+  buscarFotoFundo,
   buscarFoto,
   lerValorFoto,
   finalizacoes = [],
@@ -251,6 +267,25 @@ function CadastroFechamentoCaixa({
     // Ordem crescente por data — a mais antiga primeiro, descendo até a
     // mais recente (pedido do usuário).
     .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+
+  // Fundo de Retirada (Cofre) da loja selecionada, aberto (ainda com
+  // saldo) e dos últimos 3 dias — não usa o mesmo teto "corta na
+  // finalização" do resto da tela porque o Cofre não pertence a um
+  // fechamento específico (o dinheiro fica guardado até ser gasto,
+  // pode ser dias depois).
+  const fundosRetiradasRecentes = (lojaId
+    ? fundosRetiradas.filter(
+        (fundo) =>
+          !fundo.loja_id || String(fundo.loja_id) === String(lojaId)
+      )
+    : fundosRetiradas
+  )
+    .filter(
+      (fundo) =>
+        fundo.status === "aberto" &&
+        Date.now() - new Date(fundo.criado_em).getTime() < TRES_DIAS_MS
+    )
+    .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
 
   // Pedido do usuário (12/08/2026): "reabrir" o último caixa já fechado só
   // pra CONSULTA — é tudo que entrou entre a penúltima e a última
@@ -434,10 +469,37 @@ function CadastroFechamentoCaixa({
     setRascunhoDiaria((anterior) => ({ ...anterior, salvando: true }));
 
     const ehPagoDinheiroCaixa = rascunhoDiaria.tipo === "pago_dinheiro_caixa";
+    const ehRetiradaCofre = rascunhoDiaria.tipo === "retirada_cofre";
     const valorNumerico =
       rascunhoDiaria.valor !== "" ? paraNumeroBr(rascunhoDiaria.valor) : null;
 
     try {
+      if (ehRetiradaCofre) {
+        if (!valorNumerico || valorNumerico <= 0) {
+          alert("Digite um valor válido pra Retirada pro Cofre.");
+          setRascunhoDiaria((anterior) =>
+            anterior ? { ...anterior, salvando: false } : anterior
+          );
+          return;
+        }
+
+        const hoje = new Date();
+        const dataStr = `${hoje.getFullYear()}-${String(
+          hoje.getMonth() + 1
+        ).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+
+        await adicionarFundoRetirada({
+          loja_id: lojaId,
+          valor: valorNumerico,
+          data: dataStr,
+          descricao: "Retirada de caixa — lançada no Fechamento de Caixa.",
+          foto: rascunhoDiaria.foto,
+        });
+
+        setRascunhoDiaria(null);
+        return;
+      }
+
       await adicionarFechamento({
         tipo: rascunhoDiaria.tipo,
         foto: rascunhoDiaria.foto,
@@ -543,6 +605,24 @@ function CadastroFechamentoCaixa({
       const resultado = await buscarFoto(registro.id);
       setFotoVisualizada(resultado?.foto || "");
       setRegistroFotoVisualizada(registro);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível carregar a foto.");
+    } finally {
+      setCarregandoFotoId(null);
+    }
+  }
+
+  // Fundo de Retirada (Cofre) mora numa tabela separada de
+  // fechamentos_caixa — "Ver foto" dele busca de um endpoint diferente,
+  // por isso tem função própria (mesmo espaço de "carregando" pra não
+  // precisar de mais um estado).
+  async function verFotoFundo(fundo) {
+    setCarregandoFotoId(fundo.id);
+
+    try {
+      const resultado = await buscarFotoFundo(fundo.id);
+      setFotoVisualizada(resultado?.foto || "");
+      setRegistroFotoVisualizada({ ...fundo, _ehFundo: true });
     } catch (erro) {
       alert(erro.message || "Não foi possível carregar a foto.");
     } finally {
@@ -926,6 +1006,61 @@ function CadastroFechamentoCaixa({
         )}
       </article>
 
+      {/* Pedido do usuário (23/08/2026): Fundo de Retirada (Cofre) mora
+      numa tabela separada — mostra à parte, com foto de comprovante
+      quando tiver, só os "abertos" (com saldo ainda não usado) da loja
+      selecionada, dos últimos 3 dias (mesmo teto do resto da tela). */}
+      {fundosRetiradasRecentes.length > 0 && (
+        <article className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="eyebrow">Cofre</span>
+              <h2>🔒 Retiradas pro Cofre (recentes)</h2>
+            </div>
+            <strong>{fundosRetiradasRecentes.length}</strong>
+          </div>
+
+          <div className="categorias-lista">
+            {fundosRetiradasRecentes.map((fundo) => (
+              <div className="categoria-item" key={`fundo-${fundo.id}`}>
+                <div className="categoria-identificacao">
+                  <div className="categoria-icone">🔒</div>
+
+                  <div>
+                    <strong>
+                      Retirada pro Cofre
+                      <span> · {formatarMoeda(fundo.valor)}</span>
+                      {Number(fundo.valor_usado || 0) > 0 && (
+                        <span style={{ color: "#9aa0ac" }}>
+                          {" "}
+                          (já usado {formatarMoeda(fundo.valor_usado)})
+                        </span>
+                      )}
+                    </strong>
+                    <div>{formatarDataHora(fundo.criado_em)}</div>
+                  </div>
+                </div>
+
+                {fundo.tem_foto && (
+                  <div className="transaction-actions">
+                    <button
+                      type="button"
+                      className="edit-button"
+                      disabled={carregandoFotoId === fundo.id}
+                      onClick={() => verFotoFundo(fundo)}
+                    >
+                      {carregandoFotoId === fundo.id
+                        ? "Carregando..."
+                        : "Ver foto"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </article>
+      )}
+
       {rascunhoDiaria && (
         <div
           className="modal-overlay"
@@ -1011,6 +1146,12 @@ function CadastroFechamentoCaixa({
                 💡 Esse valor é só pra exibição — a Venda a Prazo Funcionário
                 de verdade continua indo automático pra Contas a Receber
                 quando a Saipos for importada.
+              </div>
+            ) : rascunhoDiaria.tipo === "retirada_cofre" ? (
+              <div style={{ margin: "8px 0 16px", color: "#22c55e", fontWeight: 700 }}>
+                🔒 Vai direto pro saldo do Cofre — não desconta o Saldo geral
+                agora, só quando esse dinheiro for de fato gasto numa
+                despesa marcada "pago com o Cofre".
               </div>
             ) : (
               <>
@@ -1098,7 +1239,7 @@ function CadastroFechamentoCaixa({
               className="foto-modal-imagem"
             />
 
-            {ehAdministrador && (
+            {ehAdministrador && !registroFotoVisualizada?._ehFundo && (
               <div className="modal-actions">
                 <input
                   id="trocar-foto-fechamento"

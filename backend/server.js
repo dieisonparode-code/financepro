@@ -5226,8 +5226,12 @@ app.post(
             data,
             descricao: `${descricaoFinal} — lançado com foto de comprovante direto na Conciliação.`,
             criado_por: perfil?.nome || usuario?.email || "",
+            foto,
+            tem_foto: Boolean(foto),
           })
-          .select("*")
+          .select(
+            "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto"
+          )
           .single();
 
         if (erroFundo) throw erroFundo;
@@ -6162,9 +6166,16 @@ app.get(
   verificarPermissao(["saldo", "financeiro"]),
   async function (req, res) {
     try {
+      // Não seleciona "foto" aqui — esse endpoint é buscado toda vez que
+      // o Dashboard calcula o saldo do Cofre, não faz sentido baixar a
+      // imagem inteira de cada retirada só pra somar valor. "Ver foto"
+      // (quando existir) busca a imagem à parte, sob demanda, em
+      // /fundo-retiradas-caixa/:id/foto.
       const { data, error } = await supabase
         .from("fundo_retiradas_caixa")
-        .select("*")
+        .select(
+          "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto"
+        )
         .order("data", { ascending: false });
 
       if (error) throw error;
@@ -6203,6 +6214,11 @@ app.post(
 
       const { usuario, perfil } = await obterPerfilOpcional(req);
 
+      // Pedido do usuário (23/08/2026): botão "Retirada pro Cofre" no
+      // Fechamento de Caixa, com foto do comprovante como evidência —
+      // igual toda outra foto do sistema.
+      const foto = typeof req.body.foto === "string" ? req.body.foto : "";
+
       const { data: criado, error } = await supabase
         .from("fundo_retiradas_caixa")
         .insert({
@@ -6211,8 +6227,12 @@ app.post(
           data,
           descricao: (req.body.descricao || "").trim(),
           criado_por: perfil?.nome || usuario?.email || "",
+          foto,
+          tem_foto: Boolean(foto),
         })
-        .select("*")
+        .select(
+          "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto"
+        )
         .single();
 
       if (error) throw error;
@@ -6222,7 +6242,7 @@ app.post(
         "criou",
         "fundo_retiradas_caixa",
         criado.id,
-        `Fundo de retirada de ${valor}`
+        `Fundo de retirada de ${valor}${foto ? " (com foto)" : ""}`
       );
 
       res.status(201).json(criado);
@@ -6230,6 +6250,38 @@ app.post(
       console.error("Erro ao criar fundo de retirada:", erro.message);
       res.status(500).json({
         erro: "Não foi possível salvar o fundo de retirada.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// "Ver foto" sob demanda pro Fundo de Retirada (Cofre) — mesmo padrão de
+// /fechamentos-caixa/:id/foto, não vem junto na listagem pra não pesar.
+app.get(
+  "/fundo-retiradas-caixa/:id/foto",
+  verificarPermissao(["saldo", "financeiro"]),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do fundo inválido." });
+      }
+
+      const { data, error } = await supabase
+        .from("fundo_retiradas_caixa")
+        .select("foto")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      res.json({ foto: data?.foto || "" });
+    } catch (erro) {
+      console.error("Erro ao buscar foto do fundo de retirada:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar a foto.",
         detalhes: erro.message,
       });
     }

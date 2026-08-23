@@ -480,6 +480,12 @@ export async function criarFundoRetiradaCaixa(dados) {
   });
 }
 
+export async function buscarFotoFundoRetiradaCaixa(id) {
+  return requisicao(`/fundo-retiradas-caixa/${id}/foto`, {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function buscarDinheiroInformado() {
   return requisicao("/caixa-dinheiro-informado", {
     headers: await cabecalhoAutenticado(),

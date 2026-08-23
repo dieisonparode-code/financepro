@@ -68,6 +68,7 @@ import {
   buscarFotoFechamentoCaixa,
   criarFechamentoCaixa,
   corrigirValorFechamentoCaixa,
+  buscarFotoFundoRetiradaCaixa,
   excluirFechamentoCaixa,
   buscarFinalizacoesFechamentoCaixa,
   finalizarFechamentoCaixa,
@@ -3509,6 +3510,17 @@ const pontoDeEquilibrio = useMemo(() => {
     );
   }
 
+  // Pedido do usuário (23/08/2026): botão "Retirada pro Cofre" direto no
+  // Fechamento de Caixa — tira/anexa foto do comprovante, confirma o
+  // valor lido (mesmo fluxo já usado pra Diária Boy/Cozinha) e cria um
+  // Fundo de Retirada de verdade (não é só arquivo/exibição como os
+  // outros tipos — esse realmente entra no saldo do Cofre).
+  async function adicionarFundoRetiradaCaixaHandler(dados) {
+    const salvo = await criarFundoRetiradaCaixa(dados);
+
+    setFundosRetiradas((anteriores) => [salvo, ...anteriores]);
+  }
+
   async function trocarFotoFechamentoCaixaHandler(id, foto) {
     await trocarFotoFechamentoCaixa(id, foto);
 
@@ -5143,6 +5155,9 @@ const pontoDeEquilibrio = useMemo(() => {
             adicionarFechamento={adicionarFechamentoCaixa}
             removerFechamento={removerFechamentoCaixa}
             corrigirValor={corrigirValorFechamentoCaixaHandler}
+            fundosRetiradas={fundosRetiradas}
+            adicionarFundoRetirada={adicionarFundoRetiradaCaixaHandler}
+            buscarFotoFundo={buscarFotoFundoRetiradaCaixa}
             buscarFoto={buscarFotoFechamentoCaixa}
             lerValorFoto={lerValorFechamentoCaixa}
             finalizacoes={finalizacoesFechamentoCaixa}
