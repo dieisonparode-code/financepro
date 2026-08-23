@@ -2993,13 +2993,21 @@ app.get(
       // superior a 15 dias" — 400 P0001), diferente do /search_sales que
       // aceita período maior. Quebra o período pedido em janelas de no
       // máximo 15 dias e junta o resultado de todas.
-      const dias = Number(req.query.dias) || 30;
+      const dias = Number(req.query.dias) || 15;
       const agora = new Date();
       const inicioTotal = new Date(agora.getTime() - dias * 24 * 60 * 60 * 1000);
       const paraDataHora = (data) =>
         data.toISOString().slice(0, 19).replace("T", " ");
 
-      const JANELA_MS = 15 * 24 * 60 * 60 * 1000;
+      // BUG REAL corrigido (23/08/2026): janela de 15 dias (o máximo que
+      // a Saipos aceita) demorou demais e estourou o timeout mesmo
+      // buscando uma de cada vez ("The operation was aborted due to
+      // timeout") — /sales_items devolve TODOS os itens de TODAS as
+      // vendas do período (bem mais pesado que /search_sales, que só dá
+      // o total por venda). Janela menor (7 dias) por consulta, timeout
+      // mais folgado (45s em vez de 20s) pra esse endpoint especificamente.
+      const JANELA_MS = 7 * 24 * 60 * 60 * 1000;
+      const TIMEOUT_SALES_ITEMS_MS = 45000;
       const janelas = [];
       let fimJanela = agora;
 
@@ -3011,21 +3019,22 @@ app.get(
         fimJanela = inicioJanela;
       }
 
-      // BUG REAL corrigido (23/08/2026): buscando as janelas em paralelo
-      // (Promise.all) a Saipos devolveu 504 "Timed out acquiring
-      // connection from connection pool" — /sales_items é um endpoint
-      // mais pesado que /search_sales (devolve os itens de cada venda,
-      // não só o total), duas consultas ao mesmo tempo bastam pra
-      // sobrecarregar o pool de conexão deles. Busca uma janela de cada
-      // vez agora.
+      // Busca uma janela de cada vez (não em paralelo) — em paralelo a
+      // Saipos devolveu 504 "Timed out acquiring connection from
+      // connection pool", o pool de conexão deles não aguenta duas
+      // consultas pesadas ao mesmo tempo.
       const resultadosPorJanela = [];
 
       for (const janela of janelas) {
-        const resultado = await consultarSaipos("/sales_items", {
-          p_date_column_filter: "shift_date",
-          p_filter_date_start: paraDataHora(janela.inicio),
-          p_filter_date_end: paraDataHora(janela.fim),
-        });
+        const resultado = await consultarSaipos(
+          "/sales_items",
+          {
+            p_date_column_filter: "shift_date",
+            p_filter_date_start: paraDataHora(janela.inicio),
+            p_filter_date_end: paraDataHora(janela.fim),
+          },
+          TIMEOUT_SALES_ITEMS_MS
+        );
         resultadosPorJanela.push(resultado);
       }
 
@@ -3915,14 +3924,14 @@ const SAIPOS_DATA_API_BASE = "https://data.saipos.io/v1";
 // responder. Em vez de desistir na primeira falha (o que deixava a tela
 // "Vendas (Saipos)" travada em "Selecione a loja e a data" sem avisar o
 // motivo), tenta de novo algumas vezes antes de reportar erro pro usuário.
-async function buscarPaginaSaiposComRetry(url, token, tentativas = 3) {
+async function buscarPaginaSaiposComRetry(url, token, tentativas = 3, timeoutMs = 20000) {
   let ultimoErro;
 
   for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
     try {
       const resposta = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!resposta.ok) {
@@ -3958,7 +3967,7 @@ async function buscarPaginaSaiposComRetry(url, token, tentativas = 3) {
   throw ultimoErro;
 }
 
-async function consultarSaipos(caminho, parametros) {
+async function consultarSaipos(caminho, parametros, timeoutMs = 20000) {
   const token = process.env.SAIPOS_TOKEN;
 
   if (!token) {
@@ -3981,7 +3990,7 @@ async function consultarSaipos(caminho, parametros) {
     url.searchParams.set("p_limit", limite);
     url.searchParams.set("p_offset", posicao);
 
-    const pagina = await buscarPaginaSaiposComRetry(url, token);
+    const pagina = await buscarPaginaSaiposComRetry(url, token, 3, timeoutMs);
 
     registros.push(...pagina);
 

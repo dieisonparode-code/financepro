@@ -53,7 +53,12 @@ function FichaTecnica({
     setErroProdutosVendidos("");
 
     try {
-      const dados = await buscarProdutosVendidos(lojaPadrao, 30);
+      // 15 dias (não 30): a Saipos limita a consulta pesada de itens de
+      // venda a no máximo 15 dias por vez — pedir mais do que isso
+      // significa buscar várias janelas em sequência, o que já demorou
+      // demais e estourou timeout num teste real. 15 dias cobre bem a
+      // maioria dos produtos que vendem no dia a dia.
+      const dados = await buscarProdutosVendidos(lojaPadrao, 15);
       setProdutosVendidos(Array.isArray(dados) ? dados : []);
     } catch (erro) {
       setErroProdutosVendidos(
@@ -235,7 +240,7 @@ function FichaTecnica({
                 gap: "8px",
               }}
             >
-              <strong>📥 Produtos vendidos na Saipos (últimos 30 dias)</strong>
+              <strong>📥 Produtos vendidos na Saipos (últimos 15 dias)</strong>
               <button
                 type="button"
                 className="secondary-button"
