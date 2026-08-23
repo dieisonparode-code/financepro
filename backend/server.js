@@ -3126,8 +3126,14 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        `Essa é a foto (ou print) de um cardápio de uma hamburgueria — pode ser um cardápio impresso, um cartaz, ou um print de cardápio digital (ex: iFood, site). Extraia TODOS os produtos/itens à venda listados, mesmo que a foto tenha várias seções/categorias diferentes — releia com atenção até o fim, não pare depois dos primeiros itens. Pra CADA produto, extraia: o NOME exatamente como está escrito (sem abreviar, sem corrigir ortografia), e o PREÇO (o valor em R$ ao lado do nome — se tiver mais de um preço/tamanho pro mesmo item, ex: "P: 15,00 / G: 25,00", crie uma linha separada pra CADA tamanho, com o nome incluindo o tamanho, ex: "X-Salada P" e "X-Salada G"). Além disso, tente identificar a CATEGORIA de cada produto pelo título da seção onde ele está impresso no cardápio (ex: um título "CALOTAS" ou "LANCHES" antes de um grupo de itens) — classifique CADA produto em uma dessas categorias exatas, a que fizer mais sentido: "Calotas", "Calotinhas", "Fritas", "Cachorro", "Porções", "Bebidas", ou "Outra" se não se encaixar em nenhuma. Se não conseguir ler o preço de algum item com confiança, use null nesse campo, mas ainda assim inclua o produto com o nome. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"produtos": [{"nome": "Calota Filé", "preco": 32.90, "categoria": "Calotas"}, {"nome": "Coca-Cola Lata", "preco": 6.00, "categoria": "Bebidas"}]}. Se a foto não for de um cardápio (foto errada, ilegível), responda {"produtos": []}.`,
-        8192
+        `Essa é a foto (ou print) de UMA PÁGINA/SEÇÃO de um cardápio de uma hamburgueria — pode ser cardápio impresso, cartaz, ou print de cardápio digital (ex: iFood, site). Extraia TODOS os produtos/itens à venda listados nessa imagem, mesmo que tenha várias seções/categorias diferentes — releia com atenção até o fim, não pare depois dos primeiros itens. Pra CADA produto, extraia:
+- "nome": exatamente como está escrito (sem abreviar, sem corrigir ortografia). Se tiver mais de um preço/tamanho pro mesmo item (ex: "P: 15,00 / G: 25,00"), crie uma linha SEPARADA pra CADA tamanho, com o nome incluindo o tamanho (ex: "X-Salada P" e "X-Salada G").
+- "preco": o valor em R$ ao lado do nome. Se não conseguir ler com confiança, use null, mas ainda assim inclua o produto.
+- "categoria": pelo título da seção/página onde o produto está impresso (ex: um título "CALOTA" ou "FRITAS" no topo da página) — classifique em UMA dessas categorias exatas, a que fizer mais sentido: "Calotas", "Calotinhas", "Fritas", "Cachorro", "Porções", "Bebidas", ou "Outra".
+- "ingredientes": a lista de ingredientes/composição impressa embaixo do nome do produto (é comum em cardápio de hamburgueria, ex: "4 Hambúrgueres, 3 ovos, 3 presuntos, 3 fatias de queijo, maionese, ketchup, mostarda, milho, tomate e alface"). Pra CADA ingrediente dessa lista, devolva um objeto {"nome": "...", "quantidade": N}: se o texto tiver um NÚMERO explícito antes do ingrediente (ex: "4 Hambúrgueres" → quantidade 4, "3 ovos" → quantidade 3), use esse número; se o ingrediente for citado SEM número (ex: só "maionese", "ketchup", "milho", "tomate", "alface"), use quantidade 1. Nomeie cada ingrediente no SINGULAR e numa forma CURTA e PADRONIZADA (ex: "Hambúrguer", "Ovo", "Presunto", "Fatia de queijo", "Maionese", "Ketchup", "Mostarda", "Milho", "Tomate", "Alface") — MUITO IMPORTANTE: use SEMPRE a mesma grafia exata pro mesmo ingrediente em produtos diferentes dessa mesma imagem (ex: sempre "Ovo", nunca variar entre "Ovo"/"Ovos"/"ovo"), porque esses nomes vão virar itens de estoque compartilhados entre os produtos — nomes diferentes pro mesmo ingrediente viram estoque duplicado. Se o produto não tiver nenhuma lista de ingredientes impressa (ex: é só um nome + preço, sem descrição), devolva "ingredientes": [].
+
+Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"produtos": [{"nome": "Calota Especial", "preco": 109.90, "categoria": "Calotas", "ingredientes": [{"nome": "Hambúrguer", "quantidade": 4}, {"nome": "Ovo", "quantidade": 3}, {"nome": "Presunto", "quantidade": 3}, {"nome": "Fatia de queijo", "quantidade": 3}, {"nome": "Maionese", "quantidade": 1}, {"nome": "Ketchup", "quantidade": 1}, {"nome": "Mostarda", "quantidade": 1}, {"nome": "Milho", "quantidade": 1}, {"nome": "Tomate", "quantidade": 1}, {"nome": "Alface", "quantidade": 1}]}]}. Se a imagem não for de um cardápio (foto errada, ilegível), responda {"produtos": []}.`,
+        16000
       );
 
       let dadosLidos;
@@ -3160,6 +3166,15 @@ app.post(
           nome: (item?.nome || "").trim(),
           preco: item?.preco != null ? Number(item.preco) : null,
           categoria: CATEGORIAS_VALIDAS.has(item?.categoria) ? item.categoria : "",
+          ingredientes: (Array.isArray(item?.ingredientes) ? item.ingredientes : [])
+            .map((ingrediente) => ({
+              nome: (ingrediente?.nome || "").trim(),
+              quantidade:
+                ingrediente?.quantidade != null && Number(ingrediente.quantidade) > 0
+                  ? Number(ingrediente.quantidade)
+                  : 1,
+            }))
+            .filter((ingrediente) => ingrediente.nome),
         }))
         .filter((item) => item.nome);
 

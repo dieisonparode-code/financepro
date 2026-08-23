@@ -141,14 +141,35 @@ function FichaTecnica({
   const [progressoCardapio, setProgressoCardapio] = useState(null);
   const [erroCardapio, setErroCardapio] = useState("");
 
+  // Pedido do usuário (23/08/2026): "pega do cardápio lá e tira todos os
+  // ingredientes de cada lanche" — além de nome/preço/categoria, agora
+  // também lê a lista de ingredientes de cada produto (impressa no
+  // cardápio, ex: "4 Hambúrgueres, 3 ovos..."), cria os Insumos que ainda
+  // não existirem no Estoque (reaproveitando pelo nome — "Ovo" só é
+  // criado uma vez, mesmo aparecendo em 30 produtos diferentes) e já
+  // monta a receita (itens) de cada Ficha Técnica com eles.
   async function importarCardapio(arquivo) {
     if (!arquivo) return;
 
     setErroCardapio("");
+
+    const ehPdf = arquivo.type === "application/pdf";
+
+    // PDF não passa pela mesma compressão de imagem — um PDF de cardápio
+    // inteiro pode vir gigante (dezenas de MB) e travar/estourar a
+    // leitura. Pede pra mandar foto/print de uma página por vez nesse
+    // caso (o botão pode ser clicado várias vezes, cada vez soma o que
+    // ainda não tiver cadastrado).
+    if (ehPdf && arquivo.size > 8 * 1024 * 1024) {
+      setErroCardapio(
+        `Esse PDF tem ${(arquivo.size / 1024 / 1024).toFixed(1)}MB — grande demais pra ler de uma vez. Tire um print (ou foto) de cada página do cardápio e importe uma de cada vez (clique o botão de novo pra cada página) — só cria o que ainda não estiver cadastrado.`
+      );
+      return;
+    }
+
     setLendoCardapio(true);
 
     try {
-      const ehPdf = arquivo.type === "application/pdf";
       const fotoOuPdf = ehPdf
         ? await new Promise((resolve, reject) => {
             const leitor = new FileReader();
@@ -181,8 +202,14 @@ function FichaTecnica({
         return;
       }
 
+      const totalIngredientes = new Set(
+        pendentes.flatMap((produto) =>
+          (produto.ingredientes || []).map((i) => i.nome.trim().toLowerCase())
+        )
+      ).size;
+
       const confirmar = window.confirm(
-        `Lidos ${resultado.produtos.length} produto(s) do cardápio. Cadastrar os ${pendentes.length} que ainda não têm Ficha Técnica? Cada um entra com nome, preço (quando lido) e categoria sugerida — sem insumo ainda, você completa a receita depois.`
+        `Lidos ${resultado.produtos.length} produto(s) do cardápio. Cadastrar os ${pendentes.length} que ainda não têm Ficha Técnica, já com a receita (até ${totalIngredientes} insumo(s) diferente(s), criando no Estoque quem ainda não existir)? Preço/categoria vêm junto quando lidos.`
       );
 
       if (!confirmar) return;
@@ -190,19 +217,56 @@ function FichaTecnica({
       setCriandoDoCardapio(true);
       setProgressoCardapio({ feito: 0, total: pendentes.length });
 
+      // Cache local dos insumos (existentes + criados agora nesse
+      // import) pra não criar o mesmo ingrediente duas vezes, nem entre
+      // produtos diferentes desse mesmo cardápio.
+      const insumosPorNome = new Map(
+        insumos
+          .filter(
+            (insumo) =>
+              !insumo.loja_id || String(insumo.loja_id) === String(lojaPadrao)
+          )
+          .map((insumo) => [insumo.nome.trim().toLowerCase(), insumo])
+      );
+
       const falharam = [];
 
       for (let i = 0; i < pendentes.length; i += 1) {
         const produto = pendentes[i];
 
         try {
+          const itens = [];
+
+          for (const ingrediente of produto.ingredientes || []) {
+            const chave = ingrediente.nome.trim().toLowerCase();
+            let insumo = insumosPorNome.get(chave);
+
+            if (!insumo) {
+              insumo = await adicionarInsumo({
+                nome: ingrediente.nome.trim(),
+                unidade_medida: "un",
+                estoque_atual: 0,
+                estoque_minimo: 0,
+                custo_unitario: 0,
+                loja_id: lojaPadrao || null,
+                todas_as_lojas: !lojaPadrao,
+              });
+              insumosPorNome.set(chave, insumo);
+            }
+
+            itens.push({
+              insumo_id: insumo.id,
+              quantidade: ingrediente.quantidade,
+            });
+          }
+
           await adicionarFicha({
             nome_produto: produto.nome,
             preco_venda: produto.preco,
             nome_item_saipos: "",
             categoria: produto.categoria || sugerirCategoria(produto.nome),
             loja_id: lojaPadrao || null,
-            itens: [],
+            itens,
           });
         } catch (erro) {
           falharam.push(produto.nome);
@@ -219,10 +283,14 @@ function FichaTecnica({
           `Cadastrado ${pendentes.length - falharam.length} de ${pendentes.length}. Falharam: ${falharam.join(", ")}`
         );
       } else {
-        alert(`${pendentes.length} produto(s) do cardápio cadastrado(s)! Agora é só completar a receita (insumos) de cada um.`);
+        alert(
+          `${pendentes.length} produto(s) do cardápio cadastrado(s), já com a receita! Confira em Estoque os insumos criados — o custo unitário de cada um começa em R$0,00, é só preencher o valor real de compra.`
+        );
       }
     } catch (erro) {
       setLendoCardapio(false);
+      setCriandoDoCardapio(false);
+      setProgressoCardapio(null);
       setErroCardapio(erro.message || "Não foi possível ler o cardápio.");
     }
   }
@@ -647,10 +715,12 @@ function FichaTecnica({
             )}
 
             <small className="foto-ajuda" style={{ display: "block" }}>
-              A IA lê o cardápio (cartaz, impresso ou PDF), separa cada
-              produto com nome/preço/categoria, e você confirma antes de
-              cadastrar tudo de uma vez — sem insumo ainda, você completa a
-              receita depois.
+              A IA lê o cardápio (cartaz, impresso ou print — não PDF
+              grande, veja abaixo), separa cada produto com
+              nome/preço/categoria e a lista de ingredientes já monta a
+              receita sozinha (cria no Estoque quem ainda não existir,
+              reaproveitando ingrediente repetido entre produtos). Confirma
+              antes de cadastrar tudo de uma vez.
             </small>
           </div>
         )}
