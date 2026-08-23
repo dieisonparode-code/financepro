@@ -14,15 +14,17 @@ function formatarMoeda(valor) {
   });
 }
 
-// Pedido do usuário (23/08/2026): agrupar por categoria — a Saipos não
-// manda isso em nenhum endpoint, então é campo nosso, manual. Lista fixa
-// (o que o usuário pediu); "Outra" cobre o que não se encaixa nessas 5.
+// Pedido do usuário (23/08/2026, ajustado depois): agrupar por categoria
+// — a Saipos não manda isso em nenhum endpoint, então é campo nosso,
+// manual. Lista fixa (o que o usuário pediu); "Outra" cobre o que não se
+// encaixa nessas 6.
 const CATEGORIAS_FICHA_TECNICA = [
   "Calotas",
   "Calotinhas",
-  "Batatas",
-  "Bebidas",
+  "Fritas",
+  "Cachorro",
   "Porções",
+  "Bebidas",
   "Outra",
 ];
 
@@ -34,7 +36,8 @@ function sugerirCategoria(nomeProduto) {
 
   if (/calotinha/.test(nome)) return "Calotinhas";
   if (/calota/.test(nome)) return "Calotas";
-  if (/batata/.test(nome)) return "Batatas";
+  if (/batata|fritas?\b/.test(nome)) return "Fritas";
+  if (/cachorro|hot[ -]?dog|cachorro[ -]?quente/.test(nome)) return "Cachorro";
   if (/por[çc][ãa]o|por[çc][õo]es/.test(nome)) return "Porções";
   if (
     /refrigerante|refri\b|suco|\bagua\b|\bágua\b|coca[ -]?cola|guaran[aá]|cerveja|bebida|energ[eé]tico|chá\b/.test(
