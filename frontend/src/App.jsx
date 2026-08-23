@@ -4929,6 +4929,7 @@ const pontoDeEquilibrio = useMemo(() => {
             buscarProdutosVendidos={buscarProdutosVendidosSaipos}
             importarCardapioFoto={importarCardapioFoto}
             adicionarInsumo={adicionarInsumo}
+            editarInsumo={editarInsumoHandler}
           />
         )}
 

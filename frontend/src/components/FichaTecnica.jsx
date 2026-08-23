@@ -122,6 +122,7 @@ function FichaTecnica({
   removerFicha,
   buscarProdutosVendidos,
   importarCardapioFoto,
+  editarInsumo,
 }) {
   const [editandoFichaId, setEditandoFichaId] = useState(null);
   const [nomeProduto, setNomeProduto] = useState("");
@@ -129,6 +130,47 @@ function FichaTecnica({
   const [nomeItemSaipos, setNomeItemSaipos] = useState("");
   const [categoria, setCategoria] = useState("");
   const [itensFicha, setItensFicha] = useState([]);
+  // Pedido do usuário (23/08/2026): dava pra ver que o Custo total tava
+  // R$0,00 (insumo sem custo cadastrado), mas não tinha como preencher o
+  // valor sem sair pra tela Estoque e voltar — agora edita o custo
+  // unitário do insumo direto aqui, ao lado de cada item da receita.
+  const [custoEditandoInsumoId, setCustoEditandoInsumoId] = useState(null);
+  const [custoDigitado, setCustoDigitado] = useState("");
+  const [salvandoCustoInsumoId, setSalvandoCustoInsumoId] = useState(null);
+
+  function iniciarEdicaoCustoInsumo(insumo) {
+    setCustoEditandoInsumoId(insumo.id);
+    setCustoDigitado(
+      Number(insumo.custo_unitario || 0).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+
+  async function salvarCustoInsumo(insumo) {
+    setSalvandoCustoInsumoId(insumo.id);
+
+    try {
+      // PUT /insumos substitui o registro inteiro — manda todos os campos
+      // do insumo (não só o custo), senão os outros (unidade, estoque
+      // mínimo, loja) ficam zerados/nulos sem querer.
+      await editarInsumo(insumo.id, {
+        nome: insumo.nome,
+        unidade_medida: insumo.unidade_medida,
+        estoque_minimo: insumo.estoque_minimo,
+        unidade_compra: insumo.unidade_compra,
+        fator_conversao: insumo.fator_conversao,
+        custo_unitario: paraNumero(custoDigitado),
+        loja_id: insumo.loja_id,
+      });
+      setCustoEditandoInsumoId(null);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível salvar o custo do insumo.");
+    } finally {
+      setSalvandoCustoInsumoId(null);
+    }
+  }
   const [salvandoFicha, setSalvandoFicha] = useState(false);
 
   // Pedido do usuário (23/08/2026): "manda a foto do cardápio e você
@@ -937,50 +979,104 @@ function FichaTecnica({
               Insumos usados
             </span>
 
-            {itensFicha.map((item, indice) => (
-              <div
-                key={indice}
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  marginBottom: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <select
-                  value={item.insumo_id}
-                  onChange={(evento) =>
-                    atualizarLinhaItem(indice, "insumo_id", evento.target.value)
-                  }
-                  style={{ maxWidth: 200 }}
-                >
-                  <option value="">Escolha o insumo...</option>
-                  {insumos.map((insumo) => (
-                    <option key={insumo.id} value={insumo.id}>
-                      {insumo.nome} ({insumo.unidade_medida})
-                    </option>
-                  ))}
-                </select>
+            {itensFicha.map((item, indice) => {
+              const insumoDaLinha = insumos.find(
+                (i) => String(i.id) === String(item.insumo_id)
+              );
 
-                <CampoValor
-                  value={item.quantidade}
-                  onChange={(valor) =>
-                    atualizarLinhaItem(indice, "quantidade", valor)
-                  }
-                  placeholder="Qtd"
-                  style={{ maxWidth: 90 }}
-                />
-
-                <button
-                  type="button"
-                  className="delete-button"
-                  onClick={() => removerLinhaItem(indice)}
+              return (
+                <div
+                  key={indice}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    marginBottom: 8,
+                    flexWrap: "wrap",
+                  }}
                 >
-                  ✖️
-                </button>
-              </div>
-            ))}
+                  <select
+                    value={item.insumo_id}
+                    onChange={(evento) =>
+                      atualizarLinhaItem(indice, "insumo_id", evento.target.value)
+                    }
+                    style={{ maxWidth: 200 }}
+                  >
+                    <option value="">Escolha o insumo...</option>
+                    {insumos.map((insumo) => (
+                      <option key={insumo.id} value={insumo.id}>
+                        {insumo.nome} ({insumo.unidade_medida})
+                      </option>
+                    ))}
+                  </select>
+
+                  <CampoValor
+                    value={item.quantidade}
+                    onChange={(valor) =>
+                      atualizarLinhaItem(indice, "quantidade", valor)
+                    }
+                    placeholder="Qtd"
+                    style={{ maxWidth: 90 }}
+                  />
+
+                  {insumoDaLinha && editarInsumo && (
+                    custoEditandoInsumoId === insumoDaLinha.id ? (
+                      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: "#9aa0ac" }}>Custo un.</span>
+                        <CampoValor
+                          autoFocus
+                          value={custoDigitado}
+                          onChange={setCustoDigitado}
+                          style={{ maxWidth: 90 }}
+                        />
+                        <button
+                          type="button"
+                          title="Salvar custo"
+                          disabled={salvandoCustoInsumoId === insumoDaLinha.id}
+                          onClick={() => salvarCustoInsumo(insumoDaLinha)}
+                        >
+                          ✅
+                        </button>
+                        <button
+                          type="button"
+                          title="Cancelar"
+                          disabled={salvandoCustoInsumoId === insumoDaLinha.id}
+                          onClick={() => setCustoEditandoInsumoId(null)}
+                        >
+                          ✖️
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => iniciarEdicaoCustoInsumo(insumoDaLinha)}
+                        title="Definir o custo unitário desse insumo"
+                        style={{
+                          fontSize: 12,
+                          color:
+                            Number(insumoDaLinha.custo_unitario || 0) > 0
+                              ? undefined
+                              : "#ff9800",
+                        }}
+                      >
+                        {Number(insumoDaLinha.custo_unitario || 0) > 0
+                          ? `Custo un.: ${formatarMoeda(insumoDaLinha.custo_unitario)} ✏️`
+                          : "⚠️ Definir custo unitário"}
+                      </button>
+                    )
+                  )}
+
+                  <button
+                    type="button"
+                    className="delete-button"
+                    onClick={() => removerLinhaItem(indice)}
+                  >
+                    ✖️
+                  </button>
+                </div>
+              );
+            })}
 
             <button
               type="button"
