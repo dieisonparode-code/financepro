@@ -1014,8 +1014,8 @@ function CadastroFechamentoCaixa({
         <article className="panel">
           <div className="panel-header">
             <div>
-              <span className="eyebrow">Cofre</span>
-              <h2>🔒 Retiradas pro Cofre (recentes)</h2>
+              <span className="eyebrow">Cofre e retiradas</span>
+              <h2>🔒 Retiradas de caixa (recentes)</h2>
             </div>
             <strong>{fundosRetiradasRecentes.length}</strong>
           </div>
@@ -1024,11 +1024,20 @@ function CadastroFechamentoCaixa({
             {fundosRetiradasRecentes.map((fundo) => (
               <div className="categoria-item" key={`fundo-${fundo.id}`}>
                 <div className="categoria-identificacao">
-                  <div className="categoria-icone">🔒</div>
+                  <div className="categoria-icone">
+                    {fundo.conta_para_cofre === false ? "🧾" : "🔒"}
+                  </div>
 
                   <div>
                     <strong>
-                      Retirada pro Cofre
+                      {/* Pedido do usuário (23/08/2026): só o que veio
+                      pelo botão dedicado é "Retirada pro Cofre" de
+                      verdade — o resto (detectado automaticamente ou
+                      lançado pela Conciliação sem esse botão) é retirada
+                      genérica pra pagar algo na hora, não vai pro Cofre. */}
+                      {fundo.conta_para_cofre === false
+                        ? "Retirada de caixa para pagamento"
+                        : "Retirada pro Cofre"}
                       <span> · {formatarMoeda(fundo.valor)}</span>
                       {Number(fundo.valor_usado || 0) > 0 && (
                         <span style={{ color: "#9aa0ac" }}>

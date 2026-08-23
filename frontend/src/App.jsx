@@ -1800,11 +1800,17 @@ const dinheiroEmCaixaFiltrado = useMemo(() => {
 // Retirada de Caixa (retirada genérica ainda não gasta) — soma
 // (valor - valor_usado) de todos os fundos "aberto" da loja
 // selecionada (ou de todas, se "Todas as lojas").
+// Pedido do usuário (23/08/2026): só conta como Cofre de verdade o que
+// veio pelo botão dedicado "🔒 Retirada pro Cofre" (conta_para_cofre =
+// true) — retiradas genéricas detectadas automaticamente (ou lançadas
+// pela Conciliação sem esse botão) continuam existindo como Fundo
+// disponível pra pagar despesa, só não somam mais nesse card.
 const fundoRetiradaDisponivel = useMemo(() => {
   return fundosRetiradas
     .filter(
       (fundo) =>
         fundo.status === "aberto" &&
+        fundo.conta_para_cofre !== false &&
         (lojaDashboard === "todas" ||
           String(fundo.loja_id || "") === String(lojaDashboard))
     )

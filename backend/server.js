@@ -5228,9 +5228,18 @@ app.post(
             criado_por: perfil?.nome || usuario?.email || "",
             foto,
             tem_foto: Boolean(foto),
+            // Pedido do usuário (23/08/2026): só o botão dedicado "🔒
+            // Retirada pro Cofre" (Fechamento de Caixa) conta de verdade
+            // no saldo do Cofre — esse caminho genérico (retirada sem
+            // motivo específico, lançada por foto na Conciliação) muitas
+            // vezes é dinheiro pra pagar algo na hora (ex: mercado), não
+            // guardado no Cofre. Continua sendo criado igual (Fundo
+            // disponível pra pagar despesa depois), só não soma mais no
+            // card do Cofre no Dashboard.
+            conta_para_cofre: false,
           })
           .select(
-            "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto"
+            "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto, conta_para_cofre"
           )
           .single();
 
@@ -5493,6 +5502,9 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura, re
           valor,
           data: dataAbertura,
           descricao: `${descricao} (${retirada.data_hora || "sem horário"}) — detectado automaticamente na leitura do fechamento de caixa.`,
+          // Mesmo critério do endpoint manual acima: só o botão dedicado
+          // "🔒 Retirada pro Cofre" conta como Cofre de verdade.
+          conta_para_cofre: false,
         })
         .select("*")
         .single();
@@ -6174,7 +6186,7 @@ app.get(
       const { data, error } = await supabase
         .from("fundo_retiradas_caixa")
         .select(
-          "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto"
+          "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto, conta_para_cofre"
         )
         .order("data", { ascending: false });
 
@@ -6229,9 +6241,14 @@ app.post(
           criado_por: perfil?.nome || usuario?.email || "",
           foto,
           tem_foto: Boolean(foto),
+          // Pedido do usuário (23/08/2026): esse é o ÚNICO caminho que
+          // conta como Cofre de verdade — fixo aqui no servidor (não vem
+          // do req.body), pra ninguém conseguir marcar uma retirada
+          // qualquer como Cofre só chamando essa mesma rota por fora.
+          conta_para_cofre: true,
         })
         .select(
-          "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto"
+          "id, loja_id, valor, valor_usado, data, descricao, status, criado_por, criado_em, atualizado_em, tem_foto, conta_para_cofre"
         )
         .single();
 
