@@ -2987,21 +2987,45 @@ app.get(
       // Período configurável (padrão 30 dias) — produto vendido há mais
       // tempo que isso ainda aparece pra cadastrar bastando abrir com
       // "dias" maior, não precisa mudar código.
+      //
+      // BUG REAL corrigido (23/08/2026): /sales_items rejeita qualquer
+      // intervalo maior que 15 dias ("O intervalo de datas não pode ser
+      // superior a 15 dias" — 400 P0001), diferente do /search_sales que
+      // aceita período maior. Quebra o período pedido em janelas de no
+      // máximo 15 dias e junta o resultado de todas.
       const dias = Number(req.query.dias) || 30;
       const agora = new Date();
-      const inicio = new Date(agora.getTime() - dias * 24 * 60 * 60 * 1000);
+      const inicioTotal = new Date(agora.getTime() - dias * 24 * 60 * 60 * 1000);
       const paraDataHora = (data) =>
         data.toISOString().slice(0, 19).replace("T", " ");
 
-      const paginas = await consultarSaipos("/sales_items", {
-        p_date_column_filter: "shift_date",
-        p_filter_date_start: paraDataHora(inicio),
-        p_filter_date_end: paraDataHora(agora),
-      });
+      const JANELA_MS = 15 * 24 * 60 * 60 * 1000;
+      const janelas = [];
+      let fimJanela = agora;
 
-      const vendasDaLoja = (paginas || []).filter(
-        (venda) => Number(venda.id_store) === Number(loja.saipos_id_store)
+      while (fimJanela > inicioTotal) {
+        const inicioJanela = new Date(
+          Math.max(fimJanela.getTime() - JANELA_MS, inicioTotal.getTime())
+        );
+        janelas.push({ inicio: inicioJanela, fim: fimJanela });
+        fimJanela = inicioJanela;
+      }
+
+      const resultadosPorJanela = await Promise.all(
+        janelas.map((janela) =>
+          consultarSaipos("/sales_items", {
+            p_date_column_filter: "shift_date",
+            p_filter_date_start: paraDataHora(janela.inicio),
+            p_filter_date_end: paraDataHora(janela.fim),
+          })
+        )
       );
+
+      const vendasDaLoja = resultadosPorJanela
+        .flat()
+        .filter(
+          (venda) => Number(venda.id_store) === Number(loja.saipos_id_store)
+        );
 
       // Dedup por nome do produto (desc_sale_item) — soma a quantidade
       // total vendida no período, útil pra priorizar quem cadastrar
