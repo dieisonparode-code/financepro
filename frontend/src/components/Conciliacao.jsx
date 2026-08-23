@@ -1407,7 +1407,7 @@ function Conciliacao({ lojaId }) {
     // ordem salva (ex: acabou de ser lida, ainda sem "Ler foto de novo")
     // vai pro final, na ordem que apareceu.
     const ordemSalva = mesclarDosItens(grupoEscolhido, "ordem_formas_pagamento");
-    const todasAsFormas = ordemSalva
+    const todasAsFormasOrdenadas = ordemSalva
       ? [...formasUnicas].sort((a, b) => {
           const posA = ordemSalva.indexOf(a);
           const posB = ordemSalva.indexOf(b);
@@ -1418,25 +1418,59 @@ function Conciliacao({ lojaId }) {
         })
       : formasUnicas;
 
+    // Pedido do usuário (23/08/2026): "Pix Conta Bancária" sempre logo
+    // abaixo de "PIX" na tabela, um pix embaixo do outro — independente
+    // de onde ela caiu na ordem salva do comprovante (a ordem salva é de
+    // antes de existir essa linha separada, então ela sempre ia parar no
+    // final da lista sem esse ajuste).
+    const todasAsFormas = todasAsFormasOrdenadas.includes("Pix Conta Bancária")
+      ? (() => {
+          const semPixConta = todasAsFormasOrdenadas.filter(
+            (forma) => forma !== "Pix Conta Bancária"
+          );
+          const posicaoPix = semPixConta.indexOf("PIX");
+          if (posicaoPix === -1) return todasAsFormasOrdenadas;
+          return [
+            ...semPixConta.slice(0, posicaoPix + 1),
+            "Pix Conta Bancária",
+            ...semPixConta.slice(posicaoPix + 1),
+          ];
+        })()
+      : todasAsFormasOrdenadas;
+
     const linhas = todasAsFormas.map((forma) => {
       const temSistema = forma in totaisBrutos;
       const valorSistema = totaisBrutos[forma] || 0;
-
-      const temRealConta =
-        FORMAS_COM_REAL_EM_CONTA.includes(forma) && forma in totaisReaisConta;
-      const valorRealConta = temRealConta ? totaisReaisConta[forma] : null;
-
-      // Base usada pra decidir bateu/não bateu: Real em conta quando
-      // existir (mais confiável), senão cai pro Sistema (Saipos) — mesmo
-      // comportamento de antes pra quem não tem Real em conta.
-      const temBase = temRealConta || temSistema;
-      const valorBase = temRealConta ? valorRealConta : valorSistema;
 
       const valorInformadoTexto = valoresInformados[forma] ?? "";
       const temInformado = valorInformadoTexto !== "";
       // Bug real corrigido (21/08/2026): "35.000" (sem vírgula) virava
       // 35 — usa o paraNumero() do CampoValor.
       const valorInformado = temInformado ? paraNumero(valorInformadoTexto) : null;
+
+      const precisaConferir = FORMAS_PRECISAM_CONFERIR.includes(forma);
+
+      // Pedido do usuário (23/08/2026): "Pix Conta Bancária" não tem fonte
+      // bancária própria pra confirmar sozinha — em vez de "Real em conta"
+      // ficar em branco (o que sempre ia sobrar como diferença no total),
+      // usa o próprio Informado como Real em conta, fechando o caixa
+      // sozinho. O alerta "⚠️ Conferir" (mais abaixo, na coluna Diferença)
+      // continua aparecendo do mesmo jeito, deixando claro que esse valor
+      // não foi confirmado por nenhuma fonte independente.
+      const temRealConta = precisaConferir
+        ? temInformado
+        : FORMAS_COM_REAL_EM_CONTA.includes(forma) && forma in totaisReaisConta;
+      const valorRealConta = temRealConta
+        ? precisaConferir
+          ? valorInformado
+          : totaisReaisConta[forma]
+        : null;
+
+      // Base usada pra decidir bateu/não bateu: Real em conta quando
+      // existir (mais confiável), senão cai pro Sistema (Saipos) — mesmo
+      // comportamento de antes pra quem não tem Real em conta.
+      const temBase = temRealConta || temSistema;
+      const valorBase = temRealConta ? valorRealConta : valorSistema;
 
       // Pedido do usuário (21/08/2026): pra Cartão de Crédito/Débito e
       // PIX (formas com Real em conta), o "bateu/não bateu" NÃO deve
