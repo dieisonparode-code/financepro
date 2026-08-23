@@ -53,6 +53,10 @@ function ContasReceber({
   const [calcRecebido, setCalcRecebido] = useState("");
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [carregandoFotoId, setCarregandoFotoId] = useState(null);
+  // Pedido do usuário (23/08/2026): busca por funcionário/fornecedor pra
+  // achar só a previsão de uma pessoa específica, sem precisar rolar a
+  // lista inteira por data.
+  const [buscaReceber, setBuscaReceber] = useState("");
 
   async function verFoto(item) {
     if (!buscarFoto) return;
@@ -181,7 +185,17 @@ function ContasReceber({
       item.status_conciliacao !== "conciliado"
   );
 
-  const blocosPorData = previstos.reduce((acumulado, item) => {
+  const buscaReceberLimpa = buscaReceber.trim().toLowerCase();
+
+  const previstosFiltrados = buscaReceberLimpa
+    ? previstos.filter((item) =>
+        `${item.descricao || ""} ${nomeFormaPagamento(item.forma_pagamento_id)}`
+          .toLowerCase()
+          .includes(buscaReceberLimpa)
+      )
+    : previstos;
+
+  const blocosPorData = previstosFiltrados.reduce((acumulado, item) => {
     const chave = item.data_prevista_recebimento;
 
     if (!acumulado[chave]) {
@@ -415,13 +429,26 @@ function ContasReceber({
             <h2>Contas a Receber</h2>
           </div>
 
-          <strong>{previstos.length}</strong>
+          <strong>{previstosFiltrados.length}</strong>
         </div>
 
-        {datasOrdenadas.length === 0 ? (
+        <div style={{ margin: "0 0 12px" }}>
+          <input
+            type="text"
+            value={buscaReceber}
+            onChange={(evento) => setBuscaReceber(evento.target.value)}
+            placeholder="🔍 Buscar por funcionário, fornecedor ou forma de pagamento"
+          />
+        </div>
+
+        {previstos.length === 0 ? (
           <div className="empty-state">
             Nenhuma previsão de recebimento. Escolha uma forma de pagamento
             ao lançar uma receita pra aparecer aqui.
+          </div>
+        ) : datasOrdenadas.length === 0 ? (
+          <div className="empty-state">
+            Nenhum resultado pra "{buscaReceber.trim()}".
           </div>
         ) : (
           datasOrdenadas.map((data) => {

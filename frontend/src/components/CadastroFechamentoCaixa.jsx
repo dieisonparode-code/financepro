@@ -181,6 +181,7 @@ function CadastroFechamentoCaixa({
   carregando = false,
   adicionarFechamento,
   removerFechamento,
+  corrigirValor,
   buscarFoto,
   lerValorFoto,
   finalizacoes = [],
@@ -479,6 +480,47 @@ function CadastroFechamentoCaixa({
     0,
     valorDiariaNumerico - pagoDinheiroNumerico
   );
+
+  // Pedido do usuário (23/08/2026): "R$ 6.809,00" em vez de "R$ 68,09" — a
+  // IA leu a foto errado (casa decimal), e como esse valor é só exibição
+  // (não alimenta Contas a Receber, ver TIPOS_COM_VALOR_CONFERIDO acima),
+  // corrigir direto na lista é mais simples do que excluir e reanexar a
+  // foto inteira.
+  const [editandoValorId, setEditandoValorId] = useState(null);
+  const [valorCorrigido, setValorCorrigido] = useState("");
+  const [salvandoValor, setSalvandoValor] = useState(false);
+
+  function iniciarEdicaoValor(registro) {
+    setEditandoValorId(registro.id);
+    setValorCorrigido(
+      registro.valor != null
+        ? Number(registro.valor).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        : ""
+    );
+  }
+
+  async function salvarValorCorrigido(id) {
+    const valorNumero = paraNumeroBr(valorCorrigido);
+
+    if (!Number.isFinite(valorNumero) || valorNumero < 0) {
+      alert("Digite um valor válido.");
+      return;
+    }
+
+    setSalvandoValor(true);
+    try {
+      await corrigirValor(id, valorNumero);
+      setEditandoValorId(null);
+      setValorCorrigido("");
+    } catch (erro) {
+      alert(erro.message || "Não foi possível corrigir o valor.");
+    } finally {
+      setSalvandoValor(false);
+    }
+  }
 
   async function confirmarExclusao(registro) {
     const confirmar = window.confirm(
@@ -794,8 +836,60 @@ function CadastroFechamentoCaixa({
                     <div>
                       <strong>
                         {infoTipo?.rotulo || registro.tipo}
-                        {registro.valor != null && (
-                          <span> · {formatarMoeda(registro.valor)}</span>
+                        {editandoValorId === registro.id ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              gap: 4,
+                              alignItems: "center",
+                              marginLeft: 6,
+                            }}
+                          >
+                            <CampoValor
+                              autoFocus
+                              value={valorCorrigido}
+                              onChange={setValorCorrigido}
+                              style={{ maxWidth: "90px" }}
+                            />
+                            <button
+                              type="button"
+                              title="Salvar"
+                              disabled={salvandoValor}
+                              onClick={() => salvarValorCorrigido(registro.id)}
+                            >
+                              ✅
+                            </button>
+                            <button
+                              type="button"
+                              title="Cancelar"
+                              disabled={salvandoValor}
+                              onClick={() => setEditandoValorId(null)}
+                            >
+                              ✖️
+                            </button>
+                          </span>
+                        ) : (
+                          registro.valor != null && (
+                            <span>
+                              {" "}
+                              · {formatarMoeda(registro.valor)}
+                              <button
+                                type="button"
+                                title="Corrigir valor"
+                                onClick={() => iniciarEdicaoValor(registro)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  fontSize: "12px",
+                                  opacity: 0.7,
+                                  padding: "0 0 0 4px",
+                                }}
+                              >
+                                ✏️
+                              </button>
+                            </span>
+                          )
                         )}
                         {registro.nome_pessoa && (
                           <span> · {registro.nome_pessoa}</span>

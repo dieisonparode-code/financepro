@@ -67,6 +67,7 @@ import {
   buscarFechamentosCaixa,
   buscarFotoFechamentoCaixa,
   criarFechamentoCaixa,
+  corrigirValorFechamentoCaixa,
   excluirFechamentoCaixa,
   buscarFinalizacoesFechamentoCaixa,
   finalizarFechamentoCaixa,
@@ -3500,6 +3501,14 @@ const pontoDeEquilibrio = useMemo(() => {
     );
   }
 
+  async function corrigirValorFechamentoCaixaHandler(id, valor) {
+    const salvo = await corrigirValorFechamentoCaixa(id, valor);
+
+    setFechamentosCaixa((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salvo : item))
+    );
+  }
+
   async function trocarFotoFechamentoCaixaHandler(id, foto) {
     await trocarFotoFechamentoCaixa(id, foto);
 
@@ -5133,6 +5142,7 @@ const pontoDeEquilibrio = useMemo(() => {
             carregando={carregandoFechamentos}
             adicionarFechamento={adicionarFechamentoCaixa}
             removerFechamento={removerFechamentoCaixa}
+            corrigirValor={corrigirValorFechamentoCaixaHandler}
             buscarFoto={buscarFotoFechamentoCaixa}
             lerValorFoto={lerValorFechamentoCaixa}
             finalizacoes={finalizacoesFechamentoCaixa}

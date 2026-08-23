@@ -678,6 +678,17 @@ export async function reabrirFechamentoCaixa(id) {
   });
 }
 
+// Corrige só o valor de um registro já salvo (Diária Boy/Cozinha, Venda a
+// Prazo Funcionário etc) sem precisar excluir e reanexar a foto — esse
+// valor é só de exibição na lista, ver comentário no backend.
+export async function corrigirValorFechamentoCaixa(id, valor) {
+  return requisicao(`/fechamentos-caixa/${id}/valor`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ valor }),
+  });
+}
+
 export async function lerValorFechamentoCaixa(foto) {
   return requisicao("/fechamentos-caixa/ler-foto", {
     method: "POST",

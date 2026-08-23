@@ -3364,6 +3364,52 @@ app.put(
   }
 );
 
+// Pedido do usuário (23/08/2026): "Venda a Prazo Funcionário" (e as
+// diárias Boy/Cozinha) têm um valor lido por IA só pra EXIBIÇÃO nessa
+// lista (não alimenta Contas a Receber nem nenhum outro cálculo — ver
+// TIPOS_COM_VALOR_CONFERIDO no frontend) — quando a IA lê errado (ex.:
+// trocou a casa decimal, R$68,09 virou R$6.809,00), antes só dava pra
+// corrigir excluindo o registro inteiro e reanexando a foto. Agora dá
+// pra corrigir só o valor, direto na lista, sem mexer na foto.
+app.put("/fechamentos-caixa/:id/valor", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
+  try {
+    const id = Number(req.params.id);
+    const valor = Number(req.body.valor);
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        erro: "ID do fechamento inválido.",
+      });
+    }
+
+    if (!Number.isFinite(valor) || valor < 0) {
+      return res.status(400).json({
+        erro: "Valor inválido.",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("fechamentos_caixa")
+      .update({ valor })
+      .eq("id", id)
+      .select(colunasFechamentoListagem)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
+  } catch (erro) {
+    console.error("Erro ao corrigir valor do fechamento de caixa:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível corrigir o valor.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 app.delete("/fechamentos-caixa/:id", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
     const id = Number(req.params.id);
