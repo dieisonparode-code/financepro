@@ -2845,6 +2845,7 @@ app.post(
         loja_id: req.body.loja_id || null,
         ativo: req.body.ativo !== false,
         observacao: (req.body.observacao || "").trim(),
+        categoria: (req.body.categoria || "").trim(),
         criado_por: perfil?.nome || usuario?.email || "",
       };
 
@@ -2895,6 +2896,7 @@ app.put(
         loja_id: req.body.loja_id || null,
         ativo: req.body.ativo !== false,
         observacao: (req.body.observacao || "").trim(),
+        categoria: (req.body.categoria || "").trim(),
         atualizado_em: new Date().toISOString(),
       };
 

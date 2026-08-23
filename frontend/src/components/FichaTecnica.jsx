@@ -14,6 +14,38 @@ function formatarMoeda(valor) {
   });
 }
 
+// Pedido do usuário (23/08/2026): agrupar por categoria — a Saipos não
+// manda isso em nenhum endpoint, então é campo nosso, manual. Lista fixa
+// (o que o usuário pediu); "Outra" cobre o que não se encaixa nessas 5.
+const CATEGORIAS_FICHA_TECNICA = [
+  "Calotas",
+  "Calotinhas",
+  "Batatas",
+  "Bebidas",
+  "Porções",
+  "Outra",
+];
+
+// Sugestão automática pelo NOME do produto, só pra poupar clique no
+// "Adicionar todos"/"Usar esse nome" — o usuário sempre pode trocar
+// depois, isso nunca é definitivo.
+function sugerirCategoria(nomeProduto) {
+  const nome = (nomeProduto || "").toLowerCase();
+
+  if (/calotinha/.test(nome)) return "Calotinhas";
+  if (/calota/.test(nome)) return "Calotas";
+  if (/batata/.test(nome)) return "Batatas";
+  if (/por[çc][ãa]o|por[çc][õo]es/.test(nome)) return "Porções";
+  if (
+    /refrigerante|refri\b|suco|\bagua\b|\bágua\b|coca[ -]?cola|guaran[aá]|cerveja|bebida|energ[eé]tico|chá\b/.test(
+      nome
+    )
+  )
+    return "Bebidas";
+
+  return "";
+}
+
 function FichaTecnica({
   insumos = [],
   fichas = [],
@@ -29,6 +61,7 @@ function FichaTecnica({
   const [nomeProduto, setNomeProduto] = useState("");
   const [precoVenda, setPrecoVenda] = useState("");
   const [nomeItemSaipos, setNomeItemSaipos] = useState("");
+  const [categoria, setCategoria] = useState("");
   const [itensFicha, setItensFicha] = useState([]);
   const [salvandoFicha, setSalvandoFicha] = useState(false);
 
@@ -99,6 +132,7 @@ function FichaTecnica({
           })
         : ""
     );
+    setCategoria(sugerirCategoria(produto.nome_item_saipos));
   }
 
   // Pedido do usuário (23/08/2026): em vez de clicar "+ Usar esse nome" e
@@ -140,6 +174,7 @@ function FichaTecnica({
           nome_produto: produto.nome_item_saipos,
           preco_venda: produto.preco_venda != null ? Number(produto.preco_venda) : null,
           nome_item_saipos: produto.nome_item_saipos,
+          categoria: sugerirCategoria(produto.nome_item_saipos),
           loja_id: lojaPadrao || null,
           itens: [],
         });
@@ -162,6 +197,100 @@ function FichaTecnica({
     }
   }
 
+  // Pedido do usuário (23/08/2026): quem já clicou "Adicionar todos" ANTES
+  // do preço/categoria existirem ficou com um monte de ficha "R$ 0,00" e
+  // sem categoria — em vez de editar uma por uma, casa pelo nome com o
+  // que acabou de vir da Saipos e completa só o que estiver faltando
+  // (preço e/ou categoria), sem tocar nos insumos que já tiverem sido
+  // cadastrados manualmente em cada ficha.
+  const [atualizandoExistentes, setAtualizandoExistentes] = useState(false);
+  const [progressoAtualizarExistentes, setProgressoAtualizarExistentes] =
+    useState(null);
+
+  async function atualizarPrecoECategoriaDasExistentes() {
+    const produtosPorNomeNormalizado = new Map(
+      (produtosVendidos || []).map((produto) => [
+        produto.nome_item_saipos.trim().toLowerCase(),
+        produto,
+      ])
+    );
+
+    const paraAtualizar = fichas
+      .map((ficha) => {
+        const chave = (ficha.nome_item_saipos || ficha.nome_produto || "")
+          .trim()
+          .toLowerCase();
+        const produtoSaipos = produtosPorNomeNormalizado.get(chave);
+        if (!produtoSaipos) return null;
+
+        const precisaPreco =
+          (ficha.preco_venda == null || Number(ficha.preco_venda) === 0) &&
+          produtoSaipos.preco_venda != null;
+        const precisaCategoria = !ficha.categoria;
+
+        if (!precisaPreco && !precisaCategoria) return null;
+
+        return { ficha, produtoSaipos, precisaPreco, precisaCategoria };
+      })
+      .filter(Boolean);
+
+    if (paraAtualizar.length === 0) {
+      alert(
+        "Nenhuma ficha já cadastrada precisa de atualização (ou nenhuma bateu o nome com o que veio da Saipos)."
+      );
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Completar preço e/ou categoria de ${paraAtualizar.length} ficha(s) já cadastrada(s)? Os insumos que cada uma já tiver continuam do mesmo jeito.`
+    );
+
+    if (!confirmar) return;
+
+    setAtualizandoExistentes(true);
+    setProgressoAtualizarExistentes({ feito: 0, total: paraAtualizar.length });
+
+    const falharam = [];
+
+    for (let i = 0; i < paraAtualizar.length; i += 1) {
+      const { ficha, produtoSaipos, precisaPreco, precisaCategoria } =
+        paraAtualizar[i];
+
+      try {
+        await editarFichaExistente(ficha.id, {
+          nome_produto: ficha.nome_produto,
+          preco_venda: precisaPreco
+            ? Number(produtoSaipos.preco_venda)
+            : ficha.preco_venda,
+          nome_item_saipos: ficha.nome_item_saipos || "",
+          categoria: precisaCategoria
+            ? sugerirCategoria(ficha.nome_item_saipos || ficha.nome_produto)
+            : ficha.categoria,
+          loja_id: ficha.loja_id,
+          itens: (ficha.itens || []).map((item) => ({
+            insumo_id: item.insumo_id,
+            quantidade: item.quantidade,
+          })),
+        });
+      } catch (erro) {
+        falharam.push(ficha.nome_produto);
+      }
+
+      setProgressoAtualizarExistentes({ feito: i + 1, total: paraAtualizar.length });
+    }
+
+    setAtualizandoExistentes(false);
+    setProgressoAtualizarExistentes(null);
+
+    if (falharam.length > 0) {
+      alert(
+        `Atualizado ${paraAtualizar.length - falharam.length} de ${paraAtualizar.length}. Falharam: ${falharam.join(", ")}`
+      );
+    } else {
+      alert(`${paraAtualizar.length} ficha(s) atualizada(s) com preço/categoria!`);
+    }
+  }
+
   const insumosComCusto = insumos.filter(
     (insumo) => Number(insumo.custo_unitario) > 0
   );
@@ -173,6 +302,7 @@ function FichaTecnica({
     setNomeProduto("");
     setPrecoVenda("");
     setNomeItemSaipos("");
+    setCategoria("");
     setItensFicha([]);
   }
 
@@ -216,6 +346,7 @@ function FichaTecnica({
         nome_produto: nomeProduto.trim(),
         preco_venda: precoVenda === "" ? null : paraNumero(precoVenda),
         nome_item_saipos: nomeItemSaipos.trim(),
+        categoria,
         loja_id: lojaPadrao || null,
         itens: itensFicha.map((item) => ({
           insumo_id: item.insumo_id,
@@ -249,6 +380,7 @@ function FichaTecnica({
         : ""
     );
     setNomeItemSaipos(ficha.nome_item_saipos || "");
+    setCategoria(ficha.categoria || "");
     setItensFicha(
       (ficha.itens || []).map((item) => ({
         insumo_id: String(item.insumo_id),
@@ -270,6 +402,21 @@ function FichaTecnica({
       alert(erro.message || "Não foi possível excluir.");
     }
   }
+
+  // Pedido do usuário (23/08/2026): mostrar a lista de Fichas Técnicas
+  // Cadastradas separada por categoria — segue a ordem fixa de
+  // CATEGORIAS_FICHA_TECNICA, e o que não tem categoria (ainda) vai pro
+  // final, num grupo "Sem categoria".
+  const gruposFichas = [...CATEGORIAS_FICHA_TECNICA, "Sem categoria"]
+    .map((nomeGrupo) => ({
+      nome: nomeGrupo,
+      itens: fichas.filter((ficha) =>
+        nomeGrupo === "Sem categoria"
+          ? !ficha.categoria
+          : ficha.categoria === nomeGrupo
+      ),
+    }))
+    .filter((grupo) => grupo.itens.length > 0);
 
   return (
     <section className="categorias-layout">
@@ -358,6 +505,25 @@ function FichaTecnica({
                     </small>
                   </div>
                 )}
+
+                <div style={{ margin: "10px 0" }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={atualizandoExistentes}
+                    onClick={atualizarPrecoECategoriaDasExistentes}
+                  >
+                    {atualizandoExistentes
+                      ? `Atualizando... (${progressoAtualizarExistentes?.feito ?? 0}/${progressoAtualizarExistentes?.total ?? 0})`
+                      : "🔄 Completar preço/categoria das já cadastradas"}
+                  </button>
+                  <small className="foto-ajuda" style={{ display: "block", marginTop: 4 }}>
+                    Pra quem já cadastrou antes do preço/categoria virem
+                    junto — casa pelo nome com o que veio da Saipos agora e
+                    completa só o que estiver faltando, sem mexer nos
+                    insumos já cadastrados.
+                  </small>
+                </div>
 
                 <label
                   style={{
@@ -464,6 +630,21 @@ function FichaTecnica({
                 onChange={(evento) => setNomeItemSaipos(evento.target.value)}
                 placeholder="Ex.: X-SALADA"
               />
+            </label>
+
+            <label>
+              Categoria
+              <select
+                value={categoria}
+                onChange={(evento) => setCategoria(evento.target.value)}
+              >
+                <option value="">Sem categoria</option>
+                {CATEGORIAS_FICHA_TECNICA.map((opcao) => (
+                  <option key={opcao} value={opcao}>
+                    {opcao}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -584,73 +765,89 @@ function FichaTecnica({
         ) : fichas.length === 0 ? (
           <div className="empty-state">Nenhuma ficha técnica ainda.</div>
         ) : (
-          <div className="categorias-lista">
-            {fichas.map((ficha) => {
-              const cmv =
-                ficha.preco_venda > 0
-                  ? (ficha.custo_total / ficha.preco_venda) * 100
-                  : null;
+          gruposFichas.map((grupo) => (
+            <div key={grupo.nome} style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  margin: "10px 0 6px",
+                }}
+              >
+                <strong>{grupo.nome}</strong>
+                <span style={{ color: "#9aa0ac" }}>{grupo.itens.length}</span>
+              </div>
 
-              return (
-                <div className="categoria-item" key={ficha.id}>
-                  <div className="categoria-identificacao">
-                    <div className="categoria-icone">📋</div>
-                    <div>
-                      <strong>{ficha.nome_produto}</strong>
-                      <div>
-                        Custo: {formatarMoeda(ficha.custo_total)}
-                        {ficha.preco_venda > 0 && (
-                          <>
-                            {" — Venda: "}
-                            {formatarMoeda(ficha.preco_venda)}
-                            {" — CMV: "}
-                            <strong
-                              style={{
-                                color:
-                                  cmv <= 35
-                                    ? "#18c754"
-                                    : cmv <= 40
-                                    ? "#ff9800"
-                                    : "#ff3545",
-                              }}
-                            >
-                              {cmv.toFixed(1)}%
-                            </strong>
-                          </>
-                        )}
+              <div className="categorias-lista">
+                {grupo.itens.map((ficha) => {
+                  const cmv =
+                    ficha.preco_venda > 0
+                      ? (ficha.custo_total / ficha.preco_venda) * 100
+                      : null;
+
+                  return (
+                    <div className="categoria-item" key={ficha.id}>
+                      <div className="categoria-identificacao">
+                        <div className="categoria-icone">📋</div>
+                        <div>
+                          <strong>{ficha.nome_produto}</strong>
+                          <div>
+                            Custo: {formatarMoeda(ficha.custo_total)}
+                            {ficha.preco_venda > 0 && (
+                              <>
+                                {" — Venda: "}
+                                {formatarMoeda(ficha.preco_venda)}
+                                {" — CMV: "}
+                                <strong
+                                  style={{
+                                    color:
+                                      cmv <= 35
+                                        ? "#18c754"
+                                        : cmv <= 40
+                                        ? "#ff9800"
+                                        : "#ff3545",
+                                  }}
+                                >
+                                  {cmv.toFixed(1)}%
+                                </strong>
+                              </>
+                            )}
+                          </div>
+                          <small style={{ color: "#9fb0c4" }}>
+                            {(ficha.itens || [])
+                              .map(
+                                (item) =>
+                                  `${Number(item.quantidade).toLocaleString("pt-BR")} ${item.insumos?.nome || "?"}`
+                              )
+                              .join(", ")}
+                          </small>
+                        </div>
                       </div>
-                      <small style={{ color: "#9fb0c4" }}>
-                        {(ficha.itens || [])
-                          .map(
-                            (item) =>
-                              `${Number(item.quantidade).toLocaleString("pt-BR")} ${item.insumos?.nome || "?"}`
-                          )
-                          .join(", ")}
-                      </small>
+
+                      <div className="transaction-actions">
+                        <button
+                          type="button"
+                          className="edit-button"
+                          onClick={() => iniciarEdicaoFicha(ficha)}
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          className="delete-button"
+                          onClick={() => confirmarExclusaoFicha(ficha)}
+                        >
+                          Excluir
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="transaction-actions">
-                    <button
-                      type="button"
-                      className="edit-button"
-                      onClick={() => iniciarEdicaoFicha(ficha)}
-                    >
-                      Editar
-                    </button>
-
-                    <button
-                      type="button"
-                      className="delete-button"
-                      onClick={() => confirmarExclusaoFicha(ficha)}
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </article>
     </section>
