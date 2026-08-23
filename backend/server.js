@@ -5412,7 +5412,7 @@ function retiradaTemMotivoEspecifico(descricao) {
 // de o fechamento acontecer de madrugada, já no dia seguinte). O que
 // não achar despesa correspondente, lança sozinha (categoria "Retirada
 // de Caixa" ou Fundo de Retirada, conforme o critério acima).
-async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
+async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura, req) {
   const dataSeguinte = diaSeguinteStr(dataAbertura);
   const diaAnterior = (() => {
     const data = new Date(`${dataAbertura}T12:00:00Z`);
@@ -5432,8 +5432,27 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
     throw erroBusca;
   }
 
+  // BUG REAL corrigido (23/08/2026): a checagem de "já lançado" só olhava
+  // pras despesas (lancamentos) — nunca pros Fundos de Retirada (Cofre) já
+  // criados por essa mesma função numa leitura anterior. Resultado: clicar
+  // "🔄 Ler foto de novo" no mesmo fechamento duplicava a retirada genérica
+  // dentro do Cofre a cada nova leitura (o valor ia subindo sozinho sem
+  // ninguém mexer em nada). Agora busca também os Fundos já criados nessa
+  // janela e não deixa lançar de novo o que já está lá.
+  const { data: fundosDaJanela, error: erroBuscaFundos } = await supabase
+    .from("fundo_retiradas_caixa")
+    .select("id, valor, descricao, data")
+    .eq("loja_id", lojaId)
+    .gte("data", diaAnterior)
+    .lte("data", dataSeguinte);
+
+  if (erroBuscaFundos) {
+    throw erroBuscaFundos;
+  }
+
   const TOLERANCIA = 0.01;
   const usados = new Set();
+  const usadosFundo = new Set();
   const lancadas = [];
 
   for (const retirada of retiradas) {
@@ -5447,6 +5466,16 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
 
     if (jaLancada) {
       usados.add(jaLancada.id);
+      continue;
+    }
+
+    const jaNoFundo = (fundosDaJanela || []).find(
+      (fundo) =>
+        !usadosFundo.has(fundo.id) && Math.abs(Number(fundo.valor) - valor) < TOLERANCIA
+    );
+
+    if (jaNoFundo) {
+      usadosFundo.add(jaNoFundo.id);
       continue;
     }
 
@@ -5468,6 +5497,19 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
         console.error("Erro ao criar fundo de retirada automático:", erroFundo.message);
         continue;
       }
+
+      // BUG REAL corrigido (23/08/2026): esse caminho automático nunca
+      // registrava no Log de Auditoria — impossível rastrear de onde veio
+      // um aumento no Cofre feito por aqui (usuário pediu pra rastrear uma
+      // mudança e a busca no Log não achava nada, porque nada tinha sido
+      // gravado lá).
+      registrarAuditoria(
+        req,
+        "criou",
+        "fundo_retiradas_caixa",
+        fundoCriado.id,
+        `Fundo de retirada detectado automaticamente na leitura do fechamento: ${descricao} (${valor})`
+      );
 
       lancadas.push({ ...fundoCriado, ehFundo: true });
       continue;
@@ -5500,6 +5542,14 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura) {
       console.error("Erro ao lançar retirada automática:", erroCriar.message);
       continue;
     }
+
+    registrarAuditoria(
+      req,
+      "criou",
+      "lancamentos",
+      criada.id,
+      `despesa: ${descricao} (${valor}) — detectado automaticamente na leitura do fechamento de caixa`
+    );
 
     lancadas.push(criada);
   }
@@ -5687,7 +5737,8 @@ app.post(
           despesasLancadasAutomaticamente = await conciliarRetiradasNaoLancadas(
             Number(lojaId),
             retiradasLidas,
-            dataAberturaLida
+            dataAberturaLida,
+            req
           );
         } catch (erroRetiradas) {
           console.error(
