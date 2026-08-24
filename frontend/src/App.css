@@ -871,7 +871,19 @@ td {
   font-size: 14px;
   font-weight: 900;
   letter-spacing: 0.2px;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  /* Ajuste (24/08/2026): usuário reportou que a letra do azul ficava
+     menos vívida que a do vermelho, e no verde "quase não dá pra
+     enxergar" — a sombra era só uma linha fina embaixo (0 1px 1px),
+     que só reforça contraste em fundo bem escuro (caso do vermelho).
+     Trocado por um contorno escuro nas 4 direções + sombra projetada —
+     garante o mesmo contraste em QUALQUER cor de fundo (azul, verde ou
+     vermelho ficam iguais agora). */
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.55),
+    1px -1px 0 rgba(0, 0, 0, 0.55),
+    -1px 1px 0 rgba(0, 0, 0, 0.55),
+    1px 1px 0 rgba(0, 0, 0, 0.55),
+    0 2px 3px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   box-sizing: border-box;
   box-shadow:
