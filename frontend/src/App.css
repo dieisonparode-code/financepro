@@ -884,7 +884,11 @@ td {
 
 /* PADRONIZAÇÃO DOS BOTÕES DO FORMULÁRIO */
 
-.foto-button,
+/* Pedido do usuário (24/08/2026): ".foto-button" tirado desse grupo —
+   essa regra vinha DEPOIS da definição própria dele (mais acima nesse
+   arquivo) e vencia por cascata, encolhendo o botão de novo (46px/fonte
+   14px) mesmo depois de eu ter deixado ele maior/mais vivo. Ele já tem
+   estilo dedicado, não precisa (nem deve) ficar nesse grupo. */
 .foto-preview .secondary-button,
 .modal-actions .primary-button,
 .modal-actions .secondary-button {
