@@ -3456,6 +3456,28 @@ const pontoDeEquilibrio = useMemo(() => {
     );
   }
 
+  // Pedido do usuário (23/08/2026): lê uma nota de compra na tela de
+  // Estoque (foto não fica salva em lugar nenhum) e preenche o custo
+  // unitário dos insumos que baterem pelo nome — só quem ainda estiver
+  // R$0,00. Wrapper porque CadastroInsumos.jsx não tem acesso direto ao
+  // setInsumos pra refletir o resultado na lista sem precisar recarregar.
+  async function atualizarCustosPorCompraHandler(lojaId, itens) {
+    const resumo = await atualizarCustosPorCompra(lojaId, itens);
+
+    if (resumo.atualizados?.length > 0) {
+      setInsumos((anteriores) =>
+        anteriores.map((insumo) => {
+          const achado = resumo.atualizados.find((a) => a.nome === insumo.nome);
+          return achado
+            ? { ...insumo, custo_unitario: achado.custo_unitario }
+            : insumo;
+        })
+      );
+    }
+
+    return resumo;
+  }
+
   async function adicionarFormaPagamento(dados) {
     const salva = await criarFormaPagamento(dados);
     setFormasPagamento((anteriores) => [...anteriores, salva]);
@@ -4946,6 +4968,8 @@ const pontoDeEquilibrio = useMemo(() => {
             editarInsumo={editarInsumoHandler}
             excluirInsumo={removerInsumo}
             registrarMovimentacao={registrarMovimentacaoHandler}
+            lerNotaFiscal={lerNotaFiscal}
+            atualizarCustosPorCompra={atualizarCustosPorCompraHandler}
           />
         )}
 

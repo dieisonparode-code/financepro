@@ -1,6 +1,67 @@
 import { useState } from "react";
 import CampoValor, { paraNumero } from "./CampoValor";
 
+// Mesma compressão usada em Notas Fiscais/Contas a Pagar — sem forçar
+// orientação (uma nota de fornecedor pode vir em pé ou deitada).
+function comprimirImagem(arquivo, larguraMaxima = 1400, qualidade = 0.75) {
+  function comImageElement(resolve, reject) {
+    const leitor = new FileReader();
+
+    leitor.onload = () => {
+      const imagem = new Image();
+
+      imagem.onload = () => {
+        const escala = Math.min(1, larguraMaxima / imagem.width);
+        const largura = Math.round(imagem.width * escala);
+        const altura = Math.round(imagem.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(imagem, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      };
+
+      imagem.onerror = () =>
+        reject(new Error("Não foi possível ler a imagem selecionada."));
+
+      imagem.src = leitor.result;
+    };
+
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+
+    leitor.readAsDataURL(arquivo);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof createImageBitmap !== "function") {
+      comImageElement(resolve, reject);
+      return;
+    }
+
+    createImageBitmap(arquivo, { imageOrientation: "from-image" })
+      .then((bitmap) => {
+        const escala = Math.min(1, larguraMaxima / bitmap.width);
+        const largura = Math.round(bitmap.width * escala);
+        const altura = Math.round(bitmap.height * escala);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = largura;
+        canvas.height = altura;
+
+        const contexto = canvas.getContext("2d");
+        contexto.drawImage(bitmap, 0, 0, largura, altura);
+
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      })
+      .catch(() => comImageElement(resolve, reject));
+  });
+}
+
 function CadastroInsumos({
   insumos = [],
   lojas = [],
@@ -11,6 +72,8 @@ function CadastroInsumos({
   editarInsumo,
   excluirInsumo,
   registrarMovimentacao,
+  lerNotaFiscal,
+  atualizarCustosPorCompra,
 }) {
   const [nome, setNome] = useState("");
   const [unidadeMedida, setUnidadeMedida] = useState("un");
@@ -31,6 +94,70 @@ function CadastroInsumos({
 
   const [lojaFiltro, setLojaFiltro] = useState(lojaFixaId || "todas");
   const [movimentandoId, setMovimentandoId] = useState(null);
+
+  // Pedido do usuário (23/08/2026): "mandei a foto de 10kg mussarela na
+  // nota, fala o kg, aí já ajusta sozinho" — a foto não fica salva em
+  // lugar nenhum, só é usada pra ler o valor e a quantidade e calcular o
+  // custo unitário (mesmo motor da leitura de nota em Lançamentos) — só
+  // preenche o insumo que ainda estiver com custo R$0,00.
+  const [lendoNotaInsumo, setLendoNotaInsumo] = useState(false);
+
+  async function lerNotaDeCompra(arquivo) {
+    if (!arquivo || !lerNotaFiscal || !atualizarCustosPorCompra) return;
+
+    const lojaAlvo = lojaFixaId || (lojaFiltro !== "todas" ? lojaFiltro : null);
+
+    if (!lojaAlvo) {
+      alert(
+        "Escolha uma loja específica no filtro do topo antes de ler a nota (não dá pra saber em qual loja ajustar o custo com \"Todas as lojas\" selecionado)."
+      );
+      return;
+    }
+
+    setLendoNotaInsumo(true);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const resultado = await lerNotaFiscal(fotoComprimida);
+
+      if (!resultado.itens || resultado.itens.length === 0) {
+        alert(
+          resultado.erro_leitura ||
+            "Não identifiquei itens de compra nessa nota (parece não ter tabela de produto/quantidade/valor)."
+        );
+        return;
+      }
+
+      const resumo = await atualizarCustosPorCompra(lojaAlvo, resultado.itens);
+
+      if (resumo.atualizados?.length > 0) {
+        alert(
+          `Custo unitário preenchido pra ${resumo.atualizados.length} insumo(s): ${resumo.atualizados
+            .map((a) => `${a.nome} (R$${a.custo_unitario.toFixed(2)})`)
+            .join(", ")}.` +
+            (resumo.ja_tinham_custo?.length
+              ? `\n\nJá tinham custo definido (não mexi): ${resumo.ja_tinham_custo.join(", ")}`
+              : "") +
+            (resumo.nao_encontrados?.length
+              ? `\n\nNão encontrei no Estoque: ${resumo.nao_encontrados.join(", ")} — cadastre com esse nome se quiser que a próxima nota reconheça.`
+              : "")
+        );
+      } else {
+        alert(
+          "Li a nota, mas nenhum insumo foi atualizado — " +
+            (resumo.ja_tinham_custo?.length
+              ? "os itens já tinham custo definido."
+              : resumo.nao_encontrados?.length
+              ? `não encontrei no Estoque: ${resumo.nao_encontrados.join(", ")}.`
+              : "não bateu com nenhum insumo cadastrado.")
+        );
+      }
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a nota.");
+    } finally {
+      setLendoNotaInsumo(false);
+    }
+  }
 
   function limparFormulario() {
     setNome("");
@@ -241,6 +368,48 @@ function CadastroInsumos({
             <h2>{editandoId ? "Editar insumo" : "Novo insumo"}</h2>
           </div>
         </div>
+
+        {lerNotaFiscal && atualizarCustosPorCompra && (
+          <div
+            style={{
+              margin: "0 0 16px",
+              padding: "12px",
+              border: "1px solid #2a2f3a",
+              borderRadius: "8px",
+            }}
+          >
+            <strong>📷 Ler nota de compra</strong>
+            <div style={{ margin: "8px 0" }}>
+              <label
+                className="secondary-button"
+                style={{
+                  display: "inline-block",
+                  cursor: lendoNotaInsumo ? "default" : "pointer",
+                  opacity: lendoNotaInsumo ? 0.6 : 1,
+                }}
+              >
+                {lendoNotaInsumo ? "Lendo nota..." : "📷 Escolher foto da nota"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  disabled={lendoNotaInsumo}
+                  onChange={(evento) => {
+                    const arquivo = evento.target.files?.[0];
+                    evento.target.value = "";
+                    lerNotaDeCompra(arquivo);
+                  }}
+                />
+              </label>
+            </div>
+            <small className="foto-ajuda" style={{ display: "block" }}>
+              A foto não fica salva em lugar nenhum — só é usada pra ler
+              quantidade e valor de cada item da nota, casar pelo nome com um
+              insumo já cadastrado e calcular o custo unitário sozinho (só
+              preenche quem ainda estiver R$0,00).
+            </small>
+          </div>
+        )}
 
         <form onSubmit={salvar}>
           <label>
