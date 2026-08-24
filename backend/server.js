@@ -7971,6 +7971,40 @@ const CATEGORIAS_DESPESA_WHATSAPP = {
   materia_prima: "Matéria-Prima",
 };
 
+// Pedido do usuário (24/08/2026): o grupo do WhatsApp usado ("Financeiro
+// Uberlândia") na prática recebe nota de TODAS as lojas, não só
+// Uberlândia — o robô sempre marcava a loja fixa configurada no .env
+// (LOJA_ID), então conta de Sinop/Sorriso acabava caindo errado dentro
+// de Uberlândia (ex: "PREFEITURA MUNICIPAL DE SINOP" virou despesa da
+// Uberlândia). Essa função procura o NOME da cidade de alguma loja
+// cadastrada dentro do texto disponível (legenda escrita + fornecedor +
+// identificador lidos da nota) — se achar, usa essa loja; senão cai no
+// LOJA_ID padrão do .env, igual antes.
+async function identificarLojaPorTexto(texto, lojaIdPadrao) {
+  if (!texto || !texto.trim()) return lojaIdPadrao;
+
+  const { data: lojas, error } = await supabase.from("lojas").select("id, nome");
+  if (error || !lojas || !lojas.length) return lojaIdPadrao;
+
+  const semAcento = (str) =>
+    (str || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "");
+
+  const textoNormalizado = semAcento(texto);
+
+  // Cada loja se chama "X Calota <Cidade>" — compara só a última
+  // palavra (a cidade), que é o que costuma aparecer na nota (endereço,
+  // órgão público, legenda escrita à mão), não o nome comercial inteiro.
+  const encontrada = lojas.find((loja) => {
+    const cidade = semAcento(loja.nome).trim().split(/\s+/).pop();
+    return cidade && cidade.length >= 4 && textoNormalizado.includes(cidade);
+  });
+
+  return encontrada ? encontrada.id : lojaIdPadrao;
+}
+
 // Pedido do usuário (19/08/2026): duas fotos de notas DIFERENTES (ex:
 // duas notas da mesma empresa, mesmo valor, mandadas em minutos
 // próximos) não podem virar duas despesas idênticas no sistema sem
@@ -8199,8 +8233,13 @@ app.post(
           ? `${categoria} — ${detalheDistintivo}`
           : categoria;
 
+        const lojaDetectada = await identificarLojaPorTexto(
+          `${legendaLimpa} ${fornecedorLido} ${identificadorLido}`,
+          lojaId
+        );
+
         const duplicata = await encontrarDespesaDuplicadaWhatsapp({
-          lojaId,
+          lojaId: lojaDetectada,
           fornecedor: fornecedorLido,
           valor: valorLido || 0,
           legenda: legendaLimpa,
@@ -8227,7 +8266,7 @@ app.post(
           valor: valorLido || 0,
           data: hoje,
           foto,
-          loja_id: lojaId,
+          loja_id: lojaDetectada,
           observacao: `Valor lido automaticamente — confira antes de aprovar.${identificadorLido ? ` Identificador lido na nota: ${identificadorLido}.` : ""}${origemTexto}`,
         });
 
@@ -8299,8 +8338,13 @@ app.post(
           ? `${fornecedorLido || "Despesa recebida via WhatsApp"} — ${detalheDistintivo}`
           : fornecedorLido || "Despesa recebida via WhatsApp";
 
+        const lojaDetectada = await identificarLojaPorTexto(
+          `${legendaLimpa} ${fornecedorLido} ${identificadorLido}`,
+          lojaId
+        );
+
         const duplicata = await encontrarDespesaDuplicadaWhatsapp({
-          lojaId,
+          lojaId: lojaDetectada,
           fornecedor: fornecedorLido,
           valor: valorLido || 0,
           legenda: legendaLimpa,
@@ -8327,7 +8371,7 @@ app.post(
           valor: valorLido || 0,
           data: hoje,
           foto,
-          loja_id: lojaId,
+          loja_id: lojaDetectada,
           observacao: `Valor lido automaticamente — confira antes de aprovar.${identificadorLido ? ` Identificador lido na nota: ${identificadorLido}.` : ""}${origemTexto}`,
         });
 
