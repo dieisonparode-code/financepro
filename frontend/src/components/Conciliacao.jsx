@@ -458,8 +458,15 @@ function Conciliacao({ lojaId }) {
           (item) => String(item.loja_id) === String(lojaId)
         );
 
+        // BUG REAL corrigido (24/08/2026): a correção de hoje de manhã
+        // (Foto 1/Foto 2 sempre mostrando "Foto 1") trocou o tipo salvo
+        // de "caixa" pra "caixa_1"/"caixa_2" — só que esse filtro aqui
+        // continuou procurando só "caixa" (o tipo antigo), então todo
+        // fechamento novo (de hoje em diante) nunca aparecia na
+        // Conciliação, mesmo já salvo certinho no banco. "caixa" continua
+        // aceito pra não sumir com o histórico de antes da mudança.
         const daLoja = todosDaLoja
-          .filter((item) => item.tipo === "caixa")
+          .filter((item) => item.tipo && item.tipo.startsWith("caixa"))
           .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))
           .slice(0, 20);
 
