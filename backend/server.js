@@ -5375,7 +5375,7 @@ app.post(
       // formulário sobrescrevia a data de lançamento com a da nota).
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null"}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null}.',
+        'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), e o nome do FORNECEDOR/loja/estabelecimento (se estiver visível). Além disso, SE (e só se) essa nota for de COMPRA DE MERCADORIA/INSUMO (uma nota de fornecedor com produtos comprados pra cozinha/estoque — carne, queijo, pão, embalagem, etc — normalmente com uma tabela de itens, cada um com quantidade e valor), extraia também cada ITEM dessa tabela: "nome" (nome do produto exatamente como impresso, sem abreviar), "quantidade" (o número comprado, ex: 5, 2.5), "unidade" (kg, g, un, L, cx, pct — o que estiver mais perto da quantidade) e "valor_total" (quanto custou aquele item especificamente — se só tiver valor UNITÁRIO impresso, multiplique pela quantidade pra dar o valor total do item). Se a nota NÃO for de compra de mercadoria (ex: é uma conta de luz, aluguel, pagamento de serviço, recibo genérico sem itens de produto), responda "itens": [] — não invente itens que não existem. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "itens": [{"nome": "Queijo mussarela", "quantidade": 2, "unidade": "kg", "valor_total": 45.80}]}. Se não conseguir ler o valor de forma alguma, use {"valor": null, "fornecedor": null, "itens": []}.',
         8192
       );
 
@@ -5388,20 +5388,127 @@ app.post(
         return res.json({
           valor: null,
           fornecedor: null,
+          itens: [],
           erro_leitura:
             "Não foi possível ler os dados dessa nota. Preencha manualmente.",
         });
       }
 
+      const itensLidos = (Array.isArray(dadosLidos.itens) ? dadosLidos.itens : [])
+        .map((item) => ({
+          nome: (item?.nome || "").trim(),
+          quantidade: item?.quantidade != null ? Number(item.quantidade) : null,
+          unidade: (item?.unidade || "").trim(),
+          valor_total: item?.valor_total != null ? Number(item.valor_total) : null,
+        }))
+        .filter((item) => item.nome && item.quantidade > 0 && item.valor_total > 0);
+
       res.json({
         valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
         fornecedor: dadosLidos.fornecedor || null,
+        itens: itensLidos,
       });
     } catch (erro) {
       console.error("Erro ao ler nota fiscal:", erro.message);
 
       res.status(500).json({
         erro: "Não foi possível ler a nota fiscal.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Pedido do usuário (23/08/2026): "quando for lançando as compras no
+// sistema identifique o insumo e calcule o valor para o custo e preencha
+// automaticamente" — a leitura da nota fiscal (acima) já separa os itens
+// de compra quando é uma nota de mercadoria. Aqui casa cada item pelo
+// nome com um insumo já cadastrado (Estoque) e preenche o custo unitário
+// = valor_total ÷ quantidade — SÓ enquanto o custo daquele insumo ainda
+// estiver em R$0,00 (zerado). Pedido explícito do usuário: "é só pra
+// alimentar as primeiras vezes até eu ir ajustando — depois que eu
+// arrumar um valor na mão, não precisa mexer mais" — assim que alguém
+// (manual ou essa mesma automação) definir um custo, nunca mais
+// sobrescreve sozinho; o usuário sempre pode corrigir de novo depois em
+// Estoque, e daí em diante fica intocado igual.
+app.post(
+  "/insumos/atualizar-custos-por-compra",
+  verificarPermissao("estoque"),
+  async function (req, res) {
+    try {
+      const lojaId = req.body.loja_id ? Number(req.body.loja_id) : null;
+      const itens = Array.isArray(req.body.itens) ? req.body.itens : [];
+
+      if (itens.length === 0) {
+        return res.json({ atualizados: [], ja_tinham_custo: [], nao_encontrados: [] });
+      }
+
+      const { data: insumos, error: erroInsumos } = await supabase
+        .from("insumos")
+        .select("id, nome, custo_unitario, loja_id")
+        .or(lojaId ? `loja_id.eq.${lojaId},loja_id.is.null` : "loja_id.is.null");
+
+      if (erroInsumos) throw erroInsumos;
+
+      const normalizar = (s) =>
+        (s || "")
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "");
+
+      const insumosPorNome = new Map(
+        (insumos || []).map((i) => [normalizar(i.nome), i])
+      );
+
+      const atualizados = [];
+      const jaTinhamCusto = [];
+      const naoEncontrados = [];
+
+      for (const item of itens) {
+        const insumo = insumosPorNome.get(normalizar(item.nome));
+
+        if (!insumo) {
+          naoEncontrados.push(item.nome);
+          continue;
+        }
+
+        if (Number(insumo.custo_unitario) > 0) {
+          jaTinhamCusto.push(insumo.nome);
+          continue;
+        }
+
+        const custoCalculado = Number(item.valor_total) / Number(item.quantidade);
+
+        const { error: erroUpdate } = await supabase
+          .from("insumos")
+          .update({ custo_unitario: Number(custoCalculado.toFixed(4)) })
+          .eq("id", insumo.id);
+
+        if (erroUpdate) {
+          console.error(`Erro ao atualizar custo de "${insumo.nome}":`, erroUpdate.message);
+          continue;
+        }
+
+        registrarAuditoria(
+          req,
+          "editou",
+          "insumos",
+          insumo.id,
+          `Custo unitário preenchido automaticamente por nota de compra: ${insumo.nome} = R$${custoCalculado.toFixed(2)} (R$${item.valor_total} ÷ ${item.quantidade} ${item.unidade || ""})`
+        );
+
+        atualizados.push({
+          nome: insumo.nome,
+          custo_unitario: Number(custoCalculado.toFixed(4)),
+        });
+      }
+
+      res.json({ atualizados, ja_tinham_custo: jaTinhamCusto, nao_encontrados: naoEncontrados });
+    } catch (erro) {
+      console.error("Erro ao atualizar custos por compra:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível atualizar os custos dos insumos.",
         detalhes: erro.message,
       });
     }

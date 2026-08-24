@@ -91,6 +91,18 @@ export async function lerNotaFiscal(foto) {
   });
 }
 
+// Pedido do usuário (23/08/2026): quando a nota lida acima for de compra
+// de insumo (vem com "itens"), casa cada item pelo nome com um insumo já
+// cadastrado e preenche o custo unitário — só enquanto ainda estiver
+// R$0,00 (nunca sobrescreve um valor já definido, manual ou automático).
+export async function atualizarCustosPorCompra(lojaId, itens) {
+  return requisicao("/insumos/atualizar-custos-por-compra", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ loja_id: lojaId, itens }),
+  });
+}
+
 export async function criarLancamento(dados) {
   return requisicao("/lancamentos", {
     method: "POST",

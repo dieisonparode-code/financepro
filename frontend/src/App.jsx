@@ -19,6 +19,7 @@ import {
   buscarFotoMercadoriaLancamento,
   criarLancamento,
   lerNotaFiscal,
+  atualizarCustosPorCompra,
   atualizarLancamento,
   excluirLancamento,
   buscarCategorias,
@@ -2865,6 +2866,44 @@ const pontoDeEquilibrio = useMemo(() => {
         // fiscal lida pela foto. A leitura automática só preenche valor e
         // fornecedor, nunca troca a data escolhida/padrão do formulário.
       }));
+
+      // Pedido do usuário (23/08/2026): quando a nota lida for de compra
+      // de insumo (a IA já separou os itens), casa cada um com o Estoque
+      // e preenche o custo unitário sozinho — só quem ainda estiver
+      // R$0,00. Silencioso quando não tem nada a fazer (nota comum, sem
+      // itens); só avisa quando de fato mexeu em algum custo.
+      if (resultado.itens?.length > 0 && formulario.loja_id) {
+        try {
+          const resumo = await atualizarCustosPorCompra(
+            formulario.loja_id,
+            resultado.itens
+          );
+
+          if (resumo.atualizados?.length > 0) {
+            setInsumos((anteriores) =>
+              anteriores.map((insumo) => {
+                const achado = resumo.atualizados.find(
+                  (a) => a.nome === insumo.nome
+                );
+                return achado
+                  ? { ...insumo, custo_unitario: achado.custo_unitario }
+                  : insumo;
+              })
+            );
+
+            alert(
+              `Custo unitário preenchido automaticamente pra ${resumo.atualizados.length} insumo(s): ${resumo.atualizados
+                .map((a) => `${a.nome} (R$${a.custo_unitario.toFixed(2)})`)
+                .join(", ")}.` +
+                (resumo.nao_encontrados?.length
+                  ? `\n\nNão encontrei no Estoque: ${resumo.nao_encontrados.join(", ")} — cadastre esses insumos se quiser que a próxima nota já reconheça.`
+                  : "")
+            );
+          }
+        } catch (erroCusto) {
+          console.error("Erro ao atualizar custos por compra:", erroCusto);
+        }
+      }
     } catch (erro) {
       alert(erro.message || "Não foi possível ler a nota fiscal.");
     } finally {
