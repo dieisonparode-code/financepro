@@ -388,15 +388,18 @@ function criarFormularioInicial(tipo = "receita") {
     data: hojeLocal(),
   };
 }
-// Pedido do usuário (18/08/2026): o saldo real da conta nessa data era
-// R$ 106.430,13. É o ponto de partida fixo do card "Saldo" do Dashboard —
+// Pedido do usuário (24/08/2026): reajuste de saldo — o valor real em
+// conta nessa data era R$ 79.804,87 (o sistema estava mostrando
+// R$ 86.925,58). Novo ponto de partida fixo do card "Saldo" do Dashboard —
 // a partir daqui, toda venda recebida soma e toda despesa (incluindo
 // contas a pagar que forem pagas, que já viram despesa lançada) desconta
 // automaticamente, sem precisar mexer em nada. Lançamentos de antes dessa
 // data não entram de novo na conta porque já estão embutidos nesse valor.
-const SALDO_INICIAL_VALOR = 106430.13;
-const SALDO_INICIAL_DATA = "2026-08-18";
-// O R$106.430,13 é o saldo real da loja Uberlândia (a única em operação de
+// (Ajuste anterior, 18/08/2026, era R$ 106.430,13 — mantido aqui só de
+// histórico, não usado mais.)
+const SALDO_INICIAL_VALOR = 79804.87;
+const SALDO_INICIAL_DATA = "2026-08-24";
+// O valor acima é o saldo real da loja Uberlândia (a única em operação de
 // fato quando esse valor foi informado) — não é um caixa único somado de
 // todas as lojas. Usado pra o card Saldo não mostrar esse valor quando
 // outra loja (sem nenhuma movimentação própria) estiver selecionada.
