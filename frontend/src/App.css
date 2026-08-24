@@ -38,22 +38,22 @@
   padding: 0 17px;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(180deg, #4facfe 0%, #0753cc 100%);
-  font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  background: #0753cc;
+  font-weight: 900;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -3px 4px rgba(0, 0, 0, 0.25),
-    0 4px 10px rgba(7, 83, 204, 0.5);
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.35),
+    0 5px 12px rgba(7, 83, 204, 0.6);
 }
 
 .primary-button:active,
 .secondary-button:active {
   transform: translateY(1px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
-    0 2px 4px rgba(7, 83, 204, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35),
+    0 2px 5px rgba(7, 83, 204, 0.5);
 }
 
 .primary-button:disabled,
@@ -846,9 +846,15 @@ td {
    (min-height 42px, padding 9px 16px, font-size 14px, width
    fit-content — era o que já estava rendendo antes de eu mexer hoje) —
    usuário só queria cor/texto mais vivos e um efeito 3D saliente, não
-   um botão maior. Efeito 3D: sombra clara por cima (realce, como se a
-   luz batesse de cima) + sombra escura embaixo (profundidade) + sombra
-   projetada — clássico "botão saliente", sem mudar o tamanho. */
+   um botão maior.
+   AJUSTE (mesmo dia, 2ª rodada): usuário reportou que ainda estava
+   "apagado" mesmo depois da 1ª tentativa — o degradê começava com um
+   tom claro/pastel no topo (#4facfe, #4ade80, #ff6b6b) pra simular
+   brilho, e isso deixava a cor de fundo com aparência lavada. Troquei
+   pra cor SÓLIDA bem saturada (sem clarear no topo) e o efeito 3D
+   agora vem só de uma borda de luz fina (inset bem sutil) + sombra de
+   profundidade embaixo + sombra projetada — sem lavar a cor. Texto
+   também mais forte: peso 900 e sombra escura mais presente. */
 .foto-button {
   display: inline-flex;
   align-items: center;
@@ -859,45 +865,59 @@ td {
   padding: 9px 16px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(180deg, #4facfe 0%, #0f63df 100%);
+  background: #0d63e0;
   color: #ffffff;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.2px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
   cursor: pointer;
   box-sizing: border-box;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -3px 4px rgba(0, 0, 0, 0.25),
-    0 4px 10px rgba(15, 99, 223, 0.5);
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.35),
+    0 5px 12px rgba(13, 99, 224, 0.6);
 }
 
 .foto-button:active {
   transform: translateY(1px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
-    0 2px 4px rgba(15, 99, 223, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35),
+    0 2px 5px rgba(13, 99, 224, 0.5);
 }
 
 /* Variante verde — usada no botão "Pago com dinheiro do caixa", pra
    diferenciar visualmente de saída de dinheiro dos demais registros. */
 .foto-button-verde {
-  background: linear-gradient(180deg, #4ade80 0%, #16a34a 100%) !important;
+  background: #0aa64a !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -3px 4px rgba(0, 0, 0, 0.25),
-    0 4px 10px rgba(22, 163, 74, 0.5) !important;
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.35),
+    0 5px 12px rgba(10, 166, 74, 0.6) !important;
+}
+
+.foto-button-verde:active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35),
+    0 2px 5px rgba(10, 166, 74, 0.5) !important;
 }
 
 /* Variante vermelha — usada no botão "Finalizar Fechamento de Caixa". */
 .foto-button-vermelho {
-  background: linear-gradient(180deg, #ff6b6b 0%, #dc2626 100%) !important;
+  background: #e01818 !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -3px 4px rgba(0, 0, 0, 0.25),
-    0 4px 10px rgba(220, 38, 38, 0.5) !important;
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.35),
+    0 5px 12px rgba(224, 24, 24, 0.6) !important;
+}
+
+.foto-button-vermelho:active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35),
+    0 2px 5px rgba(224, 24, 24, 0.5) !important;
 }
 
 .foto-button-vermelho:disabled {
@@ -933,7 +953,7 @@ td {
 
 /* Botão cancelar vermelho */
 .modal-actions .secondary-button {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: #e01818;
   color: #ffffff;
   border: none;
 }
