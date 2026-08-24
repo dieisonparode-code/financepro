@@ -40,7 +40,7 @@
   color: #fff;
   background: #0753cc;
   font-weight: 900;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
   box-shadow:
     inset 0 1.5px 0 rgba(255, 255, 255, 0.55),
     inset 0 -3px 5px rgba(0, 0, 0, 0.35),
@@ -58,8 +58,9 @@
 
 .primary-button:disabled,
 .secondary-button:disabled {
-  opacity: .55;
+  opacity: .88;
   cursor: not-allowed;
+  filter: saturate(0.85);
 }
 
 .main-content label {
@@ -870,7 +871,7 @@ td {
   font-size: 14px;
   font-weight: 900;
   letter-spacing: 0.2px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
   cursor: pointer;
   box-sizing: border-box;
   box-shadow:
@@ -920,9 +921,15 @@ td {
     0 2px 5px rgba(224, 24, 24, 0.5) !important;
 }
 
+/* Ajuste (24/08/2026): opacity 0.5 no desabilitado deixava a cor com
+   aparência de "película"/lavada (é exatamente esse estado que aparece
+   antes de registrar a 1ª foto do fechamento) — subido pra 0.88 pra
+   continuar vermelho vivo, só perdendo um pouco de brilho + cursor
+   "not-allowed" pra ainda dar pra perceber que está desabilitado. */
 .foto-button-vermelho:disabled {
-  opacity: 0.5;
+  opacity: 0.88;
   cursor: not-allowed;
+  filter: saturate(0.85);
 }
 
 .foto-upload input[type="file"] {
