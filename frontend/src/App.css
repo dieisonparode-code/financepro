@@ -876,14 +876,23 @@ td {
      enxergar" — a sombra era só uma linha fina embaixo (0 1px 1px),
      que só reforça contraste em fundo bem escuro (caso do vermelho).
      Trocado por um contorno escuro nas 4 direções + sombra projetada —
-     garante o mesmo contraste em QUALQUER cor de fundo (azul, verde ou
-     vermelho ficam iguais agora). */
+     garante o mesmo contraste em QUALQUER cor de fundo. 2º ajuste
+     (mesmo dia): usuário pediu o branco "o mais vivo possível" — a
+     cor já era #ffffff (branco puro, não dá pra ficar mais branco que
+     isso em valor), então o que ainda deixava a letra com aparência
+     menos pura era o contorno grosso demais "comendo" o branco nas
+     bordas. Afinado o contorno (mais fino/menos opaco) + adicionado
+     antialiasing pra renderizar a fonte mais nítida — o branco fica
+     mais limpo/puro, o contorno só o essencial pra continuar legível
+     em qualquer cor de fundo. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-shadow:
-    -1px -1px 0 rgba(0, 0, 0, 0.55),
-    1px -1px 0 rgba(0, 0, 0, 0.55),
-    -1px 1px 0 rgba(0, 0, 0, 0.55),
-    1px 1px 0 rgba(0, 0, 0, 0.55),
-    0 2px 3px rgba(0, 0, 0, 0.45);
+    -0.5px -0.5px 0 rgba(0, 0, 0, 0.4),
+    0.5px -0.5px 0 rgba(0, 0, 0, 0.4),
+    -0.5px 0.5px 0 rgba(0, 0, 0, 0.4),
+    0.5px 0.5px 0 rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   box-sizing: border-box;
   box-shadow:
