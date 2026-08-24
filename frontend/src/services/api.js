@@ -211,6 +211,30 @@ export async function excluirInsumo(id) {
   });
 }
 
+// Pedido do usuário (23/08/2026): insumo "feito na casa" (ex: maionese)
+// — custo calculado por receita (outros insumos + rendimento) em vez de
+// digitado direto.
+export async function buscarReceitaInsumo(id) {
+  return requisicao(`/insumos/${id}/receita`, {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function salvarReceitaInsumo(id, rendimento, itens) {
+  return requisicao(`/insumos/${id}/receita`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ rendimento, itens }),
+  });
+}
+
+export async function recalcularReceitaInsumo(id) {
+  return requisicao(`/insumos/${id}/receita/recalcular`, {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function registrarMovimentacaoEstoque(id, dados) {
   return requisicao(`/insumos/${id}/movimentacao`, {
     method: "POST",

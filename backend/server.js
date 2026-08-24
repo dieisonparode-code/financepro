@@ -348,6 +348,54 @@ function prepararInsumo(dados = {}) {
   };
 }
 
+// Pedido do usuário (23/08/2026): insumo "feito na casa" (ex: maionese)
+// — o custo unitário vem de uma receita própria (outros insumos +
+// quantidade de cada), não digitado direto. "rendimento" é quanto essa
+// receita produz, na MESMA unidade_medida do insumo sendo preparado (ex:
+// insumo "Maionese" com unidade_medida "g" e rendimento 1000 → a receita
+// rende 1000g). Grava o custo_unitario calculado direto na coluna que já
+// existe (mesma lida por toda Ficha Técnica), evita reescrever cada
+// lugar que hoje lê insumo.custo_unitario pra também saber calcular.
+async function recalcularCustoDaReceita(insumoId) {
+  const { data: insumo, error: erroInsumo } = await supabase
+    .from("insumos")
+    .select("id, rendimento")
+    .eq("id", insumoId)
+    .single();
+
+  if (erroInsumo) throw erroInsumo;
+
+  const { data: itens, error: erroItens } = await supabase
+    .from("insumo_receita_itens")
+    .select("quantidade, insumo_ingrediente_id, insumos!insumo_receita_itens_insumo_ingrediente_id_fkey(custo_unitario)")
+    .eq("insumo_id", insumoId);
+
+  if (erroItens) throw erroItens;
+
+  const rendimento = Number(insumo?.rendimento) || 0;
+
+  if (rendimento <= 0 || !itens || itens.length === 0) {
+    return null;
+  }
+
+  const custoTotalReceita = itens.reduce(
+    (soma, item) =>
+      soma + Number(item.quantidade) * Number(item.insumos?.custo_unitario || 0),
+    0
+  );
+
+  const custoUnitario = Number((custoTotalReceita / rendimento).toFixed(4));
+
+  const { error: erroUpdate } = await supabase
+    .from("insumos")
+    .update({ custo_unitario: custoUnitario })
+    .eq("id", insumoId);
+
+  if (erroUpdate) throw erroUpdate;
+
+  return custoUnitario;
+}
+
 app.get("/", function (req, res) {
   res.send("FinancePro API funcionando!");
 });
@@ -7225,6 +7273,149 @@ app.put("/insumos/:id", verificarPermissao("estoque"), async function (req, res)
     });
   }
 });
+
+// Pedido do usuário (23/08/2026): "preciso colocar o cálculo pra fazer a
+// maionese que vai em todos os lanches, é feita na casa, não compramos
+// pronta" — receita do insumo (outros insumos + quantidade + rendimento)
+// pra calcular o custo unitário sozinho, em vez de digitar.
+app.get(
+  "/insumos/:id/receita",
+  verificarPermissao("estoque"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do insumo inválido." });
+      }
+
+      const { data: itens, error } = await supabase
+        .from("insumo_receita_itens")
+        .select(
+          "id, quantidade, insumo_ingrediente_id, insumos!insumo_receita_itens_insumo_ingrediente_id_fkey(nome, unidade_medida, custo_unitario)"
+        )
+        .eq("insumo_id", id);
+
+      if (error) throw error;
+
+      res.json(itens || []);
+    } catch (erro) {
+      console.error("Erro ao buscar receita do insumo:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível buscar a receita do insumo.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/insumos/:id/receita",
+  verificarPermissao("estoque"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do insumo inválido." });
+      }
+
+      const rendimento =
+        req.body.rendimento != null ? Number(req.body.rendimento) : null;
+      const itens = Array.isArray(req.body.itens) ? req.body.itens : [];
+
+      if (rendimento != null && rendimento <= 0) {
+        return res.status(400).json({
+          erro: "O rendimento da receita precisa ser maior que zero.",
+        });
+      }
+
+      const { error: erroRendimento } = await supabase
+        .from("insumos")
+        .update({ rendimento })
+        .eq("id", id);
+
+      if (erroRendimento) throw erroRendimento;
+
+      await supabase.from("insumo_receita_itens").delete().eq("insumo_id", id);
+
+      const itensValidos = itens
+        .filter((item) => item.insumo_ingrediente_id && Number(item.quantidade) > 0)
+        .map((item) => ({
+          insumo_id: id,
+          insumo_ingrediente_id: Number(item.insumo_ingrediente_id),
+          quantidade: Number(item.quantidade),
+        }));
+
+      if (itensValidos.length > 0) {
+        const { error: erroInsert } = await supabase
+          .from("insumo_receita_itens")
+          .insert(itensValidos);
+
+        if (erroInsert) throw erroInsert;
+      }
+
+      const custoCalculado = await recalcularCustoDaReceita(id);
+
+      registrarAuditoria(
+        req,
+        "editou",
+        "insumos",
+        id,
+        `Receita do insumo salva (${itensValidos.length} ingrediente(s), rendimento ${rendimento || "?"}) — custo unitário recalculado${custoCalculado != null ? `: R$${custoCalculado}` : " (rendimento ou itens faltando, não recalculou ainda)"}`
+      );
+
+      const { data: insumoAtualizado, error: erroInsumo } = await supabase
+        .from("insumos")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (erroInsumo) throw erroInsumo;
+
+      res.json(insumoAtualizado);
+    } catch (erro) {
+      console.error("Erro ao salvar receita do insumo:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível salvar a receita do insumo.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Recalcula o custo unitário de um insumo com receita sem precisar
+// reabrir/resalvar a receita inteira — útil quando o preço de um
+// INGREDIENTE dela mudou depois (ex: ovo ficou mais caro) e a Maionese
+// precisa refletir isso. O custo dela fica "parado" no valor calculado
+// da última vez até alguém pedir pra recalcular — não é automático em
+// cascata (evita recalcular a cadeia inteira toda hora sem necessidade).
+app.post(
+  "/insumos/:id/receita/recalcular",
+  verificarPermissao("estoque"),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID do insumo inválido." });
+      }
+
+      const custoCalculado = await recalcularCustoDaReceita(id);
+
+      if (custoCalculado == null) {
+        return res.status(400).json({
+          erro: "Esse insumo não tem receita (rendimento e/ou ingredientes) cadastrada ainda.",
+        });
+      }
+
+      res.json({ custo_unitario: custoCalculado });
+    } catch (erro) {
+      console.error("Erro ao recalcular receita do insumo:", erro.message);
+      res.status(500).json({
+        erro: "Não foi possível recalcular o custo.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
 
 app.delete("/insumos/:id", verificarPermissao("estoque"), async function (req, res) {
   try {

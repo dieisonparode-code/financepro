@@ -216,6 +216,7 @@ export default function DashboardPremium({
   acessoCardFluxoCaixa = true,
   acessoCardProximosRecebimentos = true,
   pontoDeEquilibrio = null,
+  carregando = false,
 }) {
   // Pedido do usuário (22/08/2026): olho de privacidade GERAL, fora dos
   // cards — um botão só que esconde o número principal de Receitas,
@@ -793,7 +794,7 @@ export default function DashboardPremium({
           classe="verde"
           titulo="Receitas"
           mascarar={!valoresVisiveis}
-          valor={formatarMoeda(receitas)}
+          valor={carregando ? "…" : formatarMoeda(receitas)}
           legenda="↗ Faturamento do período"
           icone="↑"
           grafico={<MiniLinha valores={valoresReceitas} cor="#18d653" />}
@@ -805,7 +806,7 @@ export default function DashboardPremium({
           classe="vermelho"
           titulo="Despesas"
           mascarar={!valoresVisiveis}
-          valor={formatarMoeda(despesas)}
+          valor={carregando ? "…" : formatarMoeda(despesas)}
           legenda="↘ Custos totais do período"
           icone="↓"
           grafico={<MiniLinha valores={valoresDespesas} cor="#ff3545" />}
@@ -817,8 +818,8 @@ export default function DashboardPremium({
           classe="roxo"
           titulo="Fluxo de caixa"
           mascarar={!valoresVisiveis}
-          valor={formatarMoeda(fluxoCaixa)}
-          legenda={fluxoCaixa >= 0 ? "Positivo" : "Negativo"}
+          valor={carregando ? "…" : formatarMoeda(fluxoCaixa)}
+          legenda={carregando ? "Carregando..." : fluxoCaixa >= 0 ? "Positivo" : "Negativo"}
           icone="⌁"
           grafico={
             <MiniBarras
@@ -834,21 +835,40 @@ export default function DashboardPremium({
           classe="azul"
           titulo="Saldo"
           mascarar={!valoresVisiveis}
-          valor={formatarMoeda(saldo)}
+          // BUG REAL corrigido (24/08/2026): antes de "lancamentos" terminar
+          // de carregar, o Saldo mostrava só a base fixa (R$106.430,13, sem
+          // nenhuma receita/despesa somada ainda) por alguns segundos — um
+          // "flash" de valor errado bem convincente (parecia o saldo de
+          // verdade, não um estado de carregamento). Usuário gravou vídeo
+          // mostrando exatamente isso. Agora mostra "…" enquanto carrega, em
+          // vez de um número real só que incompleto.
+          valor={carregando ? "…" : formatarMoeda(saldo)}
           // Pedido do usuário (18/08/2026): não é pra sumir com a linha de
           // Bruto/Taxas quando não há taxa nenhuma desde o ajuste do saldo —
           // é pra continuar aparecendo, só que com o valor certo (mesma base
           // de R$ 106.430,13 do Saldo de cima), em vez do número do mês
           // inteiro que não tinha relação nenhuma com o saldo novo.
-          bruto={formatarMoeda(saldoBruto)}
-          taxa={`${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`}
+          bruto={carregando ? "…" : formatarMoeda(saldoBruto)}
+          taxa={
+            carregando
+              ? "…"
+              : `${formatarMoeda(totalTaxas)} (${percentualTaxas.toFixed(2)}%)`
+          }
           // Pedido do usuário (20/08/2026): antes sumia a linha inteira
           // quando o valor era exatamente R$0,00 — agora sempre mostra,
           // mesmo zerado, pra dar pra confirmar visualmente que zerou de
           // verdade (em vez de simplesmente não aparecer nada).
-          emDinheiro={formatarMoeda(dinheiroEmCaixa)}
-          fundoRetirada={fundoRetirada > 0 ? formatarMoeda(fundoRetirada) : null}
-          legenda={saldo >= 0 ? "↗ Resultado positivo" : "↘ Resultado negativo"}
+          emDinheiro={carregando ? "…" : formatarMoeda(dinheiroEmCaixa)}
+          fundoRetirada={
+            carregando ? null : fundoRetirada > 0 ? formatarMoeda(fundoRetirada) : null
+          }
+          legenda={
+            carregando
+              ? "Carregando..."
+              : saldo >= 0
+              ? "↗ Resultado positivo"
+              : "↘ Resultado negativo"
+          }
           icone="▣"
           grafico={<MiniLinha valores={fluxoSeteDias} cor="#1476ff" />}
         />

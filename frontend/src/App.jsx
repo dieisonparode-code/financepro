@@ -96,6 +96,9 @@ import {
   atualizarInsumo,
   excluirInsumo,
   registrarMovimentacaoEstoque,
+  buscarReceitaInsumo,
+  salvarReceitaInsumo,
+  recalcularReceitaInsumo,
   buscarFichasTecnicas,
   criarFichaTecnica,
   editarFichaTecnica,
@@ -3478,6 +3481,34 @@ const pontoDeEquilibrio = useMemo(() => {
     return resumo;
   }
 
+  // Pedido do usuário (23/08/2026): insumo feito na casa (ex: maionese)
+  // — custo unitário calculado por receita (outros insumos + rendimento)
+  // em vez de digitado. Wrapper igual acima, só pra refletir o
+  // custo_unitario/rendimento recalculados na lista local sem recarregar.
+  async function salvarReceitaInsumoHandler(id, rendimento, itens) {
+    const salvo = await salvarReceitaInsumo(id, rendimento, itens);
+
+    setInsumos((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salvo : item))
+    );
+
+    return salvo;
+  }
+
+  async function recalcularReceitaInsumoHandler(id) {
+    const resultado = await recalcularReceitaInsumo(id);
+
+    setInsumos((anteriores) =>
+      anteriores.map((item) =>
+        item.id === id
+          ? { ...item, custo_unitario: resultado.custo_unitario }
+          : item
+      )
+    );
+
+    return resultado;
+  }
+
   async function adicionarFormaPagamento(dados) {
     const salva = await criarFormaPagamento(dados);
     setFormasPagamento((anteriores) => [...anteriores, salva]);
@@ -4276,6 +4307,21 @@ const pontoDeEquilibrio = useMemo(() => {
       <main className="main-content">
   {temPermissaoFinanceira("contas_pagar") &&
     (() => {
+      // BUG REAL corrigido (24/08/2026): usuário reparou que o aviso de
+      // "Contas a pagar precisando de atenção" demora a aparecer — não é
+      // atraso de verdade, é que ele só existe DEPOIS de contasPagar
+      // terminar de carregar (antes disso a lista está vazia, o filtro
+      // não acha nada e o aviso simplesmente não aparece ainda, sem
+      // nenhuma pista de que ainda está carregando). Mostra um "..."
+      // enquanto isso, pra não parecer que sumiu ou não existe.
+      if (carregandoContasPagar) {
+        return (
+          <div className="alerta-contas-pagar" style={{ opacity: 0.6 }}>
+            Carregando avisos de contas a pagar...
+          </div>
+        );
+      }
+
       const contasAlerta = contasPagar
         .filter((conta) => conta.status !== "pago")
         .map((conta) => ({
@@ -4493,6 +4539,7 @@ const pontoDeEquilibrio = useMemo(() => {
       acessoCardFluxoCaixa={acessoCardFluxoCaixa}
       acessoCardProximosRecebimentos={acessoCardProximosRecebimentos}
       pontoDeEquilibrio={pontoDeEquilibrioDashboard}
+      carregando={carregando}
     />
   )}
   
