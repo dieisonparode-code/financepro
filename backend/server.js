@@ -3370,7 +3370,13 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
 
     if (
       ![
+        // "caixa" (sem número) fica na lista só por compatibilidade — o
+        // frontend não manda mais esse valor puro desde a correção do
+        // bug "Foto 1"/"Foto 2" sempre aparecer como Foto 1 (24/08/2026);
+        // registros antigos com esse tipo continuam existindo no banco.
         "caixa",
+        "caixa_1",
+        "caixa_2",
         "boy",
         "cozinha",
         "venda_prazo",
@@ -3381,7 +3387,7 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
     ) {
       return res.status(400).json({
         erro:
-          "Tipo inválido. Use caixa, boy, cozinha, venda_prazo, funcionario, pago_dinheiro_caixa ou comandas_canceladas.",
+          "Tipo inválido. Use caixa_1, caixa_2, boy, cozinha, venda_prazo, funcionario, pago_dinheiro_caixa ou comandas_canceladas.",
       });
     }
 

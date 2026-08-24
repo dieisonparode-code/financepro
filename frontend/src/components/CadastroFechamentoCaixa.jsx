@@ -1,16 +1,25 @@
 import { useEffect, useState } from "react";
 import CampoValor, { paraNumero } from "./CampoValor";
 
+// BUG REAL corrigido (24/08/2026): "Foto 1" e "Foto 2" salvavam com o
+// MESMO valor de tipo ("caixa") — só a "chave" (usada pro estado local
+// do botão) era diferente. Depois de salvo, não tinha como saber qual
+// foto era qual: rotuloTipo() sempre batia na PRIMEIRA entrada da lista
+// ("Foto 1"), então todo registro tipo "caixa" aparecia como "Foto 1" na
+// lista, mesmo quando a foto foi tirada pelo botão "Foto 2". Agora cada
+// botão tem seu próprio valor ("caixa_1"/"caixa_2") — registros antigos
+// (tipo "caixa" puro, já salvos antes dessa correção) continuam
+// aparecendo certinho via o fallback logo abaixo, em rotuloTipo().
 const tiposFechamento = [
   {
     chave: "caixa-1",
-    valor: "caixa",
+    valor: "caixa_1",
     rotulo: "Fechamento de Caixa — Foto 1",
     icone: "📷",
   },
   {
     chave: "caixa-2",
-    valor: "caixa",
+    valor: "caixa_2",
     rotulo: "Fechamento de Caixa — Foto 2",
     icone: "📷",
     ajuda: "Se o comprovante tiver mais partes (dobrou o papel, mais de 2 fotos), tire quantas precisar — cada foto é registrada separadamente.",
@@ -55,6 +64,13 @@ const tiposFechamento = [
 ];
 
 function rotuloTipo(tipo) {
+  // Fallback pros registros salvos ANTES da correção acima (tipo "caixa"
+  // puro, sem o "_1"/"_2") — não dá pra saber mais qual foto era qual
+  // pra esses, então mostra um rótulo genérico em vez de nada.
+  if (tipo === "caixa") {
+    return { rotulo: "Fechamento de Caixa", icone: "📷" };
+  }
+
   return tiposFechamento.find((item) => item.valor === tipo) || null;
 }
 
@@ -318,8 +334,11 @@ function CadastroFechamentoCaixa({
   // Diária Boy/Cozinha na lista).
   const [fotosCaixaAbertura, setFotosCaixaAbertura] = useState({});
 
-  const registrosCaixaAbertos = registrosRecentes.filter(
-    (registro) => registro.tipo === "caixa"
+  // Pega "caixa" (registro antigo, de antes da correção do bug Foto
+  // 1/Foto 2), "caixa_1" e "caixa_2" (novos) — as duas fotos do
+  // fechamento, sejam elas do tipo que forem.
+  const registrosCaixaAbertos = registrosRecentes.filter((registro) =>
+    registro.tipo.startsWith("caixa")
   );
 
   useEffect(() => {
