@@ -1,6 +1,60 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <script>
+      // Autorrecuperação de "tela branca" por cache desatualizado (24/08/2026):
+      // quando o Service Worker (ou o cache do navegador) guarda uma versão
+      // velha do index.html, ela aponta pros arquivos JS/CSS daquele build
+      // antigo. Se esse build não é mais o publicado no servidor, o Vercel
+      // devolve o próprio index.html no lugar (fallback de rota de SPA) — o
+      // navegador recebe HTML onde esperava JavaScript e BLOQUEIA por
+      // segurança ("Failed to load module script ... MIME type text/html").
+      // O app inteiro nem chega a carregar, e sem isso aqui não tinha como
+      // saber o motivo — ficava só a tela branca. Esse script roda ANTES de
+      // tudo (nem depende do bundle React carregar): se detectar esse erro
+      // específico, apaga o Service Worker + caches do navegador e recarrega
+      // direto do servidor, uma vez só por sessão pra não entrar em loop.
+      (function () {
+        var CHAVE = "financepro_recuperou_tela_branca";
+        window.addEventListener(
+          "error",
+          function (evento) {
+            var alvo = evento.target;
+            var url = alvo && (alvo.src || alvo.href);
+            var ehAssetDoApp =
+              alvo &&
+              (alvo.tagName === "SCRIPT" || alvo.tagName === "LINK") &&
+              typeof url === "string" &&
+              url.indexOf("/assets/") !== -1;
+
+            if (!ehAssetDoApp) return;
+            if (sessionStorage.getItem(CHAVE) === "1") return;
+            sessionStorage.setItem(CHAVE, "1");
+
+            Promise.resolve()
+              .then(function () {
+                if ("serviceWorker" in navigator) {
+                  return navigator.serviceWorker.getRegistrations().then(function (regs) {
+                    return Promise.all(regs.map(function (r) { return r.unregister(); }));
+                  });
+                }
+              })
+              .then(function () {
+                if ("caches" in window) {
+                  return caches.keys().then(function (chaves) {
+                    return Promise.all(chaves.map(function (c) { return caches.delete(c); }));
+                  });
+                }
+              })
+              .catch(function () {})
+              .then(function () {
+                window.location.reload();
+              });
+          },
+          true
+        );
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
