@@ -234,6 +234,7 @@ const TIPOS_COM_VALOR_CONFERIDO = [
 function CadastroFechamentoCaixa({
   registros = [],
   carregando = false,
+  funcionarios = [],
   adicionarFechamento,
   removerFechamento,
   corrigirValor,
@@ -1171,12 +1172,17 @@ function CadastroFechamentoCaixa({
               </label>
             )}
 
+            {/* Pedido do usuário (25/08/2026): "funcionários tem que
+                puxar o cadastro do consumo e vales, se o nome for o
+                mesmo considere somar o total" — usa a MESMA lista de
+                funcionários cadastrados (não texto livre), pra o nome
+                sempre bater certinho na hora de somar as pendências no
+                pagamento de salário (sem erro de digitação/variação de
+                nome quebrando a soma). */}
             {rascunhoDiaria.tipo === "vale" && (
               <label>
                 Nome do funcionário
-                <input
-                  type="text"
-                  placeholder="Ex: João Silva"
+                <select
                   value={rascunhoDiaria.nomePessoa}
                   disabled={rascunhoDiaria.salvando}
                   onChange={(evento) =>
@@ -1185,7 +1191,14 @@ function CadastroFechamentoCaixa({
                       nomePessoa: evento.target.value,
                     }))
                   }
-                />
+                >
+                  <option value="">Selecione...</option>
+                  {funcionarios.map((funcionario) => (
+                    <option key={funcionario.id} value={funcionario.nome}>
+                      {funcionario.nome}
+                    </option>
+                  ))}
+                </select>
               </label>
             )}
 

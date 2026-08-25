@@ -5583,6 +5583,7 @@ const pontoDeEquilibrio = useMemo(() => {
           <CadastroFechamentoCaixa
             registros={fechamentosCaixa}
             carregando={carregandoFechamentos}
+            funcionarios={funcionarios}
             adicionarFechamento={adicionarFechamentoCaixa}
             removerFechamento={removerFechamentoCaixa}
             corrigirValor={corrigirValorFechamentoCaixaHandler}
