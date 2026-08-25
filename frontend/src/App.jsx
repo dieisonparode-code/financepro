@@ -3687,6 +3687,26 @@ const pontoDeEquilibrio = useMemo(() => {
 
       alert(`Diárias processadas: ${partes.join(" e ")}.`);
     }
+
+    // Pedido do usuário (25/08/2026): antes, se um item falhasse ao criar
+    // a conta a pagar/despesa/receita (ex: instabilidade momentânea do
+    // banco bem na hora do clique), a resposta dizia "sucesso" mesmo
+    // assim — o registro ficava preso só no Fechamento de Caixa, sem
+    // ninguém saber (foi o que aconteceu com uma Diária Boy e uma Janta).
+    // Agora, se sobrar alguma falha, avisa explicitamente quais registros
+    // precisam de atenção manual (usar "Ler foto de novo" ou me chamar).
+    if (salvo?.falhas?.length > 0) {
+      const lista = salvo.falhas
+        .map(
+          (falha) =>
+            `#${falha.registro} (${falha.tipo}, R$ ${Number(falha.valor).toFixed(2)})`
+        )
+        .join(", ");
+
+      alert(
+        `⚠️ ${salvo.falhas.length} registro(s) NÃO foram lançados por um erro momentâneo: ${lista}. Confira Contas a Pagar/Receber — se não aparecerem lá, avise pra corrigir manualmente.`
+      );
+    }
   }
 
   // Pedido do usuário (16/08/2026): só admin, reabre o ÚLTIMO fechamento

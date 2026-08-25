@@ -4005,6 +4005,16 @@ app.post(
       let contasPagarCriadas = 0;
       let despesasDinheiroCriadas = 0;
       let receitasValeCriadas = 0;
+      // Pedido do usuário (25/08/2026): "Jantas fica só no fechamento, não
+      // vai pra Contas a Pagar" — causa real: uma instabilidade do
+      // Supabase bem na hora de um "Finalizar Fechamento de Caixa" fez
+      // 2 de 7 registros falharem ao criar a conta a pagar (erro no
+      // insert), sem ninguém saber — a resposta dizia "sucesso" mesmo com
+      // 2 perdidos, porque cada item só logava o erro no servidor e
+      // seguia (continue), sem reportar nada de volta pro operador.
+      // Agora cada falha vai numa lista devolvida na resposta, pra tela
+      // avisar claramente em vez de ficar em silêncio.
+      const falhas = [];
 
       try {
         let consultaDiarias = supabase
@@ -4081,6 +4091,12 @@ app.post(
                 "Erro ao criar despesa da diária (parte em dinheiro):",
                 erroDespesa.message
               );
+              falhas.push({
+                registro: diaria.id,
+                tipo: diaria.tipo,
+                valor: pagoDinheiro,
+                motivo: erroDespesa.message,
+              });
             } else {
               despesasDinheiroCriadas += 1;
 
@@ -4163,6 +4179,12 @@ app.post(
               "Erro ao criar conta a pagar a partir da diária:",
               erroConta.message
             );
+            falhas.push({
+              registro: diaria.id,
+              tipo: diaria.tipo,
+              valor: valorAPagar,
+              motivo: erroConta.message,
+            });
             continue;
           }
 
@@ -4256,6 +4278,12 @@ app.post(
               "Erro ao criar receita do vale:",
               erroReceita.message
             );
+            falhas.push({
+              registro: vale.id,
+              tipo: "vale",
+              valor: valorVale,
+              motivo: erroReceita.message,
+            });
             continue;
           }
 
@@ -4278,6 +4306,7 @@ app.post(
         contas_pagar_criadas: contasPagarCriadas,
         despesas_dinheiro_criadas: despesasDinheiroCriadas,
         receitas_vale_criadas: receitasValeCriadas,
+        falhas,
       });
     } catch (erro) {
       console.error("Erro ao finalizar fechamento de caixa:", erro.message);
