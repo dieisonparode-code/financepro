@@ -4332,6 +4332,19 @@ const pontoDeEquilibrio = useMemo(() => {
             os itens de DENTRO do submenu também foram alfabetizados
             entre si, separado do resto. */}
         <nav className="menu">
+          {/* Pedido do usuário (25/08/2026): "Conferência do dia" (antigo
+              "Feed do Dia") fica sempre em primeiro, fora da ordem
+              alfabética do resto do menu. */}
+          {(temPermissaoFinanceira("despesas") ||
+            temPermissaoFinanceira("receitas")) && (
+            <button
+              className={pagina === "feed" ? "active" : ""}
+              onClick={() => setPagina("feed")}
+            >
+              📢 Conferência do Dia
+            </button>
+          )}
+
           {temPermissaoFechamento("conciliacao") && (
             <button
               className={pagina === "conciliacao" ? "active" : ""}
@@ -4407,16 +4420,6 @@ const pontoDeEquilibrio = useMemo(() => {
               onClick={() => setPagina("fechamento")}
             >
               Fechamento de Caixa
-            </button>
-          )}
-
-          {(temPermissaoFinanceira("despesas") ||
-            temPermissaoFinanceira("receitas")) && (
-            <button
-              className={pagina === "feed" ? "active" : ""}
-              onClick={() => setPagina("feed")}
-            >
-              📢 Feed do Dia
             </button>
           )}
 

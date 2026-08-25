@@ -170,7 +170,7 @@ function FeedLancamentos({
       <div className="panel-header">
         <div>
           <span className="eyebrow">Tempo real</span>
-          <h2>📢 Feed do Dia</h2>
+          <h2>📢 Conferência do Dia</h2>
         </div>
 
         {notificacaoStatus && (
