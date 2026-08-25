@@ -26,11 +26,15 @@ const tiposFechamento = [
   },
   { valor: "boy", rotulo: "Diária Boy", icone: "🏍️" },
   { valor: "cozinha", rotulo: "Diária Cozinha", icone: "👨‍🍳" },
-  // Pedido do usuário (24/08/2026): mesmo fluxo de Diária Boy/Cozinha —
-  // foto, IA lê o valor, e quando o fechamento é finalizado vira despesa
-  // normal em Contas a Pagar (ver NOMES_DIARIA_PARA_CONTA_PAGAR no
-  // backend).
-  { valor: "janta", rotulo: "Jantas", icone: "🍽️" },
+  // Pedido do usuário (25/08/2026, revisado): só arquiva a foto — não lê
+  // valor por IA, não vira despesa/conta a pagar nenhuma. Fica só salvo
+  // aqui no Fechamento de Caixa como registro, igual Comandas Canceladas.
+  {
+    valor: "janta",
+    rotulo: "Jantas",
+    icone: "🍽️",
+    semCapture: true,
+  },
   // Pedido do usuário (24/08/2026): "vale" é dinheiro que a EMPRESA vai
   // receber de volta do funcionário (desconto no próximo pagamento) —
   // diferente de toda a lista acima, não vira despesa nenhuma. Quando o
@@ -213,10 +217,14 @@ const TRES_DIAS_MS = 3 * 24 * 60 * 60 * 1000;
 // valor na lista — o valor real que vira Contas a Receber continua vindo
 // automático da importação da Saipos, essa leitura aqui não alimenta
 // nada além da própria exibição.
+// Pedido do usuário (25/08/2026): "Janta NÃO é pra ir pra Contas a
+// Pagar, é só pra ficar salvo no fechamento de caixa" — mudou de ideia
+// do pedido original (que era igual Boy/Cozinha). Tirado daqui: agora
+// só tira foto e arquiva direto (igual Comandas Canceladas), sem tela
+// de confirmar valor nenhuma.
 const TIPOS_COM_VALOR_CONFERIDO = [
   "boy",
   "cozinha",
-  "janta",
   "vale",
   "pago_dinheiro_caixa",
   "venda_prazo",

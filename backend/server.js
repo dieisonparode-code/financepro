@@ -3942,12 +3942,16 @@ app.get(
 );
 
 // Nomes legíveis pros tipos de fechamento que geram conta a pagar
-// automaticamente — hoje Diária Boy/Cozinha/Janta (pedido do usuário,
-// 24/08/2026: Jantas segue exatamente o mesmo fluxo de Boy/Cozinha).
+// automaticamente — hoje Diária Boy/Cozinha.
+//
+// Pedido do usuário (25/08/2026): "Janta" tinha entrado aqui em
+// 24/08/2026, mas o usuário mudou de ideia no dia seguinte — "não é pra
+// ir pra lá, é só pra ficar salvo no fechamento de caixa". Removido de
+// novo; Jantas agora é puro arquivo (igual Comandas Canceladas), não
+// passa mais por aqui.
 const NOMES_DIARIA_PARA_CONTA_PAGAR = {
   boy: "Diária Boy",
   cozinha: "Diária Cozinha",
-  janta: "Jantas",
   // Pedido do usuário (12/08/2026): "Pago com dinheiro do caixa" (retirada
   // de frente de caixa — diária avulsa, compra rápida, etc, tudo pago na
   // hora com o dinheiro físico do caixa) usa a mesma automação — mas é
