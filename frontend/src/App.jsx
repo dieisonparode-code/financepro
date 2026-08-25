@@ -1567,6 +1567,33 @@ function FinanceApp() {
     setLancamentos((anteriores) => [salvo, ...anteriores]);
   }
 
+  // Pedido do usuário (25/08/2026): "Vale" também precisa poder ser
+  // registrado direto na tela Contas a Receber (não só via Fechamento de
+  // Caixa) — mesma ideia (dinheiro que a empresa vai receber de volta do
+  // funcionário), só que sem precisar de foto/fechamento nenhum.
+  async function registrarValeContasReceberHandler({
+    nomeFuncionario,
+    valor,
+    dataPrevista,
+  }) {
+    const salvo = await criarLancamento({
+      tipo: "receita",
+      descricao: `Vale — ${nomeFuncionario}`,
+      fornecedor: nomeFuncionario,
+      valor,
+      data: hojeLocal(),
+      data_prevista_recebimento: dataPrevista,
+      loja_id:
+        !vePermissaoTotal
+          ? perfil?.loja_id || null
+          : lojaDashboard !== "todas"
+          ? lojaDashboard
+          : null,
+    });
+
+    setLancamentos((anteriores) => [salvo, ...anteriores]);
+  }
+
   useEffect(() => {
     async function carregarDados() {
       try {
@@ -5207,6 +5234,8 @@ const pontoDeEquilibrio = useMemo(() => {
             editarFormaPagamento={editarFormaPagamento}
             removerFormaPagamento={removerFormaPagamento}
             buscarFoto={buscarFotoLancamento}
+            registrarVale={registrarValeContasReceberHandler}
+            ehAdministrador={ehAdministrador}
           />
         )}
 

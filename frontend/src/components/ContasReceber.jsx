@@ -40,6 +40,8 @@ function ContasReceber({
   editarFormaPagamento,
   removerFormaPagamento,
   buscarFoto,
+  registrarVale,
+  ehAdministrador = false,
 }) {
   const [nome, setNome] = useState("");
   const [operadora, setOperadora] = useState("");
@@ -57,6 +59,57 @@ function ContasReceber({
   // achar só a previsão de uma pessoa específica, sem precisar rolar a
   // lista inteira por data.
   const [buscaReceber, setBuscaReceber] = useState("");
+
+  // Pedido do usuário (25/08/2026): registrar um "Vale" (dinheiro que a
+  // empresa vai receber de volta do funcionário) direto por aqui, sem
+  // precisar passar pelo Fechamento de Caixa. Mesma automação que já
+  // existe lá — data prevista começa em 30 dias, editável.
+  const [valeNome, setValeNome] = useState("");
+  const [valeValor, setValeValor] = useState("");
+  const [valeData, setValeData] = useState(() => {
+    const data = new Date();
+    data.setDate(data.getDate() + 30);
+    return data.toISOString().slice(0, 10);
+  });
+  const [salvandoVale, setSalvandoVale] = useState(false);
+
+  async function salvarVale(evento) {
+    evento.preventDefault();
+
+    if (!valeNome.trim()) {
+      alert("Informe o nome do funcionário.");
+      return;
+    }
+
+    const valorNumerico = paraNumero(valeValor);
+
+    if (!valorNumerico || valorNumerico <= 0) {
+      alert("Informe um valor válido.");
+      return;
+    }
+
+    if (!valeData) {
+      alert("Escolha a data prevista de devolução.");
+      return;
+    }
+
+    setSalvandoVale(true);
+
+    try {
+      await registrarVale({
+        nomeFuncionario: valeNome.trim(),
+        valor: valorNumerico,
+        dataPrevista: valeData,
+      });
+
+      setValeNome("");
+      setValeValor("");
+    } catch (erro) {
+      alert(erro.message || "Não foi possível registrar o vale.");
+    } finally {
+      setSalvandoVale(false);
+    }
+  }
 
   async function verFoto(item) {
     if (!buscarFoto) return;
@@ -431,6 +484,63 @@ function ContasReceber({
 
           <strong>{previstosFiltrados.length}</strong>
         </div>
+
+        {ehAdministrador && registrarVale && (
+          <form
+            onSubmit={salvarVale}
+            className="panel"
+            style={{ marginBottom: 14, padding: 14 }}
+          >
+            <span className="eyebrow">🪙 Registrar Vale</span>
+            <p style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+              Vale/adiantamento pra funcionário — entra aqui como
+              recebimento previsto (a empresa recebe de volta no próximo
+              pagamento dele), não vira despesa.
+            </p>
+
+            <div className="form-row">
+              <label>
+                Nome do funcionário
+                <input
+                  type="text"
+                  value={valeNome}
+                  onChange={(evento) => setValeNome(evento.target.value)}
+                  placeholder="Ex.: João Silva"
+                  disabled={salvandoVale}
+                />
+              </label>
+
+              <label>
+                Valor
+                <CampoValor
+                  placeholder="Ex.: 200,00"
+                  value={valeValor}
+                  onChange={setValeValor}
+                  disabled={salvandoVale}
+                />
+              </label>
+            </div>
+
+            <label>
+              Previsão de devolução
+              <input
+                type="date"
+                value={valeData}
+                onChange={(evento) => setValeData(evento.target.value)}
+                disabled={salvandoVale}
+              />
+            </label>
+
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={salvandoVale}
+              style={{ marginTop: 10 }}
+            >
+              {salvandoVale ? "Salvando..." : "Registrar Vale"}
+            </button>
+          </form>
+        )}
 
         <div style={{ margin: "0 0 12px" }}>
           <input
