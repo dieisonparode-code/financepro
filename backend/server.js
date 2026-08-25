@@ -8730,6 +8730,88 @@ async function encontrarDespesaDuplicadaWhatsapp({
   );
 }
 
+// Pedido do usuário (25/08/2026): "quando tira a primeira foto tem que
+// ter opção de adicionar mais uma foto" — uma nota fiscal comprida
+// (recibo de compra grande) às vezes vem em 2 fotos separadas (parte
+// 1/2, parte 2/2). Sem isso, cada foto virava uma despesa DIFERENTE,
+// cada uma com seu próprio valor — inflava o total (ex: R$540,93 da
+// parte 1 + R$105,28 da parte 2 contados como se fossem duas compras,
+// quando era uma só). Só entra em ação quando a própria IA identifica
+// um marcador explícito de página/continuação na foto (não é "mesmo
+// fornecedor em minutos próximos" sozinho — isso sozinho é
+// perfeitamente uma segunda entrega real no mesmo dia).
+// Pedido do usuário (25/08/2026): "nem sempre vai vir 1/2 ou 2/2" — a
+// nota nem sempre tem marcador de página impresso, então não dá pra
+// confiar só na IA lendo a imagem. Se a pessoa escrever na legenda do
+// WhatsApp algo como "parte 2", "continuação", "resto da nota" etc.,
+// isso também conta (e é mais confiável, porque é a própria pessoa
+// avisando).
+const LEGENDA_INDICA_CONTINUACAO =
+  /continua|continuaç|parte\s*2|2\s*\/\s*2|segunda parte|2ª parte|resto da nota|mais uma (parte|foto|p[aá]gina)|outra parte da nota/i;
+
+function normalizarNomeFornecedor(nome) {
+  return (nome || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\b(ltda|eireli|me|s\/a|sa|epp)\b\.?/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+async function tentarSomarComoContinuacaoDeNota({
+  lojaId,
+  fornecedor,
+  valorNovo,
+  foto,
+}) {
+  if (!fornecedor || !valorNovo) return null;
+
+  const desde = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("lancamentos")
+    .select("id, fornecedor, valor, observacao, fotos_extra")
+    .eq("tipo", "despesa")
+    .eq("loja_id", lojaId)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error("Erro ao checar continuação de nota (WhatsApp):", error.message);
+    return null;
+  }
+
+  const fornecedorNovoLimpo = normalizarNomeFornecedor(fornecedor);
+
+  const candidato = (data || []).find(
+    (item) => normalizarNomeFornecedor(item.fornecedor) === fornecedorNovoLimpo
+  );
+
+  if (!candidato) return null;
+
+  const novoValor = Number(
+    (Number(candidato.valor || 0) + Number(valorNovo)).toFixed(2)
+  );
+
+  const { error: erroUpdate } = await supabase
+    .from("lancamentos")
+    .update({
+      valor: novoValor,
+      fotos_extra: [...(candidato.fotos_extra || []), foto],
+      observacao: `${candidato.observacao || ""} +2ª parte da mesma nota somada automaticamente (R$${Number(valorNovo).toFixed(2)}).`,
+    })
+    .eq("id", candidato.id);
+
+  if (erroUpdate) {
+    console.error("Erro ao somar continuação de nota (WhatsApp):", erroUpdate.message);
+    return null;
+  }
+
+  return candidato.id;
+}
+
 app.post(
   "/integracoes/whatsapp/foto",
   verificarTokenWhatsapp,
@@ -8870,10 +8952,11 @@ app.post(
         let valorLido = null;
         let fornecedorLido = "";
         let identificadorLido = "";
+        let pareceContinuacao = false;
         try {
           const textoResposta = await lerImagemComIA(
             foto,
-            'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento (se estiver visível), e um IDENTIFICADOR que prove que essa nota é diferente de outra parecida (nº da nota fiscal, nº do pedido, código de autorização, ou qualquer código/número visível na foto — o que estiver mais visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "identificador": "código ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
+            'Essa é a foto de uma nota fiscal ou comprovante de despesa de uma hamburgueria. Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento (se estiver visível), um IDENTIFICADOR que prove que essa nota é diferente de outra parecida (nº da nota fiscal, nº do pedido, código de autorização, ou qualquer código/número visível na foto — o que estiver mais visível), e se a foto tem algum marcador indicando que é PARTE DE UMA NOTA MAIOR EM MAIS DE UMA FOTO (ex: "1/2", "2/2", "página 1 de 2", "continua"). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "identificador": "código ou null", "parece_continuacao": false}. Se não conseguir ler algum desses dados, use null nesse campo.',
             8192
           );
           const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
@@ -8883,12 +8966,16 @@ app.post(
           valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
           fornecedorLido = dadosLidos.fornecedor || "";
           identificadorLido = dadosLidos.identificador || "";
+          pareceContinuacao = Boolean(dadosLidos.parece_continuacao);
         } catch (erroLeitura) {
           console.error(
             "Erro ao ler valor da despesa (WhatsApp):",
             erroLeitura.message
           );
         }
+
+        pareceContinuacao =
+          pareceContinuacao || LEGENDA_INDICA_CONTINUACAO.test(legenda || "");
 
         // Pedido do usuário (19/08/2026): legenda escrita no grupo (ex:
         // "embalagem") vira parte da descrição, pra diferenciar na tela
@@ -8903,6 +8990,30 @@ app.post(
           `${legendaLimpa} ${fornecedorLido} ${identificadorLido}`,
           lojaId
         );
+
+        // Pedido do usuário (25/08/2026): "1/2"/"2/2" — se a IA viu
+        // marcador de continuação nessa foto, tenta somar direto numa
+        // despesa recente do mesmo fornecedor em vez de criar outra.
+        if (pareceContinuacao) {
+          const somadaEmId = await tentarSomarComoContinuacaoDeNota({
+            lojaId: lojaDetectada,
+            fornecedor: fornecedorLido,
+            valorNovo: valorLido || 0,
+            foto,
+          });
+
+          if (somadaEmId) {
+            console.log(
+              `📎 Foto do WhatsApp somada como 2ª parte da nota #${somadaEmId} (R$${(valorLido || 0).toFixed(2)}).`
+            );
+
+            return res.status(200).json({
+              ok: true,
+              destino: "somado_em_nota_existente",
+              id: somadaEmId,
+            });
+          }
+        }
 
         const duplicata = await encontrarDespesaDuplicadaWhatsapp({
           lojaId: lojaDetectada,
@@ -8972,10 +9083,11 @@ app.post(
         let valorLido = null;
         let fornecedorLido = "";
         let identificadorLido = "";
+        let pareceContinuacao = false;
         try {
           const textoResposta = await lerImagemComIA(
             foto,
-            'Essa é a foto de uma nota fiscal ou comprovante de despesa JÁ PAGA de uma hamburgueria (pode ser inclusive um comprovante direto de banco/Pix). Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento/destinatário (se estiver visível), e um IDENTIFICADOR que prove que esse comprovante é diferente de outro parecido (nº da nota fiscal, nº do pedido, código de autorização, ID da transação Pix, ou qualquer código/número visível na foto — o que estiver mais visível). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "identificador": "código ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
+            'Essa é a foto de uma nota fiscal ou comprovante de despesa JÁ PAGA de uma hamburgueria (pode ser inclusive um comprovante direto de banco/Pix). Extraia: o VALOR TOTAL da nota (o valor final pago, normalmente perto de "TOTAL"), o nome do FORNECEDOR/loja/estabelecimento/destinatário (se estiver visível), um IDENTIFICADOR que prove que esse comprovante é diferente de outro parecido (nº da nota fiscal, nº do pedido, código de autorização, ID da transação Pix, ou qualquer código/número visível na foto — o que estiver mais visível), e se a foto tem algum marcador indicando que é PARTE DE UMA NOTA MAIOR EM MAIS DE UMA FOTO (ex: "1/2", "2/2", "página 1 de 2", "continua"). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45, "fornecedor": "Nome ou null", "identificador": "código ou null", "parece_continuacao": false}. Se não conseguir ler algum desses dados, use null nesse campo.',
             8192
           );
           const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
@@ -8985,12 +9097,16 @@ app.post(
           valorLido = dadosLidos.valor != null ? Number(dadosLidos.valor) : null;
           fornecedorLido = dadosLidos.fornecedor || "";
           identificadorLido = dadosLidos.identificador || "";
+          pareceContinuacao = Boolean(dadosLidos.parece_continuacao);
         } catch (erroLeitura) {
           console.error(
             "Erro ao ler despesa paga genérica (WhatsApp):",
             erroLeitura.message
           );
         }
+
+        pareceContinuacao =
+          pareceContinuacao || LEGENDA_INDICA_CONTINUACAO.test(legenda || "");
 
         // Pedido do usuário (19/08/2026): quando é um comprovante direto
         // do banco (Pix, transferência) e a pessoa escreveu algo embaixo
@@ -9008,6 +9124,29 @@ app.post(
           `${legendaLimpa} ${fornecedorLido} ${identificadorLido}`,
           lojaId
         );
+
+        // Pedido do usuário (25/08/2026): mesma soma automática de
+        // continuação de nota, agora também no caminho genérico "pago".
+        if (pareceContinuacao) {
+          const somadaEmId = await tentarSomarComoContinuacaoDeNota({
+            lojaId: lojaDetectada,
+            fornecedor: fornecedorLido,
+            valorNovo: valorLido || 0,
+            foto,
+          });
+
+          if (somadaEmId) {
+            console.log(
+              `📎 Foto do WhatsApp somada como 2ª parte da nota #${somadaEmId} (R$${(valorLido || 0).toFixed(2)}).`
+            );
+
+            return res.status(200).json({
+              ok: true,
+              destino: "somado_em_nota_existente",
+              id: somadaEmId,
+            });
+          }
+        }
 
         const duplicata = await encontrarDespesaDuplicadaWhatsapp({
           lojaId: lojaDetectada,

@@ -3116,6 +3116,58 @@ const pontoDeEquilibrio = useMemo(() => {
     }
   }
 
+  // Pedido do usuário (25/08/2026): "quando tira a primeira foto tem que
+  // ter opção de adicionar mais uma foto" — nota fiscal grande às vezes
+  // vem em 2 fotos (parte 1/2, parte 2/2). Antes, "Tirar mais foto"
+  // só anexava a foto sem ler nada; agora essa opção lê a segunda foto
+  // e SOMA o valor encontrado nela ao valor já preenchido, em vez de
+  // sobrescrever (evitava duplicar/perder dinheiro quando alguém lançava
+  // as duas partes como despesas separadas).
+  async function lerSegundaPaginaDaNotaHandler(arquivo) {
+    if (!arquivo) return;
+
+    setProcessandoFoto(true);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+
+      setFormulario((anterior) => ({
+        ...anterior,
+        fotos_extra: [...(anterior.fotos_extra || []), fotoComprimida],
+      }));
+
+      const resultado = await lerNotaFiscal(fotoComprimida);
+
+      if (resultado.valor == null) {
+        alert(
+          "Anexei a foto, mas não consegui ler o valor dela — confira o total manualmente."
+        );
+        return;
+      }
+
+      setFormulario((anterior) => {
+        const valorAtual = paraNumero(anterior.valor) || 0;
+        const novoValor = valorAtual + Number(resultado.valor);
+
+        return {
+          ...anterior,
+          valor: novoValor.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+        };
+      });
+
+      alert(
+        `Somado R$${Number(resultado.valor).toFixed(2)} dessa página ao valor total.`
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a segunda página da nota.");
+    } finally {
+      setProcessandoFoto(false);
+    }
+  }
+
   // Pedido do usuário (25/08/2026): busca vales e Vendas a Prazo
   // Funcionário pendentes daquele nome (fornecedor já digitado no
   // formulário) — mostra pra marcar quais entram no desconto da folha.
@@ -7329,6 +7381,32 @@ const pontoDeEquilibrio = useMemo(() => {
                       >
                         Remover foto
                       </button>
+
+                      <input
+                        id="segunda-pagina-nota"
+                        type="file"
+                        accept="image/*"
+                        disabled={processandoFoto}
+                        style={{ display: "none" }}
+                        onChange={(evento) => {
+                          const arquivo = evento.target.files?.[0];
+                          lerSegundaPaginaDaNotaHandler(arquivo);
+                          evento.target.value = "";
+                        }}
+                      />
+
+                      <label
+                        htmlFor="segunda-pagina-nota"
+                        className="secondary-button"
+                        style={
+                          processandoFoto
+                            ? { opacity: 0.6, pointerEvents: "none" }
+                            : { display: "inline-block", textAlign: "center" }
+                        }
+                        title="Use quando a nota veio em mais de uma foto (ex: 1/2, 2/2) — soma o valor da segunda foto ao total, em vez de lançar como despesa separada."
+                      >
+                        📄+📄 Nota tem mais uma página — ler e somar
+                      </label>
                     </div>
                   )}
 
