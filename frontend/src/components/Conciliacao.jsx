@@ -402,55 +402,72 @@ function Conciliacao({ lojaId }) {
         )
         .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
 
-      if (registros.length < 2) {
+      if (registros.length < 1) {
         setAvisoAberturaFechamento({
           tipo: "info",
-          texto:
-            "Ainda não tem fechamentos suficientes lidos por foto pra comparar (precisa de pelo menos 2).",
+          texto: "Ainda não tem nenhum fechamento lido por foto pra comparar.",
         });
         return;
       }
 
-      const maisRecente = registros[registros.length - 1];
-      const anterior = registros[registros.length - 2];
-
-      const aberturaMaisRecente = Number(maisRecente.abertura || 0);
-      const fechamentoAnterior = Number(anterior.em_caixa || 0);
-      const diferenca = Number(
-        (aberturaMaisRecente - fechamentoAnterior).toFixed(2)
-      );
-
-      // Pedido do usuário (25/08/2026): "está certo mas está com 358,50
-      // aberto na Saipos, no nosso fala Bateu — abriu com 275,20" — bug
-      // real: essa comparação usa os DOIS ÚLTIMOS fechamentos LIDOS no
-      // sistema, não necessariamente ontem×hoje. Se o fechamento de hoje
-      // ainda não foi lido (foto ainda não processada), a comparação
-      // acaba usando dois fechamentos mais antigos, que podem bater
-      // certinho entre si — e a mensagem "✅ Bateu" não deixava claro que
-      // não era sobre hoje. Agora mostra as datas de verdade sendo
-      // comparadas e avisa quando o fechamento mais recente lido não é
-      // de hoje (turno pendente de leitura).
-      const dataMaisRecenteLida = hojeDoRegistro(maisRecente.criado_em);
-      const dataAnteriorLida = hojeDoRegistro(anterior.criado_em);
+      // Pedido do usuário (25/08/2026): "preciso sempre, por exemplo, de
+      // ontem 24 fechamento com abertura de hoje 25" — antes pegava os
+      // DOIS ÚLTIMOS fechamentos LIDOS, o que podia comparar dois turnos
+      // antigos (ex: 23→24) e mostrar "✅ Bateu" mesmo sem nenhum
+      // fechamento de hoje ainda lido (caso real: Saipos já mostrava
+      // abertura de R$358,50 hoje, mas o aviso comparava só até 24/08).
+      // Agora ancora nas datas de calendário de verdade: busca o
+      // fechamento cujo turno é ONTEM e o cujo turno é HOJE, em vez de
+      // "os dois últimos, sejam quais forem".
       const hojeReal = new Date().toLocaleDateString("en-CA", {
         timeZone: "America/Sao_Paulo",
       });
+      const ontemReal = (() => {
+        const data = new Date(`${hojeReal}T12:00:00`);
+        data.setDate(data.getDate() - 1);
+        return data.toISOString().slice(0, 10);
+      })();
       const formatarDataCurta = (iso) =>
         new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR");
-      const desatualizado = dataMaisRecenteLida < hojeReal;
-      const periodoTexto = `(turno de ${formatarDataCurta(dataAnteriorLida)} → turno de ${formatarDataCurta(dataMaisRecenteLida)})`;
+
+      const registroDeOntem = [...registros]
+        .reverse()
+        .find((item) => hojeDoRegistro(item.criado_em) === ontemReal);
+      const registroDeHoje = [...registros]
+        .reverse()
+        .find((item) => hojeDoRegistro(item.criado_em) === hojeReal);
+
+      if (!registroDeOntem) {
+        setAvisoAberturaFechamento({
+          tipo: "info",
+          texto: `Não achei nenhum fechamento do turno de ontem (${formatarDataCurta(ontemReal)}) lido no sistema pra comparar.`,
+        });
+        return;
+      }
+
+      const fechamentoOntem = Number(registroDeOntem.em_caixa || 0);
+
+      if (!registroDeHoje) {
+        setAvisoAberturaFechamento({
+          tipo: "alerta",
+          texto: `⚠️ Ainda não tem o fechamento de HOJE (${formatarDataCurta(hojeReal)}) lido no sistema. Ontem (${formatarDataCurta(ontemReal)}) fechou com ${formatarMoeda(fechamentoOntem)} — assim que a foto do fechamento de hoje for lida, a comparação roda certinha.`,
+        });
+        return;
+      }
+
+      const aberturaHoje = Number(registroDeHoje.abertura || 0);
+      const diferenca = Number((aberturaHoje - fechamentoOntem).toFixed(2));
+      const periodoTexto = `(fechamento de ${formatarDataCurta(ontemReal)} → abertura de ${formatarDataCurta(hojeReal)})`;
 
       if (Math.abs(diferenca) <= 0.02) {
         setAvisoAberturaFechamento({
-          tipo: desatualizado ? "alerta" : "ok",
-          texto: desatualizado
-            ? `⚠️ Essa comparação está desatualizada ${periodoTexto} — ainda não tem fechamento de HOJE (${formatarDataCurta(hojeReal)}) lido no sistema pra comparar de verdade. O que bateu foi entre dois turnos passados, não com hoje.`
-            : `✅ Bateu ${periodoTexto} — o caixa abriu com ${formatarMoeda(aberturaMaisRecente)}, igual ao que fechou no turno anterior.`,
+          tipo: "ok",
+          texto: `✅ Bateu ${periodoTexto} — o caixa abriu hoje com ${formatarMoeda(aberturaHoje)}, igual ao que fechou ontem.`,
         });
       } else {
         setAvisoAberturaFechamento({
           tipo: "alerta",
-          texto: `⚠️ Diferença entre turnos ${periodoTexto}: o caixa fechou o turno anterior com ${formatarMoeda(fechamentoAnterior)}, mas abriu esse turno com ${formatarMoeda(aberturaMaisRecente)} — ${diferenca > 0 ? "sobrou" : "faltou"} ${formatarMoeda(Math.abs(diferenca))}.${desatualizado ? " Atenção: essa comparação também está desatualizada — ainda não tem fechamento de hoje lido." : " Confira se alguém mexeu no dinheiro do caixa entre os dois fechamentos."}`,
+          texto: `⚠️ Diferença ${periodoTexto}: fechou ontem com ${formatarMoeda(fechamentoOntem)}, mas abriu hoje com ${formatarMoeda(aberturaHoje)} — ${diferenca > 0 ? "sobrou" : "faltou"} ${formatarMoeda(Math.abs(diferenca))}. Confira se alguém mexeu no dinheiro do caixa entre os dois fechamentos.`,
         });
       }
     } catch (erro) {
