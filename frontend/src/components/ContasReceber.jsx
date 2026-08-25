@@ -320,6 +320,14 @@ function ContasReceber({
 
   const itensListaUnificada = [...previstosOutros, ...valesPendentesParaLista];
 
+  // Pedido do usuário (25/08/2026): "pra ter coerência tem que aparecer
+  // um total de tudo" — em vez do valor quebrado por funcionário (que
+  // saiu dos badges), um total único somando tudo que está pendente.
+  const totalGeralPendente = itensListaUnificada.reduce(
+    (soma, item) => soma + Number(item.valor_liquido_esperado ?? item.valor),
+    0
+  );
+
   const buscaReceberLimpa = buscaReceber.trim().toLowerCase();
 
   const previstosFiltrados = buscaReceberLimpa
@@ -371,38 +379,6 @@ function ContasReceber({
           .includes(buscaFuncionario.trim().toLowerCase())
       )
     : funcionarios;
-
-  // Pedido do usuário (25/08/2026): "corrija o vale que não estava
-  // contabilizando" — o painel só mostrava o nome, sem valor nenhum,
-  // então um vale/consumo pendente ficava "invisível" ali mesmo estando
-  // certinho no banco. Mesma lógica de busca do backend
-  // (GET /lancamentos/pendencias-funcionario), só que calculada aqui em
-  // cima do "lancamentos" que a tela já tem — sem precisar de requisição
-  // nova pra cada funcionário.
-  function pendenciaDoFuncionario(nome) {
-    const nomeBusca = nome.toLowerCase();
-
-    const vales = lancamentos.filter(
-      (item) =>
-        item.tipo === "despesa" &&
-        item.categoria === "Vale" &&
-        !item.quitado_em &&
-        (item.fornecedor || "").toLowerCase().includes(nomeBusca)
-    );
-
-    const consumos = lancamentos.filter(
-      (item) =>
-        item.tipo === "receita" &&
-        !item.quitado_em &&
-        (item.fornecedor || "").toLowerCase().includes("a prazo") &&
-        (item.fornecedor || "").toLowerCase().includes(nomeBusca)
-    );
-
-    return [...vales, ...consumos].reduce(
-      (soma, item) => soma + Number(item.valor || 0),
-      0
-    );
-  }
 
   async function adicionarFuncionarioNaListaHandler() {
     const nomeNovo = window.prompt("Nome do novo funcionário:");
@@ -781,7 +757,20 @@ function ContasReceber({
           className="panel"
           style={{ marginBottom: 14, padding: 14 }}
         >
-          <span className="eyebrow">👤 Funcionários</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <span className="eyebrow">👤 Funcionários</span>
+            <strong style={{ color: "#eab308" }}>
+              Total pendente: {formatarMoeda(totalGeralPendente)}
+            </strong>
+          </div>
 
           <input
             type="text"
@@ -805,23 +794,14 @@ function ContasReceber({
                 gap: 8,
               }}
             >
-              {funcionariosFiltrados.map((funcionario) => {
-                const pendente = pendenciaDoFuncionario(funcionario.nome);
-                return (
-                  <span
-                    key={funcionario.id}
-                    className="badge-status badge-status-pendente"
-                    title={
-                      pendente > 0
-                        ? "Vale/consumo pendente de desconto na folha"
-                        : "Sem vale/consumo pendente"
-                    }
-                  >
-                    {funcionario.nome}
-                    {pendente > 0 ? ` — ${formatarMoeda(pendente)}` : ""}
-                  </span>
-                );
-              })}
+              {funcionariosFiltrados.map((funcionario) => (
+                <span
+                  key={funcionario.id}
+                  className="badge-status badge-status-pendente"
+                >
+                  {funcionario.nome}
+                </span>
+              ))}
             </div>
           )}
 
@@ -837,13 +817,24 @@ function ContasReceber({
           )}
         </div>
 
+        {/* Pedido do usuário (25/08/2026): "essa pesquisa aqui de baixo
+            tem que ser igual a última foto que tenha todos os
+            funcionários e eu seleciono sem precisar escrever" — troca o
+            campo de texto por um seletor com a mesma lista de
+            funcionários (igual o do formulário de Vale acima), sem
+            precisar digitar nada. */}
         <div style={{ margin: "0 0 12px" }}>
-          <input
-            type="text"
+          <select
             value={buscaReceber}
             onChange={(evento) => setBuscaReceber(evento.target.value)}
-            placeholder="🔍 Buscar por funcionário, fornecedor ou forma de pagamento"
-          />
+          >
+            <option value="">Todos os funcionários</option>
+            {funcionarios.map((funcionario) => (
+              <option key={funcionario.id} value={funcionario.nome}>
+                {funcionario.nome}
+              </option>
+            ))}
+          </select>
         </div>
 
         {itensListaUnificada.length === 0 ? (
