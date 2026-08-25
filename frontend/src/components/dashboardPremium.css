@@ -98,6 +98,20 @@ body {
   font-size: 11px !important;
 }
 
+/* Pedido do usuário (24/08/2026): rótulo "Dashboard" embaixo de "Gestão
+   Financeira" — deixa claro que clicar no logo abre o Dashboard, já que
+   o botão dedicado saiu da lista do menu. Cor azul (mesma do destaque
+   .active) pra diferenciar do subtítulo cinza acima. */
+.brand-dashboard-label {
+  display: block !important;
+  margin-top: 2px !important;
+  color: #4f9bff !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
 .menu {
   display: flex !important;
   flex-direction: column !important;

@@ -4032,6 +4032,10 @@ const pontoDeEquilibrio = useMemo(() => {
           <div>
             <strong>FinancePro</strong>
             <span>Gestão Financeira</span>
+            {/* Pedido do usuário (24/08/2026): deixa explícito que clicar
+                aqui abre o Dashboard, já que o botão dedicado saiu do
+                menu. */}
+            <span className="brand-dashboard-label">Dashboard</span>
           </div>
         </div>
 
