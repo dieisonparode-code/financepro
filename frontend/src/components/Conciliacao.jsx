@@ -420,15 +420,37 @@ function Conciliacao({ lojaId }) {
         (aberturaMaisRecente - fechamentoAnterior).toFixed(2)
       );
 
+      // Pedido do usuário (25/08/2026): "está certo mas está com 358,50
+      // aberto na Saipos, no nosso fala Bateu — abriu com 275,20" — bug
+      // real: essa comparação usa os DOIS ÚLTIMOS fechamentos LIDOS no
+      // sistema, não necessariamente ontem×hoje. Se o fechamento de hoje
+      // ainda não foi lido (foto ainda não processada), a comparação
+      // acaba usando dois fechamentos mais antigos, que podem bater
+      // certinho entre si — e a mensagem "✅ Bateu" não deixava claro que
+      // não era sobre hoje. Agora mostra as datas de verdade sendo
+      // comparadas e avisa quando o fechamento mais recente lido não é
+      // de hoje (turno pendente de leitura).
+      const dataMaisRecenteLida = hojeDoRegistro(maisRecente.criado_em);
+      const dataAnteriorLida = hojeDoRegistro(anterior.criado_em);
+      const hojeReal = new Date().toLocaleDateString("en-CA", {
+        timeZone: "America/Sao_Paulo",
+      });
+      const formatarDataCurta = (iso) =>
+        new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR");
+      const desatualizado = dataMaisRecenteLida < hojeReal;
+      const periodoTexto = `(turno de ${formatarDataCurta(dataAnteriorLida)} → turno de ${formatarDataCurta(dataMaisRecenteLida)})`;
+
       if (Math.abs(diferenca) <= 0.02) {
         setAvisoAberturaFechamento({
-          tipo: "ok",
-          texto: `✅ Bateu — o caixa abriu com ${formatarMoeda(aberturaMaisRecente)}, igual ao que fechou no turno anterior.`,
+          tipo: desatualizado ? "alerta" : "ok",
+          texto: desatualizado
+            ? `⚠️ Essa comparação está desatualizada ${periodoTexto} — ainda não tem fechamento de HOJE (${formatarDataCurta(hojeReal)}) lido no sistema pra comparar de verdade. O que bateu foi entre dois turnos passados, não com hoje.`
+            : `✅ Bateu ${periodoTexto} — o caixa abriu com ${formatarMoeda(aberturaMaisRecente)}, igual ao que fechou no turno anterior.`,
         });
       } else {
         setAvisoAberturaFechamento({
           tipo: "alerta",
-          texto: `⚠️ Diferença entre turnos: o caixa fechou o turno anterior com ${formatarMoeda(fechamentoAnterior)}, mas abriu esse turno com ${formatarMoeda(aberturaMaisRecente)} — ${diferenca > 0 ? "sobrou" : "faltou"} ${formatarMoeda(Math.abs(diferenca))}. Confira se alguém mexeu no dinheiro do caixa entre os dois fechamentos.`,
+          texto: `⚠️ Diferença entre turnos ${periodoTexto}: o caixa fechou o turno anterior com ${formatarMoeda(fechamentoAnterior)}, mas abriu esse turno com ${formatarMoeda(aberturaMaisRecente)} — ${diferenca > 0 ? "sobrou" : "faltou"} ${formatarMoeda(Math.abs(diferenca))}.${desatualizado ? " Atenção: essa comparação também está desatualizada — ainda não tem fechamento de hoje lido." : " Confira se alguém mexeu no dinheiro do caixa entre os dois fechamentos."}`,
         });
       }
     } catch (erro) {
