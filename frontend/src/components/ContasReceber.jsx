@@ -371,60 +371,6 @@ function ContasReceber({
     });
   }, [formasPagamento]);
 
-  // Pedido do usuário (25/08/2026): "funcionários com opção de busca à
-  // direita, separados" — painel próprio, sem misturar com Formas de
-  // Pagamento (foi exatamente essa mistura que criou "ana paula" e
-  // "paula" como forma de pagamento por engano).
-  const [buscaFuncionario, setBuscaFuncionario] = useState("");
-
-  const funcionariosFiltrados = buscaFuncionario.trim()
-    ? funcionarios.filter((funcionario) =>
-        funcionario.nome
-          .toLowerCase()
-          .includes(buscaFuncionario.trim().toLowerCase())
-      )
-    : funcionarios;
-
-  // Pedido do usuário (25/08/2026): "preciso total por funcionário
-  // também de vales e consumo" — volta o valor quebrado por pessoa nos
-  // badges, agora com o mesmo cálculo corrigido do total geral (só
-  // vale + venda "A prazo" — não mistura com PIX/Cartão/Brendi).
-  function pendenciaDoFuncionario(nome) {
-    const nomeBusca = nome.toLowerCase();
-
-    const vales = lancamentos.filter(
-      (item) =>
-        item.tipo === "despesa" &&
-        item.categoria === "Vale" &&
-        !item.quitado_em &&
-        (item.fornecedor || "").toLowerCase().includes(nomeBusca)
-    );
-
-    const consumos = lancamentos.filter(
-      (item) =>
-        item.tipo === "receita" &&
-        !item.quitado_em &&
-        (item.fornecedor || "").toLowerCase().includes("a prazo") &&
-        (item.fornecedor || "").toLowerCase().includes(nomeBusca)
-    );
-
-    return [...vales, ...consumos].reduce(
-      (soma, item) => soma + Number(item.valor || 0),
-      0
-    );
-  }
-
-  async function adicionarFuncionarioNaListaHandler() {
-    const nomeNovo = window.prompt("Nome do novo funcionário:");
-    if (!nomeNovo || !nomeNovo.trim()) return;
-
-    try {
-      await criarFuncionario(nomeNovo);
-    } catch (erro) {
-      alert(erro.message || "Não foi possível cadastrar o funcionário.");
-    }
-  }
-
   return (
     <section className="categorias-layout">
       <article className="panel categoria-form-panel">
@@ -785,66 +731,6 @@ function ContasReceber({
           </div>
 
           <strong>{previstosFiltrados.length}</strong>
-        </div>
-
-        <div
-          className="panel"
-          style={{ marginBottom: 14, padding: 14 }}
-        >
-          <span className="eyebrow">👤 Funcionários</span>
-
-          <input
-            type="text"
-            value={buscaFuncionario}
-            onChange={(evento) => setBuscaFuncionario(evento.target.value)}
-            placeholder="🔎 Pesquisar por nome..."
-            style={{ marginTop: 8, marginBottom: 10 }}
-          />
-
-          {funcionariosFiltrados.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
-              {buscaFuncionario.trim()
-                ? "Nenhum funcionário encontrado com esse nome."
-                : "Nenhum funcionário cadastrado."}
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
-              }}
-            >
-              {funcionariosFiltrados.map((funcionario) => {
-                const pendente = pendenciaDoFuncionario(funcionario.nome);
-                return (
-                  <span
-                    key={funcionario.id}
-                    className="badge-status badge-status-pendente"
-                    title={
-                      pendente > 0
-                        ? "Vale/consumo pendente de desconto na folha"
-                        : "Sem vale/consumo pendente"
-                    }
-                  >
-                    {funcionario.nome}
-                    {pendente > 0 ? ` — ${formatarMoeda(pendente)}` : ""}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {criarFuncionario && (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={adicionarFuncionarioNaListaHandler}
-              style={{ marginTop: 10 }}
-            >
-              + Novo funcionário...
-            </button>
-          )}
         </div>
 
         {/* Pedido do usuário (25/08/2026): "aqui deveria aparecer o
