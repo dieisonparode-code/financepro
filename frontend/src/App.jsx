@@ -1611,16 +1611,15 @@ function FinanceApp() {
 
   // Pedido do usuário (25/08/2026): "Vale" também precisa poder ser
   // registrado direto na tela Contas a Receber (não só via Fechamento de
-  // Caixa) — mesma ideia (dinheiro que a empresa vai receber de volta do
+  // Caixa) — mesma ideia (dinheiro que a empresa adiantou pro
   // funcionário), só que sem precisar de foto/fechamento nenhum.
   //
-  // Pedido do usuário (25/08/2026, atualizado): "vale não vira despesa,
-  // porém desconta do saldo" — o dinheiro sai do caixa de verdade na
-  // hora, então cria uma despesa AGORA (desconta o Saldo já, categoria
-  // própria "Vale", fora de relatórios de Despesas Diversas/CMV) — a
-  // receita futura (data prevista) "devolve" o valor quando o
-  // funcionário pagar de volta. Mesmo mecanismo já usado no Fechamento
-  // de Caixa.
+  // Pedido do usuário (25/08/2026, versão final): vale NÃO gera receita
+  // nenhuma — só uma despesa categoria "Vale" que desconta o Saldo na
+  // hora. Não existe "devolução automática": o valor é recuperado depois
+  // manualmente, quando a folha de pagamento (já líquida, com o vale
+  // descontado) for lançada. Mesmo mecanismo já usado no Fechamento de
+  // Caixa.
   async function registrarValeContasReceberHandler({
     nomeFuncionario,
     valor,
@@ -1634,6 +1633,13 @@ function FinanceApp() {
     const hoje = hojeLocal();
     const descricao = `Vale — ${nomeFuncionario}`;
 
+    // Pedido do usuário (24/08/2026): vale NÃO gera receita automática —
+    // só desconta do Saldo na hora, como uma despesa categoria "Vale".
+    // A "volta" do dinheiro é manual/procedural: quando a folha de
+    // pagamento (já líquida, descontado o vale) for lançada depois.
+    // dataPrevista fica sem uso aqui, mantido no parâmetro só para não
+    // quebrar o formulário que ainda pede essa data (histórico de
+    // referência do funcionário, não gera lançamento nenhum).
     await criarDespesaDoWhatsapp({
       tipo: "despesa",
       descricao,
@@ -1643,18 +1649,6 @@ function FinanceApp() {
       data: hoje,
       loja_id: lojaId,
     });
-
-    const salvo = await criarLancamento({
-      tipo: "receita",
-      descricao,
-      fornecedor: nomeFuncionario,
-      valor,
-      data: hoje,
-      data_prevista_recebimento: dataPrevista,
-      loja_id: lojaId,
-    });
-
-    setLancamentos((anteriores) => [salvo, ...anteriores]);
   }
 
   useEffect(() => {
