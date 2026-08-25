@@ -187,6 +187,7 @@ function ContasPagar({
   adicionarConta,
   editarConta,
   marcarComoPaga,
+  editarDataPagamento,
   removerConta,
   lojas = [],
   vePermissaoTotal = true,
@@ -223,6 +224,16 @@ function ContasPagar({
   const [busca, setBusca] = useState("");
   const [buscaData, setBuscaData] = useState("");
   const [salvandoValorId, setSalvandoValorId] = useState(null);
+  // Pedido do usuário (24/08/2026): "como lança conta paga futura, isso
+  // não existe" — antes o botão "Pagar" sempre usava a data de agora, sem
+  // opção de escolher. Data escolhida aqui vale pra TODAS as contas
+  // marcadas junto (mesmo lote); começa em hoje, igual já era o padrão.
+  const [dataPagamentoEscolhida, setDataPagamentoEscolhida] = useState(
+    dataFormatada(new Date())
+  );
+  const [editandoDataPagaId, setEditandoDataPagaId] = useState(null);
+  const [novaDataPagaEmEdicao, setNovaDataPagaEmEdicao] = useState("");
+  const [salvandoDataPagaId, setSalvandoDataPagaId] = useState(null);
 
   function limparFormulario() {
     setDescricao("");
@@ -445,6 +456,26 @@ function ContasPagar({
     }
   }
 
+  // Pedido do usuário (24/08/2026): editar a data de um pagamento já
+  // confirmado, direto na tela — antes só dava pra corrigir no banco.
+  async function salvarNovaDataPagamento(conta) {
+    if (!novaDataPagaEmEdicao || novaDataPagaEmEdicao === conta.data_pagamento) {
+      setEditandoDataPagaId(null);
+      return;
+    }
+
+    setSalvandoDataPagaId(conta.id);
+
+    try {
+      await editarDataPagamento(conta.id, novaDataPagaEmEdicao);
+      setEditandoDataPagaId(null);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível editar a data de pagamento.");
+    } finally {
+      setSalvandoDataPagaId(null);
+    }
+  }
+
   function alternarSelecao(id) {
     setSelecionadas((anteriores) =>
       anteriores.includes(id)
@@ -476,7 +507,11 @@ function ContasPagar({
 
       for (const id of selecionadas) {
         try {
-          await marcarComoPaga(id, pagoComOutraLoja ? lojaCredoraId : undefined);
+          await marcarComoPaga(
+            id,
+            pagoComOutraLoja ? lojaCredoraId : undefined,
+            dataPagamentoEscolhida
+          );
         } catch (erro) {
           falhas.push(erro.message || "erro desconhecido");
         }
@@ -485,6 +520,7 @@ function ContasPagar({
       setSelecionadas([]);
       setPagoComOutraLoja(false);
       setLojaCredoraId("");
+      setDataPagamentoEscolhida(dataFormatada(new Date()));
       // Vai direto pra página de Contas Pagas, já com acesso ao "Ver
       // detalhes" de tudo que acabou de ser pago.
       aoConfirmarPagamento?.();
@@ -963,6 +999,20 @@ function ContasPagar({
                   className="toque-alvo"
                   style={{ display: "flex", alignItems: "center", gap: 6 }}
                 >
+                  Data do pagamento:
+                  <input
+                    type="date"
+                    value={dataPagamentoEscolhida}
+                    onChange={(evento) =>
+                      setDataPagamentoEscolhida(evento.target.value)
+                    }
+                  />
+                </label>
+
+                <label
+                  className="toque-alvo"
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
                   <input
                     type="checkbox"
                     checked={pagoComOutraLoja}
@@ -1082,6 +1132,50 @@ function ContasPagar({
                           : ` — vence em ${formatarData(
                               conta.data_vencimento
                             )}`}
+                        {/* Pedido do usuário (24/08/2026): editar a data de
+                            um pagamento já confirmado, direto na tela —
+                            antes só dava pra corrigir no banco. Só pras
+                            contas de verdade (não pra "despesa" que só
+                            aparece aqui pra visualização, sem registro
+                            correspondente em contas_pagar pra editar). */}
+                        {modo === "pagas" &&
+                          conta._origem !== "despesa" &&
+                          (editandoDataPagaId === conta.id ? (
+                            <span style={{ marginLeft: 6 }}>
+                              <input
+                                type="date"
+                                autoFocus
+                                value={novaDataPagaEmEdicao}
+                                disabled={salvandoDataPagaId === conta.id}
+                                onChange={(evento) =>
+                                  setNovaDataPagaEmEdicao(evento.target.value)
+                                }
+                                onBlur={() => salvarNovaDataPagamento(conta)}
+                                onKeyDown={(evento) => {
+                                  if (evento.key === "Enter") evento.target.blur();
+                                  if (evento.key === "Escape")
+                                    setEditandoDataPagaId(null);
+                                }}
+                              />
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{
+                                marginLeft: 6,
+                                padding: "2px 6px",
+                                fontSize: 12,
+                              }}
+                              title="Corrigir a data desse pagamento"
+                              onClick={() => {
+                                setNovaDataPagaEmEdicao(conta.data_pagamento || "");
+                                setEditandoDataPagaId(conta.id);
+                              }}
+                            >
+                              ✏️
+                            </button>
+                          ))}
                       </div>
                       {vePermissaoTotal &&
                         (() => {
@@ -1284,7 +1378,16 @@ function ContasPagar({
               alignItems: "center",
             }}
           >
-            <strong>Total de contas pagas hoje:</strong>
+            {/* Pedido do usuário (24/08/2026): esse total é sempre de HOJE,
+                de propósito — não muda com a busca por data ali em cima
+                (ver comentário em totalPagoHoje). Só que ficava confuso
+                ver "Nenhuma conta paga nesse dia" (buscando outra data) ao
+                lado de um total com valor — parecia bug. Agora mostra a
+                data de hoje escrita do lado, pra ficar óbvio que são duas
+                coisas independentes. */}
+            <strong>
+              Total de contas pagas hoje ({formatarData(dataFormatada(new Date()))}):
+            </strong>
             <strong style={{ fontSize: "16px" }}>
               {formatarMoeda(totalPagoHoje)}
             </strong>

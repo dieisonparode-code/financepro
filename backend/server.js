@@ -2468,11 +2468,24 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
     }
 
     const agora = new Date();
-    const dataPagamento = agora.toISOString().slice(0, 10);
+    // Pedido do usuário (24/08/2026): "como lança conta paga futura, isso
+    // não existe" — antes SEMPRE usava a data de agora, sem opção de
+    // escolher. Se o front mandar uma data_pagamento válida (AAAA-MM-DD),
+    // usa ela (pra pagamento feito num dia mas confirmado no sistema
+    // depois); senão cai no "agora" de sempre.
+    const dataPagamentoValida =
+      typeof req.body?.data_pagamento === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(req.body.data_pagamento)
+        ? req.body.data_pagamento
+        : null;
+    const dataPagamento = dataPagamentoValida || agora.toISOString().slice(0, 10);
     // Pedido do usuário (18/08/2026): guarda o HORÁRIO exato do
     // pagamento (não só a data) — usado pra ordenar/mostrar a lista de
     // Contas Pagas na ordem real de quando cada uma foi paga no
-    // sistema, não da data impressa em nenhuma nota/comprovante.
+    // sistema, não da data impressa em nenhuma nota/comprovante. Continua
+    // sendo o horário REAL de agora mesmo quando a data foi escolhida
+    // manualmente (é só a data do lançamento que muda, o registro de
+    // auditoria de quando foi confirmado no sistema continua exato).
     const pagoEm = agora.toISOString();
 
     // Pagar uma conta a pagar precisa dar baixa de verdade no saldo — cria
@@ -2580,6 +2593,96 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       detalhes: erro.message,
     });
   }
+  }
+);
+
+// Pedido do usuário (24/08/2026): não tinha como corrigir a data de um
+// pagamento depois de já confirmado — só direto no banco. Rota dedicada
+// (não passa pelo prepararContaPagar/PUT normal, que nem tem esse campo)
+// pra editar SÓ a data de pagamento de uma conta já paga — sincroniza
+// junto a despesa (lancamentos) que foi criada junto na hora de pagar,
+// senão a conta mostra uma data em Contas a Pagar e a despesa aparece
+// com outra em Despesas/Relatórios.
+app.put(
+  "/contas-pagar/:id/data-pagamento",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID da conta inválido." });
+      }
+
+      const novaData = req.body?.data_pagamento;
+
+      if (
+        typeof novaData !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(novaData)
+      ) {
+        return res.status(400).json({
+          erro: "Informe a nova data de pagamento (AAAA-MM-DD).",
+        });
+      }
+
+      const { data: contaAtual, error: erroBusca } = await supabase
+        .from("contas_pagar")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (erroBusca) {
+        throw erroBusca;
+      }
+
+      if (contaAtual.status !== "pago") {
+        return res.status(400).json({
+          erro: "Essa conta ainda não foi paga — não tem data de pagamento pra editar.",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("contas_pagar")
+        .update({ data_pagamento: novaData })
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (contaAtual.lancamento_id) {
+        const { error: erroLancamento } = await supabase
+          .from("lancamentos")
+          .update({ data: novaData })
+          .eq("id", contaAtual.lancamento_id);
+
+        if (erroLancamento) {
+          console.error(
+            "Data da conta a pagar mudou, mas falhou ao sincronizar a despesa vinculada:",
+            erroLancamento.message
+          );
+        }
+      }
+
+      registrarAuditoria(
+        req,
+        "editou a data de pagamento de",
+        "contas_pagar",
+        data.id,
+        `${data.descricao} — nova data: ${novaData}`
+      );
+
+      res.json(data);
+    } catch (erro) {
+      console.error("Erro ao editar data de pagamento:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível editar a data de pagamento.",
+        detalhes: erro.message,
+      });
+    }
   }
 );
 

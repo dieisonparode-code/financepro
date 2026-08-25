@@ -49,6 +49,7 @@ import {
   criarContaPagar,
   atualizarContaPagar,
   marcarContaPagarComoPaga,
+  editarDataPagamentoContaPagar,
   excluirContaPagar,
   buscarDespesasRecorrentes,
   criarDespesaRecorrente,
@@ -3543,8 +3544,8 @@ const pontoDeEquilibrio = useMemo(() => {
     );
   }
 
-  async function pagarContaPagar(id, lojaCredoraId) {
-    const salva = await marcarContaPagarComoPaga(id, lojaCredoraId);
+  async function pagarContaPagar(id, lojaCredoraId, dataPagamento) {
+    const salva = await marcarContaPagarComoPaga(id, lojaCredoraId, dataPagamento);
     setContasPagar((anteriores) =>
       anteriores.map((item) => (item.id === id ? salva : item))
     );
@@ -3557,6 +3558,15 @@ const pontoDeEquilibrio = useMemo(() => {
         .then((dados) => setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : []))
         .catch(() => {});
     }
+  }
+
+  // Pedido do usuário (24/08/2026): editar a data de um pagamento já
+  // confirmado, direto na tela — antes só dava pra corrigir no banco.
+  async function editarDataPagamento(id, dataPagamento) {
+    const salva = await editarDataPagamentoContaPagar(id, dataPagamento);
+    setContasPagar((anteriores) =>
+      anteriores.map((item) => (item.id === id ? salva : item))
+    );
   }
 
   async function removerContaPagar(id) {
@@ -5088,6 +5098,7 @@ const pontoDeEquilibrio = useMemo(() => {
             adicionarConta={adicionarContaPagar}
             editarConta={editarContaPagar}
             marcarComoPaga={pagarContaPagar}
+            editarDataPagamento={editarDataPagamento}
             removerConta={removerContaPagar}
             removerDespesa={removerDespesaDeContasPagas}
             ehAdministrador={ehAdministrador}

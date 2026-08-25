@@ -344,13 +344,25 @@ export async function atualizarContaPagar(id, dados) {
   });
 }
 
-export async function marcarContaPagarComoPaga(id, lojaCredoraId) {
+export async function marcarContaPagarComoPaga(id, lojaCredoraId, dataPagamento) {
+  const corpo = {};
+  if (lojaCredoraId) corpo.loja_credora_id = lojaCredoraId;
+  if (dataPagamento) corpo.data_pagamento = dataPagamento;
+
   return requisicao(`/contas-pagar/${id}/pagar`, {
     method: "PUT",
     headers: await cabecalhoAutenticado(),
-    body: lojaCredoraId
-      ? JSON.stringify({ loja_credora_id: lojaCredoraId })
-      : undefined,
+    body: Object.keys(corpo).length ? JSON.stringify(corpo) : undefined,
+  });
+}
+
+// Pedido do usuário (24/08/2026): editar a data de um pagamento já
+// confirmado — antes só dava pra corrigir direto no banco.
+export async function editarDataPagamentoContaPagar(id, dataPagamento) {
+  return requisicao(`/contas-pagar/${id}/data-pagamento`, {
+    method: "PUT",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ data_pagamento: dataPagamento }),
   });
 }
 
