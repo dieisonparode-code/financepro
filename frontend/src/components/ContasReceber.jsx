@@ -322,11 +322,16 @@ function ContasReceber({
 
   // Pedido do usuário (25/08/2026): "pra ter coerência tem que aparecer
   // um total de tudo" — em vez do valor quebrado por funcionário (que
-  // saiu dos badges), um total único somando tudo que está pendente.
-  const totalGeralPendente = itensListaUnificada.reduce(
-    (soma, item) => soma + Number(item.valor_liquido_esperado ?? item.valor),
-    0
-  );
+  // saiu dos badges), um total único. IMPORTANTE: só soma o que é de
+  // FUNCIONÁRIO (vale + venda "A prazo") — "Contas a Receber" também
+  // lista PIX/Cartão/Brendi etc., que não tem nada a ver com esse total
+  // (bug encontrado pelo usuário: total vinha maior que a soma real dos
+  // funcionários porque estava contando tudo).
+  const totalGeralPendente =
+    previstosOutros
+      .filter((item) => (item.fornecedor || "").toLowerCase().includes("a prazo"))
+      .reduce((soma, item) => soma + Number(item.valor_liquido_esperado ?? item.valor), 0) +
+    valesPendentesParaLista.reduce((soma, item) => soma + Number(item.valor), 0);
 
   const buscaReceberLimpa = buscaReceber.trim().toLowerCase();
 
@@ -757,20 +762,7 @@ function ContasReceber({
           className="panel"
           style={{ marginBottom: 14, padding: 14 }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <span className="eyebrow">👤 Funcionários</span>
-            <strong style={{ color: "#eab308" }}>
-              Total pendente: {formatarMoeda(totalGeralPendente)}
-            </strong>
-          </div>
+          <span className="eyebrow">👤 Funcionários</span>
 
           <input
             type="text"
@@ -816,6 +808,14 @@ function ContasReceber({
             </button>
           )}
         </div>
+
+        {/* Pedido do usuário (25/08/2026): "aqui deveria aparecer o
+            total, em verde" — o total (só de funcionário: vale +
+            venda a prazo) fica bem em cima do seletor, visível junto
+            com ele. */}
+        <strong style={{ display: "block", color: "#22c55e", marginBottom: 8 }}>
+          Total pendente (funcionários): {formatarMoeda(totalGeralPendente)}
+        </strong>
 
         {/* Pedido do usuário (25/08/2026): "essa pesquisa aqui de baixo
             tem que ser igual a última foto que tenha todos os
