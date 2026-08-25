@@ -1835,6 +1835,65 @@ app.get("/lojas", verificarLogin, async function (req, res) {
   }
 });
 
+// Pedido do usuário (25/08/2026): lista de funcionários pra escolher no
+// "Pagamento de salários" (em vez de digitar o nome livre, que causa
+// erro de digitação e não bate com o desconto de vale/consumo depois).
+// Só precisa estar logado pra ler (não é informação sensível) — igual
+// já é o padrão de /lojas.
+app.get("/funcionarios", verificarLogin, async function (req, res) {
+  try {
+    const { data, error } = await supabase
+      .from("funcionarios")
+      .select("*")
+      .eq("ativo", true)
+      .order("nome", { ascending: true });
+
+    if (error) throw error;
+
+    res.json(data || []);
+  } catch (erro) {
+    console.error("Erro ao buscar funcionários:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível buscar os funcionários.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post(
+  "/funcionarios",
+  verificarPermissao(PERM_LANCAMENTOS),
+  async function (req, res) {
+    try {
+      const nome = (req.body?.nome || "").trim();
+
+      if (!nome) {
+        return res.status(400).json({ erro: "Informe o nome do funcionário." });
+      }
+
+      const { data, error } = await supabase
+        .from("funcionarios")
+        .insert([{ nome }])
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      registrarAuditoria(req, "criou", "funcionarios", data.id, nome);
+
+      res.status(201).json(data);
+    } catch (erro) {
+      console.error("Erro ao criar funcionário:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível cadastrar o funcionário.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.post("/lojas", verificarAdmin, async function (req, res) {
   try {
     const dadosLoja = prepararLoja(req.body);

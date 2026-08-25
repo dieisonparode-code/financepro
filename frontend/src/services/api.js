@@ -880,6 +880,20 @@ export async function excluirUsuario(id) {
   });
 }
 
+// Pedido do usuário (25/08/2026): lista de funcionários pra escolher no
+// "Pagamento de salários".
+export async function buscarFuncionarios() {
+  return requisicao("/funcionarios", { headers: await cabecalhoAutenticado() });
+}
+
+export async function criarFuncionario(nome) {
+  return requisicao("/funcionarios", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ nome }),
+  });
+}
+
 // Pedido do usuário (25/08/2026): "ao lançar a folha ter a opção de
 // selecionar o funcionário e clicar em descontar vales e consumos aí
 // puxa o valor a ser descontado".

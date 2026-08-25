@@ -22,6 +22,8 @@ import {
   desinscreverPush,
   buscarPendenciasFuncionario,
   quitarLancamentos,
+  buscarFuncionarios,
+  criarFuncionario,
   criarLancamento,
   lerNotaFiscal,
   atualizarCustosPorCompra,
@@ -646,8 +648,32 @@ function FinanceApp() {
   // Pedido do usuário (25/08/2026): checkbox "Pagamento de salários" —
   // só mostra o botão de descontar vales/consumos quando essa despesa
   // for marcada como folha de pagamento (evita aparecer sempre, pra
-  // qualquer despesa qualquer).
+  // qualquer despesa qualquer). Também simplifica o formulário (some
+  // Item/Quantidade/Unidade/Grupo/Categoria/Subcategoria) e troca
+  // Fornecedor por uma lista de funcionários pra escolher.
   const [ehPagamentoSalario, setEhPagamentoSalario] = useState(false);
+  const [funcionarios, setFuncionarios] = useState([]);
+
+  useEffect(() => {
+    buscarFuncionarios()
+      .then((dados) => setFuncionarios(Array.isArray(dados) ? dados : []))
+      .catch((erro) => console.error("Erro ao carregar funcionários:", erro));
+  }, []);
+
+  async function adicionarFuncionarioHandler() {
+    const nome = window.prompt("Nome do novo funcionário:");
+    if (!nome || !nome.trim()) return;
+
+    try {
+      const salvo = await criarFuncionario(nome.trim());
+      setFuncionarios((anteriores) =>
+        [...anteriores, salvo].sort((a, b) => a.nome.localeCompare(b.nome))
+      );
+      alterarCampo("fornecedor", salvo.nome);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível cadastrar o funcionário.");
+    }
+  }
   const [editandoId, setEditandoId] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -2852,6 +2878,9 @@ const pontoDeEquilibrio = useMemo(() => {
     setTipoLancamento(tipo);
     setEditandoId(null);
     editandoIdRef.current = null;
+    setEhPagamentoSalario(false);
+    setPendenciasFuncionario(null);
+    setPendenciasSelecionadas([]);
 
     const formularioInicial = criarFormularioInicial(tipo);
 
@@ -6470,52 +6499,83 @@ const pontoDeEquilibrio = useMemo(() => {
                 }
               }}
             >
-              <label>
-                Fornecedor
-                <input
-                  type="text"
-                  value={formulario.fornecedor}
-                  onChange={(evento) =>
-                    alterarCampo("fornecedor", evento.target.value)
-                  }
-                  placeholder="Ex.: Distribuidora ABC"
-                />
-              </label>
-
               {/* Pedido do usuário (25/08/2026): "ao lado desse botão
                   descontar tem que ter um quadrado antes dele pra
-                  marcar escrito pagamento de salários" — o botão de
-                  descontar vale/consumo só aparece quando esse
-                  checkbox está marcado, pra não ficar mostrando à toa
-                  em qualquer despesa comum. */}
+                  marcar escrito pagamento de salários" — marcando esse
+                  checkbox, o formulário simplifica (some Item/
+                  Quantidade/Unidade/Grupo/Categoria/Subcategoria) e o
+                  Fornecedor vira uma lista de funcionários. */}
               {tipoLancamento === "despesa" && !editandoId && (
-                <div style={{ marginBottom: 14 }}>
-                  <label
-                    style={{
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: 10,
-                      fontWeight: 400,
-                      cursor: "pointer",
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 14,
+                    fontWeight: 400,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    style={{ width: 18, height: 18, flexShrink: 0 }}
+                    checked={ehPagamentoSalario}
+                    onChange={(evento) => {
+                      const marcado = evento.target.checked;
+                      setEhPagamentoSalario(marcado);
+                      setPendenciasFuncionario(null);
+                      setPendenciasSelecionadas([]);
+
+                      if (marcado) {
+                        alterarCampo("categoria", "Pagamento de Salário");
+                        alterarCampo("grupo", "Despesas Operacionais");
+                        alterarCampo("fornecedor", "");
+                      }
+                    }}
+                  />
+                  💰 Pagamento de salários
+                </label>
+              )}
+
+              {ehPagamentoSalario && tipoLancamento === "despesa" ? (
+                <label>
+                  Funcionário
+                  <select
+                    value={formulario.fornecedor}
+                    onChange={(evento) => {
+                      if (evento.target.value === "__novo__") {
+                        adicionarFuncionarioHandler();
+                        return;
+                      }
+                      alterarCampo("fornecedor", evento.target.value);
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      style={{ width: 18, height: 18, flexShrink: 0 }}
-                      checked={ehPagamentoSalario}
-                      onChange={(evento) => {
-                        setEhPagamentoSalario(evento.target.checked);
-                        if (!evento.target.checked) {
-                          setPendenciasFuncionario(null);
-                          setPendenciasSelecionadas([]);
-                        }
-                      }}
-                    />
-                    💰 Pagamento de salários
-                  </label>
+                    <option value="">Selecione...</option>
+                    {funcionarios.map((funcionario) => (
+                      <option key={funcionario.id} value={funcionario.nome}>
+                        {funcionario.nome}
+                      </option>
+                    ))}
+                    <option value="__novo__">+ Novo funcionário...</option>
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  Fornecedor
+                  <input
+                    type="text"
+                    value={formulario.fornecedor}
+                    onChange={(evento) =>
+                      alterarCampo("fornecedor", evento.target.value)
+                    }
+                    placeholder="Ex.: Distribuidora ABC"
+                  />
+                </label>
+              )}
 
+              {tipoLancamento === "despesa" && !editandoId && (
+                <div style={{ marginBottom: 14 }}>
                   {ehPagamentoSalario && (
                     <button
                       type="button"
@@ -6650,7 +6710,7 @@ const pontoDeEquilibrio = useMemo(() => {
                 </div>
               )}
 
-              {tipoLancamento === "despesa" && (
+              {tipoLancamento === "despesa" && !ehPagamentoSalario && (
                 <div className="form-row">
                   <label>
                     Item comprado (opcional)
@@ -6733,63 +6793,67 @@ const pontoDeEquilibrio = useMemo(() => {
                 </label>
               </div>
 
-              <label>
-                <span className="rotulo-campo">
-                  Grupo financeiro
-                  <span className="campo-obrigatorio">Obrigatório</span>
-                </span>
-                <select
-                  value={formulario.grupo}
-                  onChange={(evento) =>
-                    alterarCampo("grupo", evento.target.value)
-                  }
-                >
-                  {gruposFinanceiros.map((grupo) => (
-                    <option key={grupo} value={grupo}>
-                      {grupo}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="form-row">
+              {!ehPagamentoSalario && (
                 <label>
                   <span className="rotulo-campo">
-                    Categoria
+                    Grupo financeiro
                     <span className="campo-obrigatorio">Obrigatório</span>
                   </span>
                   <select
-                    value={formulario.categoria}
+                    value={formulario.grupo}
                     onChange={(evento) =>
-                      alterarCampo("categoria", evento.target.value)
+                      alterarCampo("grupo", evento.target.value)
                     }
                   >
-                    {categoriasCadastradas.map((categoria) => (
-                      <option
-                        key={categoria.id}
-                        value={categoria.nome}
-                      >
-                        {categoria.icone} {categoria.nome}
+                    {gruposFinanceiros.map((grupo) => (
+                      <option key={grupo} value={grupo}>
+                        {grupo}
                       </option>
                     ))}
                   </select>
                 </label>
+              )}
 
-                <label>
-                  Subcategoria
-                  <input
-                    type="text"
-                    value={formulario.subcategoria}
-                    onChange={(evento) =>
-                      alterarCampo(
-                        "subcategoria",
-                        evento.target.value
-                      )
-                    }
-                    placeholder="Ex.: Carne, pão, salário"
-                  />
-                </label>
-              </div>
+              {!ehPagamentoSalario && (
+                <div className="form-row">
+                  <label>
+                    <span className="rotulo-campo">
+                      Categoria
+                      <span className="campo-obrigatorio">Obrigatório</span>
+                    </span>
+                    <select
+                      value={formulario.categoria}
+                      onChange={(evento) =>
+                        alterarCampo("categoria", evento.target.value)
+                      }
+                    >
+                      {categoriasCadastradas.map((categoria) => (
+                        <option
+                          key={categoria.id}
+                          value={categoria.nome}
+                        >
+                          {categoria.icone} {categoria.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Subcategoria
+                    <input
+                      type="text"
+                      value={formulario.subcategoria}
+                      onChange={(evento) =>
+                        alterarCampo(
+                          "subcategoria",
+                          evento.target.value
+                        )
+                      }
+                      placeholder="Ex.: Carne, pão, salário"
+                    />
+                  </label>
+                </div>
+              )}
 
 
               {tipoLancamento === "despesa" && (
