@@ -4862,37 +4862,16 @@ const pontoDeEquilibrio = useMemo(() => {
                           </button>
                         )}
 
-                      {temPermissao("aprovar_despesas") &&
-                        pagina === "despesas" &&
-                        item.status === "pendente" && (
-                          <>
-                            <button
-                              type="button"
-                              className="approve-button"
-                              disabled={
-                                processandoAprovacaoId === item.id
-                              }
-                              onClick={() =>
-                                aprovarLancamentoHandler(item.id)
-                              }
-                            >
-                              ✅ Aprovar
-                            </button>
-
-                            <button
-                              type="button"
-                              className="reject-button"
-                              disabled={
-                                processandoAprovacaoId === item.id
-                              }
-                              onClick={() =>
-                                rejeitarLancamentoHandler(item.id)
-                              }
-                            >
-                              ❌ Rejeitar
-                            </button>
-                          </>
-                        )}
+                      {/* Pedido do usuário (24/08/2026): "ela tem que
+                          entrar como despesa, qualquer um que lançar
+                          deixe liberado pra todos com acesso ao sistema"
+                          — desativado o modo de aprovação (config
+                          aprovacao_despesas_ativa = false), então despesa
+                          nova nunca mais nasce "pendente". Botão Aprovar/
+                          Rejeitar removido daqui a pedido — ficava sem
+                          uso (nenhum status "pendente" nasce mais), e o
+                          botão de aprovar EXCLUSÃO logo abaixo é outra
+                          coisa (não mexido). */}
 
                       {temPermissao("aprovar_despesas") &&
                         item.exclusao_solicitada_em && (
