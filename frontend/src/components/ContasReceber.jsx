@@ -42,6 +42,8 @@ function ContasReceber({
   buscarFoto,
   registrarVale,
   ehAdministrador = false,
+  funcionarios = [],
+  criarFuncionario,
 }) {
   const [nome, setNome] = useState("");
   const [operadora, setOperadora] = useState("");
@@ -78,6 +80,21 @@ function ContasReceber({
   const [valeValor, setValeValor] = useState("");
   const [valeData, setValeData] = useState(diaCincoDoProximoMes);
   const [salvandoVale, setSalvandoVale] = useState(false);
+
+  // Pedido do usuário (25/08/2026): "registrar vale também tem que puxar
+  // nome lá do cadastro como feito na situação de pagamento de salário"
+  // — mesma lista de funcionários, mesmo fluxo de "+ Novo funcionário...".
+  async function adicionarFuncionarioNoValeHandler() {
+    const nome = window.prompt("Nome do novo funcionário:");
+    if (!nome || !nome.trim()) return;
+
+    try {
+      const salvo = await criarFuncionario(nome);
+      setValeNome(salvo.nome);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível cadastrar o funcionário.");
+    }
+  }
 
   async function salvarVale(evento) {
     evento.preventDefault();
@@ -499,21 +516,33 @@ function ContasReceber({
           >
             <span className="eyebrow">🪙 Registrar Vale</span>
             <p style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
-              Vale/adiantamento pra funcionário — entra aqui como
-              recebimento previsto (a empresa recebe de volta no próximo
-              pagamento dele), não vira despesa.
+              Vale/adiantamento pra funcionário — desconta do Saldo na
+              hora (despesa categoria "Vale"). A "volta" não é automática:
+              é descontada depois, direto na folha de pagamento líquida.
             </p>
 
             <div className="form-row">
               <label>
                 Nome do funcionário
-                <input
-                  type="text"
+                <select
                   value={valeNome}
-                  onChange={(evento) => setValeNome(evento.target.value)}
-                  placeholder="Ex.: João Silva"
                   disabled={salvandoVale}
-                />
+                  onChange={(evento) => {
+                    if (evento.target.value === "__novo__") {
+                      adicionarFuncionarioNoValeHandler();
+                      return;
+                    }
+                    setValeNome(evento.target.value);
+                  }}
+                >
+                  <option value="">Selecione...</option>
+                  {funcionarios.map((funcionario) => (
+                    <option key={funcionario.id} value={funcionario.nome}>
+                      {funcionario.nome}
+                    </option>
+                  ))}
+                  <option value="__novo__">+ Novo funcionário...</option>
+                </select>
               </label>
 
               <label>
@@ -528,7 +557,8 @@ function ContasReceber({
             </div>
 
             <label>
-              Previsão de devolução
+              Previsão de desconto (referência — dia 5 já sugerido, não
+              gera lançamento sozinho)
               <input
                 type="date"
                 value={valeData}

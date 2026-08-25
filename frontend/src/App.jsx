@@ -660,15 +660,27 @@ function FinanceApp() {
       .catch((erro) => console.error("Erro ao carregar funcionários:", erro));
   }, []);
 
+  // Pedido do usuário (25/08/2026): "registrar vale também tem que puxar
+  // nome lá do cadastro" — mesma lista de funcionários usada no
+  // Pagamento de Salário e no Vale do Fechamento de Caixa, agora
+  // reaproveitada aqui e no Vale de Contas a Receber. Essa função só
+  // cadastra + atualiza a lista compartilhada; quem chama decide o que
+  // fazer com o nome criado (App.jsx joga no campo Fornecedor, Contas a
+  // Receber joga no campo do Vale).
+  async function criarFuncionarioESincronizarHandler(nome) {
+    const salvo = await criarFuncionario(nome.trim());
+    setFuncionarios((anteriores) =>
+      [...anteriores, salvo].sort((a, b) => a.nome.localeCompare(b.nome))
+    );
+    return salvo;
+  }
+
   async function adicionarFuncionarioHandler() {
     const nome = window.prompt("Nome do novo funcionário:");
     if (!nome || !nome.trim()) return;
 
     try {
-      const salvo = await criarFuncionario(nome.trim());
-      setFuncionarios((anteriores) =>
-        [...anteriores, salvo].sort((a, b) => a.nome.localeCompare(b.nome))
-      );
+      const salvo = await criarFuncionarioESincronizarHandler(nome);
       alterarCampo("fornecedor", salvo.nome);
     } catch (erro) {
       alert(erro.message || "Não foi possível cadastrar o funcionário.");
@@ -5404,6 +5416,8 @@ const pontoDeEquilibrio = useMemo(() => {
             buscarFoto={buscarFotoLancamento}
             registrarVale={registrarValeContasReceberHandler}
             ehAdministrador={ehAdministrador}
+            funcionarios={funcionarios}
+            criarFuncionario={criarFuncionarioESincronizarHandler}
           />
         )}
 
