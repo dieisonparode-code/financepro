@@ -875,6 +875,26 @@ function ContasReceber({
           </select>
         </div>
 
+        {/* Pedido do usuário (25/08/2026): "aqui tem que estar o total
+            entre consumo e vale" — quando filtra por um funcionário
+            específico, mostra o total combinado (vale + consumo) dele,
+            em vez de só o total quebrado por data (que soma separado
+            por dia e escondia a soma real dos dois juntos). */}
+        {buscaReceberLimpa && previstosFiltrados.length > 0 && (
+          <strong
+            style={{ display: "block", color: "#22c55e", marginBottom: 10 }}
+          >
+            Total de {buscaReceber} (vale + consumo):{" "}
+            {formatarMoeda(
+              previstosFiltrados.reduce(
+                (soma, item) =>
+                  soma + Number(item.valor_liquido_esperado ?? item.valor),
+                0
+              )
+            )}
+          </strong>
+        )}
+
         {itensListaUnificada.length === 0 ? (
           <div className="empty-state">
             Nenhuma previsão de recebimento nem vale pendente. Escolha uma
