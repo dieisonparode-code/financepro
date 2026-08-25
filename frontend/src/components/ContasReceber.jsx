@@ -261,33 +261,55 @@ function ContasReceber({
       item.status_conciliacao !== "conciliado"
   );
 
+  function nomeFormaPagamento(id) {
+    return formasPagamento.find((item) => item.id === id)?.nome || "—";
+  }
+
+  // Pedido do usuário (25/08/2026): "separa iFood na coluna a esquerda
+  // abaixo de Brendi" — não era o cadastro de forma de pagamento, era a
+  // LISTA DE VENDAS do iFood mesmo, que saiu de "Contas a Receber"
+  // (direita) e passou a viver junto da lista de Formas de Pagamento
+  // (esquerda), num bloco só dela.
+  function ehFormaIFood(item) {
+    return (
+      nomeFormaPagamento(item.forma_pagamento_id).trim().toLowerCase() ===
+      "ifood"
+    );
+  }
+
+  const previstosIFood = previstos.filter(ehFormaIFood);
+  const previstosOutros = previstos.filter((item) => !ehFormaIFood(item));
+
+  function agruparPorData(lista) {
+    return lista.reduce((acumulado, item) => {
+      const chave = item.data_prevista_recebimento;
+
+      if (!acumulado[chave]) {
+        acumulado[chave] = [];
+      }
+
+      acumulado[chave].push(item);
+
+      return acumulado;
+    }, {});
+  }
+
+  const blocosPorDataIFood = agruparPorData(previstosIFood);
+  const datasOrdenadasIFood = Object.keys(blocosPorDataIFood).sort();
+
   const buscaReceberLimpa = buscaReceber.trim().toLowerCase();
 
   const previstosFiltrados = buscaReceberLimpa
-    ? previstos.filter((item) =>
+    ? previstosOutros.filter((item) =>
         `${item.descricao || ""} ${nomeFormaPagamento(item.forma_pagamento_id)}`
           .toLowerCase()
           .includes(buscaReceberLimpa)
       )
-    : previstos;
+    : previstosOutros;
 
-  const blocosPorData = previstosFiltrados.reduce((acumulado, item) => {
-    const chave = item.data_prevista_recebimento;
-
-    if (!acumulado[chave]) {
-      acumulado[chave] = [];
-    }
-
-    acumulado[chave].push(item);
-
-    return acumulado;
-  }, {});
+  const blocosPorData = agruparPorData(previstosFiltrados);
 
   const datasOrdenadas = Object.keys(blocosPorData).sort();
-
-  function nomeFormaPagamento(id) {
-    return formasPagamento.find((item) => item.id === id)?.nome || "—";
-  }
 
   // Pedido do usuário (25/08/2026): "separa iFood na coluna a esquerda
   // abaixo de Brendi" — a lista normal vem em ordem alfabética (do
@@ -575,6 +597,75 @@ function ContasReceber({
             ))}
           </div>
         )}
+
+        {/* Pedido do usuário (25/08/2026): a lista de vendas do iFood sai
+            de "Contas a Receber" (direita) e passa a viver aqui, logo
+            abaixo das Formas de Pagamento — não mostra mais na direita. */}
+        {datasOrdenadasIFood.length > 0 && (
+          <>
+            <hr />
+            <span className="eyebrow">🛵 Vendas iFood</span>
+
+            {datasOrdenadasIFood.map((data) => {
+              const itens = blocosPorDataIFood[data];
+              const total = itens.reduce(
+                (soma, item) =>
+                  soma + Number(item.valor_liquido_esperado ?? item.valor),
+                0
+              );
+
+              return (
+                <div
+                  className="panel"
+                  key={data}
+                  style={{ marginTop: 10, marginBottom: 14 }}
+                >
+                  <div className="panel-header">
+                    <div>
+                      <span className="eyebrow">{formatarData(data)}</span>
+                      <h2>{formatarMoeda(total)}</h2>
+                    </div>
+                  </div>
+
+                  <div className="categorias-lista">
+                    {itens.map((item) => (
+                      <div className="categoria-item" key={item.id}>
+                        <div className="categoria-identificacao">
+                          <div className="categoria-icone">🛵</div>
+
+                          <div>
+                            <strong>{item.descricao}</strong>
+                            <div>
+                              iFood —{" "}
+                              {formatarMoeda(
+                                item.valor_liquido_esperado ?? item.valor
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {item.tem_foto && (
+                          <div className="transaction-actions">
+                            <button
+                              type="button"
+                              className="edit-button"
+                              disabled={carregandoFotoId === item.id}
+                              onClick={() => verFoto(item)}
+                            >
+                              {carregandoFotoId === item.id
+                                ? "Carregando..."
+                                : "Ver foto"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
       </article>
 
       <article className="panel categoria-lista-panel">
@@ -726,7 +817,7 @@ function ContasReceber({
           />
         </div>
 
-        {previstos.length === 0 ? (
+        {previstosOutros.length === 0 ? (
           <div className="empty-state">
             Nenhuma previsão de recebimento. Escolha uma forma de pagamento
             ao lançar uma receita pra aparecer aqui.
