@@ -62,15 +62,21 @@ function ContasReceber({
 
   // Pedido do usuário (25/08/2026): registrar um "Vale" (dinheiro que a
   // empresa vai receber de volta do funcionário) direto por aqui, sem
-  // precisar passar pelo Fechamento de Caixa. Mesma automação que já
-  // existe lá — data prevista começa em 30 dias, editável.
+  // precisar passar pelo Fechamento de Caixa.
+  //
+  // Pedido do usuário (25/08/2026, atualizado): a previsão segue o ciclo
+  // de pagamento — não importa em que dia do mês foi tirado (dia 2 ou
+  // dia 28), sempre desconta no pagamento do dia 5 do mês SEGUINTE.
+  // Continua editável, pra corrigir se algum caso for diferente.
+  function diaCincoDoProximoMes() {
+    const hoje = new Date();
+    const proximoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 5);
+    return proximoMes.toISOString().slice(0, 10);
+  }
+
   const [valeNome, setValeNome] = useState("");
   const [valeValor, setValeValor] = useState("");
-  const [valeData, setValeData] = useState(() => {
-    const data = new Date();
-    data.setDate(data.getDate() + 30);
-    return data.toISOString().slice(0, 10);
-  });
+  const [valeData, setValeData] = useState(diaCincoDoProximoMes);
   const [salvandoVale, setSalvandoVale] = useState(false);
 
   async function salvarVale(evento) {

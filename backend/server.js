@@ -4339,11 +4339,7 @@ app.post(
           if (valorVale <= 0) continue;
 
           const dataVale = dataBrasiliaDe(vale.criado_em);
-          const previsaoRecebimento = new Date();
-          previsaoRecebimento.setDate(previsaoRecebimento.getDate() + 30);
-          const dataPrevistaStr = previsaoRecebimento
-            .toISOString()
-            .slice(0, 10);
+          const dataPrevistaStr = diaCincoDoProximoMes(dataVale);
 
           const novaReceita = {
             id: Date.now() + vale.id,
@@ -8023,6 +8019,20 @@ function dataBrasiliaDe(dataIso) {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(dataIso));
+}
+
+// Pedido do usuário (25/08/2026): previsão de devolução do Vale segue o
+// ciclo de pagamento — não importa em que dia do mês foi tirado (dia 2
+// ou dia 28), sempre desconta no pagamento do dia 5 do mês SEGUINTE.
+// Recebe uma data "AAAA-MM-DD" (a data em que o vale foi tirado) e
+// devolve "AAAA-MM-DD" do dia 5 do próximo mês — o construtor Date lida
+// sozinho com virada de ano (dezembro → janeiro).
+function diaCincoDoProximoMes(dataStr) {
+  const [ano, mes] = dataStr.split("-").map(Number);
+  const proximoMes = new Date(ano, mes, 5); // "mes" já é o índice do mês seguinte (Date usa 0-indexado)
+  return `${proximoMes.getFullYear()}-${String(
+    proximoMes.getMonth() + 1
+  ).padStart(2, "0")}-${String(proximoMes.getDate()).padStart(2, "0")}`;
 }
 
 function horaBrasilia() {
