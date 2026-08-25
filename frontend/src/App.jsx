@@ -4010,7 +4010,7 @@ const pontoDeEquilibrio = useMemo(() => {
 
       <aside className="sidebar">
         <div
-          className="brand"
+          className={`brand${pagina === "dashboard" ? " active" : ""}`}
           role="button"
           tabIndex={0}
           style={{ cursor: "pointer" }}
@@ -4079,12 +4079,11 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
-          <button
-            className={pagina === "dashboard" ? "active" : ""}
-            onClick={() => setPagina("dashboard")}
-          >
-            Dashboard
-          </button>
+          {/* Pedido do usuário (24/08/2026): removido daqui — o logo
+              "FinancePro" no topo do menu já leva pro Dashboard (ver
+              <div className="brand"> acima), ficava duplicado. Também
+              resolve o Dashboard ter "caído" pra 5ª posição na ordenação
+              alfabética. */}
 
           {temPermissaoFinanceira("despesas") && (
             <button

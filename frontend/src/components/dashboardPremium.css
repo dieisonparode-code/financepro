@@ -61,6 +61,15 @@ body {
   border-bottom: 1px solid rgba(148, 163, 184, 0.13) !important;
 }
 
+/* Pedido do usuário (24/08/2026): logo "FinancePro" agora é o único
+   caminho pro Dashboard (tirado da lista alfabética por ficar
+   redundante) — mesmo destaque azul usado nos botões do menu quando
+   está na página ativa, pra dar o mesmo feedback visual. */
+.brand.active {
+  background: linear-gradient(135deg, rgba(8, 104, 255, 0.16), rgba(11, 92, 255, 0.08)) !important;
+  border-radius: 12px !important;
+}
+
 .brand-icon {
   display: grid !important;
   place-items: center !important;
