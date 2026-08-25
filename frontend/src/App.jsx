@@ -4284,22 +4284,11 @@ const pontoDeEquilibrio = useMemo(() => {
           )}
         </nav>
 
-        {ehAdministrador && (
-          <button
-            type="button"
-            className="aprovacao-toggle"
-            onClick={alternarAprovacaoAtiva}
-            title={
-              aprovacaoAtiva
-                ? "Aprovação de despesas está ATIVA — clique para desligar"
-                : "Aprovação de despesas está DESLIGADA — clique para ligar"
-            }
-          >
-            <span>{aprovacaoAtiva ? "🔒" : "🔓"}</span>
-            Aprovação{" "}
-            {aprovacaoAtiva ? "ativa" : "desligada"}
-          </button>
-        )}
+        {/* Pedido do usuário (24/08/2026): removido o botão de
+            aprovação/menu — despesa nova de qualquer usuário já entra
+            liberada de vez (aprovacao_despesas_ativa = false no banco).
+            Se precisar religar no futuro, é direto no backend, sem
+            precisar desse botão na tela. */}
 
         {/* Etiqueta de versão — pra confirmar com certeza qual versão do
         app está rodando num aparelho, em vez de ter que supor se é cache
