@@ -289,6 +289,53 @@ function ContasReceber({
     return formasPagamento.find((item) => item.id === id)?.nome || "—";
   }
 
+  // Pedido do usuário (25/08/2026): "separa iFood na coluna a esquerda
+  // abaixo de Brendi" — a lista normal vem em ordem alfabética (do
+  // backend), o que jogava iFood longe de Brendi. Aqui só fixa essas
+  // duas primeiro, na ordem pedida, e deixa o resto em ordem alfabética
+  // normal depois.
+  const ORDEM_FIXA_FORMAS = ["brendi", "ifood"];
+
+  const formasPagamentoOrdenadas = useMemo(() => {
+    return [...formasPagamento].sort((a, b) => {
+      const posA = ORDEM_FIXA_FORMAS.indexOf(a.nome.trim().toLowerCase());
+      const posB = ORDEM_FIXA_FORMAS.indexOf(b.nome.trim().toLowerCase());
+
+      if (posA !== -1 || posB !== -1) {
+        if (posA === -1) return 1;
+        if (posB === -1) return -1;
+        return posA - posB;
+      }
+
+      return a.nome.localeCompare(b.nome);
+    });
+  }, [formasPagamento]);
+
+  // Pedido do usuário (25/08/2026): "funcionários com opção de busca à
+  // direita, separados" — painel próprio, sem misturar com Formas de
+  // Pagamento (foi exatamente essa mistura que criou "ana paula" e
+  // "paula" como forma de pagamento por engano).
+  const [buscaFuncionario, setBuscaFuncionario] = useState("");
+
+  const funcionariosFiltrados = buscaFuncionario.trim()
+    ? funcionarios.filter((funcionario) =>
+        funcionario.nome
+          .toLowerCase()
+          .includes(buscaFuncionario.trim().toLowerCase())
+      )
+    : funcionarios;
+
+  async function adicionarFuncionarioNaListaHandler() {
+    const nomeNovo = window.prompt("Nome do novo funcionário:");
+    if (!nomeNovo || !nomeNovo.trim()) return;
+
+    try {
+      await criarFuncionario(nomeNovo);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível cadastrar o funcionário.");
+    }
+  }
+
   return (
     <section className="categorias-layout">
       <article className="panel categoria-form-panel">
@@ -459,7 +506,7 @@ function ContasReceber({
           </div>
         ) : (
           <div className="categorias-lista">
-            {formasPagamento.map((forma) => (
+            {formasPagamentoOrdenadas.map((forma) => (
               <div className="categoria-item" key={forma.id}>
                 <div className="categoria-identificacao">
                   <div className="categoria-icone">💳</div>
@@ -506,6 +553,57 @@ function ContasReceber({
           </div>
 
           <strong>{previstosFiltrados.length}</strong>
+        </div>
+
+        <div
+          className="panel"
+          style={{ marginBottom: 14, padding: 14 }}
+        >
+          <span className="eyebrow">👤 Funcionários</span>
+
+          <input
+            type="text"
+            value={buscaFuncionario}
+            onChange={(evento) => setBuscaFuncionario(evento.target.value)}
+            placeholder="🔎 Pesquisar por nome..."
+            style={{ marginTop: 8, marginBottom: 10 }}
+          />
+
+          {funcionariosFiltrados.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+              {buscaFuncionario.trim()
+                ? "Nenhum funcionário encontrado com esse nome."
+                : "Nenhum funcionário cadastrado."}
+            </p>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {funcionariosFiltrados.map((funcionario) => (
+                <span
+                  key={funcionario.id}
+                  className="badge-status badge-status-pendente"
+                >
+                  {funcionario.nome}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {criarFuncionario && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={adicionarFuncionarioNaListaHandler}
+              style={{ marginTop: 10 }}
+            >
+              + Novo funcionário...
+            </button>
+          )}
         </div>
 
         {ehAdministrador && registrarVale && (
