@@ -1096,3 +1096,150 @@ td {
     width: 100%;
   }
 }
+
+/* Pedido do usuário (25/08/2026): Feed do Dia / Lançamentos ao Vivo —
+   lista estilo chat/feed, atualiza sozinha (o state "lancamentos" já é
+   realtime, ver App.jsx). */
+.feed-panel {
+  margin: 0 34px 34px;
+}
+
+.feed-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.feed-filtros select,
+.feed-filtros input[type="date"] {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(95, 135, 180, 0.38);
+  border-radius: 10px;
+  color: #e7edf5;
+  background: #09182a;
+}
+
+.feed-resumo {
+  margin-bottom: 14px;
+  color: #9fb0c4;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.feed-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.feed-vazio {
+  padding: 24px;
+  color: #9fb0c4;
+  text-align: center;
+}
+
+.feed-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(95, 135, 180, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #0b2038, #071627);
+}
+
+.feed-card-foto {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: default;
+}
+
+.feed-card-foto:disabled {
+  cursor: default;
+}
+
+.feed-card-foto:not(:disabled) {
+  cursor: pointer;
+}
+
+.feed-card-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feed-foto-placeholder {
+  font-size: 22px;
+}
+
+.feed-foto-vazia {
+  opacity: 0.6;
+}
+
+.feed-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.feed-card-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.feed-valor {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.feed-valor-despesa {
+  color: #ff6b6b;
+}
+
+.feed-valor-receita {
+  color: #34d873;
+}
+
+.feed-horario {
+  color: #8091a8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.feed-card-titulo {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.feed-categoria {
+  color: #9fb0c4;
+  font-size: 12px;
+}
+
+.feed-card-rodape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 2px;
+  color: #8091a8;
+  font-size: 11px;
+}

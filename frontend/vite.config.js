@@ -58,6 +58,13 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        // Pedido do usuário (25/08/2026): notificação push de verdade a
+        // cada lançamento novo (Feed do Dia). "importScripts" injeta
+        // esse arquivo DENTRO do Service Worker gerado automaticamente,
+        // só adicionando os eventos de push — não troca a estratégia de
+        // cache/atualização já existente (evita reabrir os bugs de tela
+        // branca já resolvidos antes com muito cuidado).
+        importScripts: ['push-sw-extra.js'],
       },
     }),
   ],

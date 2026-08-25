@@ -5,9 +5,27 @@ const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
 const { XMLParser } = require("fast-xml-parser");
 const Anthropic = require("@anthropic-ai/sdk");
+const webpush = require("web-push");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Pedido do usuário (25/08/2026): notificação push de verdade (aparece
+// mesmo com o app fechado, estilo WhatsApp) a cada lançamento novo. As
+// chaves VAPID identificam ESTE servidor pros navegadores — sem elas
+// configuradas, a notificação simplesmente não é enviada (silenciosa,
+// não quebra nada do resto do sistema).
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:contato@financepro.tec.br",
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+} else {
+  console.error(
+    "Aviso: VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY não configuradas — notificação push desligada."
+  );
+}
 
 // Grupos de permissão granular. Removida a compatibilidade com as chaves
 // "legado" ("financeiro"/"fechamento_caixa" davam acesso a várias telas de
@@ -294,6 +312,74 @@ async function aprovacaoDespesasAtiva() {
       erro.message
     );
     return true;
+  }
+}
+
+// Pedido do usuário (25/08/2026): manda notificação push (estilo
+// WhatsApp) pra todo aparelho inscrito, avisando de um lançamento novo.
+// Fire-and-forget de propósito — chamado sem "await" de quem cria o
+// lançamento, pra nunca atrasar/travar o salvamento por causa disso.
+// Cada envio que falhar é tratado sozinho (subscription expirada/
+// inválida vira uma limpeza automática, não um erro visível).
+async function enviarPushNovoLancamento(lancamento) {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+
+  try {
+    const { data: inscricoes, error } = await supabase
+      .from("push_subscriptions")
+      .select("id, endpoint, p256dh, auth");
+
+    if (error || !inscricoes || !inscricoes.length) return;
+
+    const ehDespesa = lancamento.tipo === "despesa";
+    const valorFormatado = Number(lancamento.valor || 0).toLocaleString(
+      "pt-BR",
+      { style: "currency", currency: "BRL" }
+    );
+    const quemOuFornecedor =
+      lancamento.fornecedor || lancamento.descricao || "Lançamento";
+
+    const payload = JSON.stringify({
+      title: ehDespesa ? "💸 Nova despesa" : "💰 Nova receita",
+      body: `${quemOuFornecedor} — ${valorFormatado}${
+        lancamento.criado_por ? ` (${lancamento.criado_por})` : ""
+      }`,
+      url: "/?pagina=feed",
+      tag: `lancamento-${lancamento.id}`,
+    });
+
+    await Promise.all(
+      inscricoes.map((inscricao) =>
+        webpush
+          .sendNotification(
+            {
+              endpoint: inscricao.endpoint,
+              keys: { p256dh: inscricao.p256dh, auth: inscricao.auth },
+            },
+            payload
+          )
+          .catch((erroEnvio) => {
+            // 404/410 = inscrição não existe mais do lado do navegador
+            // (desinstalou, limpou dados, trocou de aparelho) — limpa
+            // sozinho em vez de ficar tentando pra sempre.
+            if (
+              erroEnvio.statusCode === 404 ||
+              erroEnvio.statusCode === 410
+            ) {
+              return supabase
+                .from("push_subscriptions")
+                .delete()
+                .eq("id", inscricao.id);
+            }
+            console.error(
+              "Erro ao enviar push notification:",
+              erroEnvio.message
+            );
+          })
+      )
+    );
+  } catch (erroGeral) {
+    console.error("Erro geral ao enviar push notifications:", erroGeral.message);
   }
 }
 
@@ -1022,6 +1108,9 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       id: Date.now(),
       ...dadosPreparados,
       status,
+      // Pedido do usuário (25/08/2026): Feed do Dia precisa mostrar quem
+      // lançou cada card.
+      criado_por: perfil?.nome || req.usuarioLogado?.email || "",
     };
 
     const { data, error } = await supabase
@@ -1033,6 +1122,11 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
     if (error) {
       throw error;
     }
+
+    // Pedido do usuário (25/08/2026): notificação push a cada lançamento
+    // novo. Sem "await" de propósito — não pode atrasar a resposta pro
+    // operador nem travar o lançamento se o envio da notificação falhar.
+    enviarPushNovoLancamento(data);
 
     // Pedido do usuário (22/08/2026): "tudo que envolva dinheiro tem que
     // ser rastreável" — deixa explícito no Log de Auditoria se a
@@ -8265,6 +8359,85 @@ app.get("/integracoes/whatsapp/status", verificarPermissao(PERM_LANCAMENTOS), fu
         minutosDesdeUltimoSinal <= MINUTOS_WHATSAPP_DESLIGADO),
     minutos_desde_ultimo_sinal: minutosDesdeUltimoSinal,
   });
+});
+
+// Pedido do usuário (25/08/2026): notificação push de verdade (estilo
+// WhatsApp, funciona com o app fechado) a cada lançamento novo. Chave
+// pública é a mesma pra qualquer aparelho — não é segredo, o navegador
+// usa ela só pra criptografar a inscrição, por isso não exige login pra
+// ler (o app já pede login antes de sequer chegar na tela que chama
+// isso).
+app.get("/push/vapid-public-key", function (req, res) {
+  if (!process.env.VAPID_PUBLIC_KEY) {
+    return res.status(503).json({
+      erro: "Notificação push não configurada nesse servidor.",
+    });
+  }
+
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+});
+
+app.post("/push/subscribe", verificarLogin, async function (req, res) {
+  try {
+    const inscricao = req.body?.subscription;
+
+    if (!inscricao?.endpoint || !inscricao?.keys?.p256dh || !inscricao?.keys?.auth) {
+      return res.status(400).json({ erro: "Inscrição de notificação inválida." });
+    }
+
+    const { data: perfil } = await supabase
+      .from("perfis")
+      .select("nome")
+      .eq("user_id", req.usuarioLogado.id)
+      .maybeSingle();
+
+    const { error } = await supabase.from("push_subscriptions").upsert(
+      {
+        endpoint: inscricao.endpoint,
+        p256dh: inscricao.keys.p256dh,
+        auth: inscricao.keys.auth,
+        criado_por: perfil?.nome || req.usuarioLogado.email || "",
+      },
+      { onConflict: "endpoint" }
+    );
+
+    if (error) throw error;
+
+    res.status(201).json({ ok: true });
+  } catch (erro) {
+    console.error("Erro ao salvar inscrição de push:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível ativar as notificações.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.post("/push/unsubscribe", verificarLogin, async function (req, res) {
+  try {
+    const endpoint = req.body?.endpoint;
+
+    if (!endpoint) {
+      return res.status(400).json({ erro: "Informe o endpoint da inscrição." });
+    }
+
+    const { error } = await supabase
+      .from("push_subscriptions")
+      .delete()
+      .eq("endpoint", endpoint);
+
+    if (error) throw error;
+
+    res.json({ ok: true });
+  } catch (erro) {
+    console.error("Erro ao remover inscrição de push:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível desativar as notificações.",
+      detalhes: erro.message,
+    });
+  }
 });
 
 // Legenda → categoria de despesa (pedido do usuário, 17/08/2026): cada

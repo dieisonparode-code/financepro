@@ -879,3 +879,25 @@ export async function excluirUsuario(id) {
     headers: await cabecalhoAutenticado(),
   });
 }
+
+// Pedido do usuário (25/08/2026): notificação push de verdade (estilo
+// WhatsApp) a cada lançamento novo — usadas pela tela Feed do Dia.
+export async function buscarChavePublicaPush() {
+  return requisicao("/push/vapid-public-key");
+}
+
+export async function inscreverPush(subscription) {
+  return requisicao("/push/subscribe", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ subscription }),
+  });
+}
+
+export async function desinscreverPush(endpoint) {
+  return requisicao("/push/unsubscribe", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ endpoint }),
+  });
+}

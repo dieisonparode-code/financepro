@@ -17,6 +17,9 @@ import {
   buscarLancamentos,
   buscarFotoLancamento,
   buscarFotoMercadoriaLancamento,
+  buscarChavePublicaPush,
+  inscreverPush,
+  desinscreverPush,
   criarLancamento,
   lerNotaFiscal,
   atualizarCustosPorCompra,
@@ -135,6 +138,7 @@ import FichaTecnica from "./components/FichaTecnica";
 import CampoValor, { paraNumero } from "./components/CampoValor";
 import Notificacoes from "./components/Notificacoes";
 import UserMenu from "./components/UserMenu";
+import FeedLancamentos from "./components/FeedLancamentos";
 
 const gruposFinanceiros = [
   "Receita Operacional",
@@ -533,6 +537,98 @@ function FinanceApp() {
   }
   const [lancamentos, setLancamentos] = useState([]);
   const [carregando, setCarregando] = useState(true);
+
+  // Pedido do usuário (25/08/2026): notificação push de verdade (estilo
+  // WhatsApp, funciona com o app fechado) a cada lançamento novo — Feed
+  // do Dia. "indisponivel" cobre navegador sem suporte (ex: Safari
+  // antigo) e HTTP sem certificado (Push exige HTTPS, exceto localhost).
+  const [notificacaoStatus, setNotificacaoStatus] = useState("desconhecido");
+
+  useEffect(() => {
+    async function conferirStatusNotificacao() {
+      if (
+        !("serviceWorker" in navigator) ||
+        !("PushManager" in window) ||
+        typeof Notification === "undefined"
+      ) {
+        setNotificacaoStatus("indisponivel");
+        return;
+      }
+
+      if (Notification.permission === "denied") {
+        setNotificacaoStatus("indisponivel");
+        return;
+      }
+
+      try {
+        const registro = await navigator.serviceWorker.ready;
+        const inscricaoAtual = await registro.pushManager.getSubscription();
+        setNotificacaoStatus(inscricaoAtual ? "ativa" : "inativa");
+      } catch {
+        setNotificacaoStatus("inativa");
+      }
+    }
+
+    conferirStatusNotificacao();
+  }, []);
+
+  // Converte a chave pública VAPID (texto base64) pro formato binário
+  // que a Push API do navegador exige — trecho padrão, sempre igual em
+  // qualquer projeto que use Web Push.
+  function base64ParaUint8Array(base64) {
+    const preenchimento = "=".repeat((4 - (base64.length % 4)) % 4);
+    const base64Normalizado = (base64 + preenchimento)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const bruto = window.atob(base64Normalizado);
+    const saida = new Uint8Array(bruto.length);
+    for (let i = 0; i < bruto.length; i += 1) {
+      saida[i] = bruto.charCodeAt(i);
+    }
+    return saida;
+  }
+
+  async function ativarNotificacaoHandler() {
+    try {
+      const permissao = await Notification.requestPermission();
+      if (permissao !== "granted") {
+        setNotificacaoStatus("inativa");
+        return;
+      }
+
+      const { publicKey } = await buscarChavePublicaPush();
+      const registro = await navigator.serviceWorker.ready;
+      const inscricao = await registro.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64ParaUint8Array(publicKey),
+      });
+
+      await inscreverPush(inscricao.toJSON());
+      setNotificacaoStatus("ativa");
+    } catch (erro) {
+      console.error("Erro ao ativar notificações:", erro);
+      alert(
+        erro.message ||
+          "Não foi possível ativar as notificações nesse aparelho."
+      );
+    }
+  }
+
+  async function desativarNotificacaoHandler() {
+    try {
+      const registro = await navigator.serviceWorker.ready;
+      const inscricaoAtual = await registro.pushManager.getSubscription();
+
+      if (inscricaoAtual) {
+        await desinscreverPush(inscricaoAtual.endpoint).catch(() => {});
+        await inscricaoAtual.unsubscribe();
+      }
+
+      setNotificacaoStatus("inativa");
+    } catch (erro) {
+      console.error("Erro ao desativar notificações:", erro);
+    }
+  }
 
   const [modalAberto, setModalAberto] = useState(false);
   const [tipoLancamento, setTipoLancamento] = useState("receita");
@@ -4145,6 +4241,16 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
+          {(temPermissaoFinanceira("despesas") ||
+            temPermissaoFinanceira("receitas")) && (
+            <button
+              className={pagina === "feed" ? "active" : ""}
+              onClick={() => setPagina("feed")}
+            >
+              📢 Feed do Dia
+            </button>
+          )}
+
           {ehAdministrador && (
             <button
               className={pagina === "whatsapp-fila" ? "active" : ""}
@@ -5071,6 +5177,26 @@ const pontoDeEquilibrio = useMemo(() => {
             }
           />
         )}
+
+        {pagina === "feed" &&
+          (temPermissaoFinanceira("despesas") ||
+            temPermissaoFinanceira("receitas")) && (
+            <FeedLancamentos
+              lancamentos={lancamentos}
+              lojas={lojas}
+              lojaPadrao={
+                !vePermissaoTotal
+                  ? perfil?.loja_id || null
+                  : lojaDashboard !== "todas"
+                  ? lojaDashboard
+                  : null
+              }
+              buscarFoto={buscarFotoLancamento}
+              notificacaoStatus={notificacaoStatus}
+              ativarNotificacao={ativarNotificacaoHandler}
+              desativarNotificacao={desativarNotificacaoHandler}
+            />
+          )}
 
         {pagina === "contas-receber" && (
           <ContasReceber
