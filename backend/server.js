@@ -98,6 +98,47 @@ async function verificarAdmin(req, res, next) {
   }
 }
 
+// BUG REAL corrigido (24/08/2026): GET /lojas exigia ser administrador
+// pra sequer LER a lista de lojas (id + nome) — só criar/editar loja
+// deveria ser coisa de admin. Resultado: pra qualquer usuário comum
+// (não-admin), o app inteiro carregava "lojas" vazio pra sempre, e todo
+// lançamento aparecia com "🏢 Sem loja" na tela (mesmo com o loja_id
+// certo salvo no banco) — porque o nome só existe fazendo o "de-para" id
+// → nome contra essa lista, que nunca chegava a carregar. Esse
+// middleware novo só exige estar logado (qualquer perfil), sem checar
+// permissão nenhuma — ler o nome das lojas não é informação sensível,
+// é usada em praticamente toda tela do sistema.
+async function verificarLogin(req, res, next) {
+  try {
+    const cabecalho = req.headers.authorization || "";
+    const token = cabecalho.replace("Bearer ", "");
+
+    if (!token) {
+      return res.status(401).json({
+        erro: "É necessário estar logado.",
+      });
+    }
+
+    const { data: dadosUsuario, error: erroUsuario } =
+      await supabase.auth.getUser(token);
+
+    if (erroUsuario || !dadosUsuario?.user) {
+      return res.status(401).json({
+        erro: "Sessão inválida ou expirada.",
+      });
+    }
+
+    req.usuarioLogado = dadosUsuario.user;
+    next();
+  } catch (erro) {
+    console.error("Erro ao verificar login:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível verificar o login.",
+    });
+  }
+}
+
 // Aceita uma chave só ("estoque") ou uma lista de chaves aceitas
 // (["receitas", "despesas", ...]) — usado quando várias permissões
 // granulares diferentes dão acesso à mesma rota (ex.: a rota de
@@ -1581,7 +1622,7 @@ app.put(
   }
 );
 
-app.get("/lojas", verificarAdmin, async function (req, res) {
+app.get("/lojas", verificarLogin, async function (req, res) {
   try {
     const { data, error } = await supabase
       .from("lojas")
