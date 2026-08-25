@@ -26,6 +26,22 @@ const tiposFechamento = [
   },
   { valor: "boy", rotulo: "Diária Boy", icone: "🏍️" },
   { valor: "cozinha", rotulo: "Diária Cozinha", icone: "👨‍🍳" },
+  // Pedido do usuário (24/08/2026): mesmo fluxo de Diária Boy/Cozinha —
+  // foto, IA lê o valor, e quando o fechamento é finalizado vira despesa
+  // normal em Contas a Pagar (ver NOMES_DIARIA_PARA_CONTA_PAGAR no
+  // backend).
+  { valor: "janta", rotulo: "Jantas", icone: "🍽️" },
+  // Pedido do usuário (24/08/2026): "vale" é dinheiro que a EMPRESA vai
+  // receber de volta do funcionário (desconto no próximo pagamento) —
+  // diferente de toda a lista acima, não vira despesa nenhuma. Quando o
+  // fechamento é finalizado, vira uma RECEITA prevista (Contas a
+  // Receber), não uma conta a pagar.
+  {
+    valor: "vale",
+    rotulo: "Vale (funcionário)",
+    icone: "🪙",
+    ajuda: "Vale/adiantamento pra funcionário — entra em Contas a Receber, não em despesas (é dinheiro que volta pra empresa no próximo pagamento dele).",
+  },
   {
     valor: "venda_prazo",
     rotulo: "Venda a Prazo Funcionário",
@@ -200,6 +216,8 @@ const TRES_DIAS_MS = 3 * 24 * 60 * 60 * 1000;
 const TIPOS_COM_VALOR_CONFERIDO = [
   "boy",
   "cozinha",
+  "janta",
+  "vale",
   "pago_dinheiro_caixa",
   "venda_prazo",
   "retirada_cofre",
@@ -489,8 +507,17 @@ function CadastroFechamentoCaixa({
 
     const ehPagoDinheiroCaixa = rascunhoDiaria.tipo === "pago_dinheiro_caixa";
     const ehRetiradaCofre = rascunhoDiaria.tipo === "retirada_cofre";
+    const ehVale = rascunhoDiaria.tipo === "vale";
     const valorNumerico =
       rascunhoDiaria.valor !== "" ? paraNumeroBr(rascunhoDiaria.valor) : null;
+
+    if (ehVale && !rascunhoDiaria.nomePessoa.trim()) {
+      alert("Digite o nome do funcionário que pegou o vale.");
+      setRascunhoDiaria((anterior) =>
+        anterior ? { ...anterior, salvando: false } : anterior
+      );
+      return;
+    }
 
     try {
       if (ehRetiradaCofre) {
@@ -531,7 +558,8 @@ function CadastroFechamentoCaixa({
           : rascunhoDiaria.pagoDinheiro !== ""
           ? paraNumeroBr(rascunhoDiaria.pagoDinheiro)
           : 0,
-        nome_pessoa: ehPagoDinheiroCaixa ? rascunhoDiaria.nomePessoa : "",
+        nome_pessoa:
+          ehPagoDinheiroCaixa || ehVale ? rascunhoDiaria.nomePessoa : "",
       });
 
       setRascunhoDiaria(null);
@@ -1123,6 +1151,24 @@ function CadastroFechamentoCaixa({
                 <input
                   type="text"
                   placeholder="Ex: Uber compras, Diária extra Fulano..."
+                  value={rascunhoDiaria.nomePessoa}
+                  disabled={rascunhoDiaria.salvando}
+                  onChange={(evento) =>
+                    setRascunhoDiaria((anterior) => ({
+                      ...anterior,
+                      nomePessoa: evento.target.value,
+                    }))
+                  }
+                />
+              </label>
+            )}
+
+            {rascunhoDiaria.tipo === "vale" && (
+              <label>
+                Nome do funcionário
+                <input
+                  type="text"
+                  placeholder="Ex: João Silva"
                   value={rascunhoDiaria.nomePessoa}
                   disabled={rascunhoDiaria.salvando}
                   onChange={(evento) =>

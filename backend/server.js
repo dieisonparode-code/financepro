@@ -3523,6 +3523,8 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
         "caixa_2",
         "boy",
         "cozinha",
+        "janta",
+        "vale",
         "venda_prazo",
         "funcionario",
         "pago_dinheiro_caixa",
@@ -3531,7 +3533,7 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
     ) {
       return res.status(400).json({
         erro:
-          "Tipo inválido. Use caixa_1, caixa_2, boy, cozinha, venda_prazo, funcionario, pago_dinheiro_caixa ou comandas_canceladas.",
+          "Tipo inválido. Use caixa_1, caixa_2, boy, cozinha, janta, vale, venda_prazo, funcionario, pago_dinheiro_caixa ou comandas_canceladas.",
       });
     }
 
@@ -3546,31 +3548,16 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
     // nome do cliente, o valor do pedido e o telefone, pra mostrar isso
     // direto na Conciliação — o operador continua só tirando a foto,
     // igual sempre fez.
-    if (dados.tipo === "comandas_canceladas") {
-      try {
-        const textoResposta = await lerImagemComIA(
-          dados.foto,
-          'Essa é a foto de uma comanda/pedido CANCELADO de uma hamburgueria. Extraia: o NOME do cliente, o VALOR total do pedido, e o TELEFONE do cliente (se estiver visível, mesmo formato brasileiro com DDD). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"nome": "Nome ou null", "valor": 45.90, "telefone": "11999998888 ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
-          2048
-        );
-        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
-        const dadosLidos = JSON.parse(
-          jsonEncontrado ? jsonEncontrado[0] : textoResposta
-        );
-
-        if (dadosLidos.nome) dados.nome_pessoa = String(dadosLidos.nome).trim();
-        if (dadosLidos.valor != null) dados.valor = Number(dadosLidos.valor);
-        if (dadosLidos.telefone) dados.telefone = String(dadosLidos.telefone).trim();
-      } catch (erroLeitura) {
-        console.error(
-          "Erro ao ler dados da comanda cancelada:",
-          erroLeitura.message
-        );
-        // Não impede de salvar a foto mesmo se a leitura falhar — só fica
-        // sem nome/valor/telefone preenchido, o operador confere na mão.
-      }
-    }
-
+    //
+    // BUG REAL corrigido (24/08/2026): "estava dando erro ao adicionar a
+    // foto" — a leitura por IA rodava ANTES de salvar (síncrona), então o
+    // salvamento inteiro dependia da IA responder a tempo; qualquer
+    // demora/instabilidade na leitura virava erro pro operador, mesmo a
+    // foto em si sendo perfeitamente salvável. Igual já é feito em Diária
+    // Boy/Cozinha: salva a foto JÁ, na hora (rápido, sempre funciona), e
+    // só depois lê nome/valor/telefone em segundo plano, sem travar a
+    // resposta — se a leitura falhar, o registro continua existindo,
+    // só sem esses campos preenchidos (operador completa na mão).
     const { data, error } = await supabase
       .from("fechamentos_caixa")
       .insert([dados])
@@ -3582,6 +3569,47 @@ app.post("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async 
     }
 
     res.status(201).json(data);
+
+    if (dados.tipo === "comandas_canceladas") {
+      lerImagemComIA(
+        dados.foto,
+        'Essa é a foto de uma comanda/pedido CANCELADO de uma hamburgueria. Extraia: o NOME do cliente, o VALOR total do pedido, e o TELEFONE do cliente (se estiver visível, mesmo formato brasileiro com DDD). Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"nome": "Nome ou null", "valor": 45.90, "telefone": "11999998888 ou null"}. Se não conseguir ler algum desses dados, use null nesse campo.',
+        2048
+      )
+        .then(async (textoResposta) => {
+          const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+          const dadosLidos = JSON.parse(
+            jsonEncontrado ? jsonEncontrado[0] : textoResposta
+          );
+
+          const atualizacao = {};
+          if (dadosLidos.nome) atualizacao.nome_pessoa = String(dadosLidos.nome).trim();
+          if (dadosLidos.valor != null) atualizacao.valor = Number(dadosLidos.valor);
+          if (dadosLidos.telefone) atualizacao.telefone = String(dadosLidos.telefone).trim();
+
+          if (Object.keys(atualizacao).length === 0) return;
+
+          const { error: erroAtualizacao } = await supabase
+            .from("fechamentos_caixa")
+            .update(atualizacao)
+            .eq("id", data.id);
+
+          if (erroAtualizacao) {
+            console.error(
+              "Erro ao salvar dados lidos da comanda cancelada:",
+              erroAtualizacao.message
+            );
+          }
+        })
+        .catch((erroLeitura) => {
+          console.error(
+            "Erro ao ler dados da comanda cancelada:",
+            erroLeitura.message
+          );
+          // Não faz nada além de logar — a foto já está salva de
+          // qualquer forma, o operador confere/preenche na mão.
+        });
+    }
   } catch (erro) {
     console.error("Erro ao criar fechamento de caixa:", erro.message);
 
@@ -3914,10 +3942,12 @@ app.get(
 );
 
 // Nomes legíveis pros tipos de fechamento que geram conta a pagar
-// automaticamente — hoje só Diária Boy/Cozinha (pedido do usuário).
+// automaticamente — hoje Diária Boy/Cozinha/Janta (pedido do usuário,
+// 24/08/2026: Jantas segue exatamente o mesmo fluxo de Boy/Cozinha).
 const NOMES_DIARIA_PARA_CONTA_PAGAR = {
   boy: "Diária Boy",
   cozinha: "Diária Cozinha",
+  janta: "Jantas",
   // Pedido do usuário (12/08/2026): "Pago com dinheiro do caixa" (retirada
   // de frente de caixa — diária avulsa, compra rápida, etc, tudo pago na
   // hora com o dinheiro físico do caixa) usa a mesma automação — mas é
@@ -3974,6 +4004,7 @@ app.post(
       // a pagar.
       let contasPagarCriadas = 0;
       let despesasDinheiroCriadas = 0;
+      let receitasValeCriadas = 0;
 
       try {
         let consultaDiarias = supabase
@@ -4154,10 +4185,99 @@ app.post(
         );
       }
 
+      // Pedido do usuário (24/08/2026): "Vale" é dinheiro que a EMPRESA
+      // vai receber de volta do funcionário (desconto no próximo
+      // pagamento) — ao contrário de Boy/Cozinha/Janta, não vira despesa
+      // nenhuma. Mesma janela de tempo (desde a última finalização), só
+      // que gera uma RECEITA prevista em vez de conta a pagar — aparece
+      // em Contas a Receber. Sem data certa informada pra devolução, usa
+      // 30 dias como estimativa padrão (editável depois, igual qualquer
+      // lançamento).
+      try {
+        let consultaVales = supabase
+          .from("fechamentos_caixa")
+          .select("id, foto, valor, nome_pessoa, criado_em, loja_id")
+          .eq("tipo", "vale")
+          .lte("criado_em", data.criado_em);
+
+        if (finalizacaoAnterior?.criado_em) {
+          consultaVales = consultaVales.gt(
+            "criado_em",
+            finalizacaoAnterior.criado_em
+          );
+        }
+
+        const { data: vales, error: erroVales } = await consultaVales;
+
+        if (erroVales) {
+          throw erroVales;
+        }
+
+        for (const vale of vales || []) {
+          const valorVale = vale.valor != null ? Number(vale.valor) : 0;
+
+          if (valorVale <= 0) continue;
+
+          const dataVale = dataBrasiliaDe(vale.criado_em);
+          const previsaoRecebimento = new Date();
+          previsaoRecebimento.setDate(previsaoRecebimento.getDate() + 30);
+          const dataPrevistaStr = previsaoRecebimento
+            .toISOString()
+            .slice(0, 10);
+
+          const novaReceita = {
+            id: Date.now() + vale.id,
+            tipo: "receita",
+            descricao: vale.nome_pessoa
+              ? `Vale — ${vale.nome_pessoa}`
+              : "Vale — funcionário",
+            valor: valorVale,
+            data: dataVale,
+            data_prevista_recebimento: dataPrevistaStr,
+            grupo: "",
+            categoria: "",
+            subcategoria: "",
+            fornecedor: vale.nome_pessoa || "",
+            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — vale/adiantamento a descontar do funcionário. Previsão de 30 dias, ajuste se souber a data certa.`,
+            foto: vale.foto || "",
+            loja_id: vale.loja_id || null,
+            forma_pagamento_id: null,
+            status: "aprovado",
+          };
+
+          const { data: receitaCriada, error: erroReceita } = await supabase
+            .from("lancamentos")
+            .insert([novaReceita])
+            .select("id")
+            .single();
+
+          if (erroReceita) {
+            console.error(
+              "Erro ao criar receita do vale:",
+              erroReceita.message
+            );
+            continue;
+          }
+
+          receitasValeCriadas += 1;
+
+          registrarAuditoria(
+            req,
+            "criou",
+            "lancamentos",
+            receitaCriada.id,
+            `Receita automática (vale) do fechamento de caixa #${vale.id}: R$ ${valorVale.toFixed(2)} — ${vale.nome_pessoa || "sem nome"}`
+          );
+        }
+      } catch (erroVales) {
+        console.error("Erro ao gerar receitas dos vales:", erroVales.message);
+      }
+
       res.status(201).json({
         ...data,
         contas_pagar_criadas: contasPagarCriadas,
         despesas_dinheiro_criadas: despesasDinheiroCriadas,
+        receitas_vale_criadas: receitasValeCriadas,
       });
     } catch (erro) {
       console.error("Erro ao finalizar fechamento de caixa:", erro.message);
