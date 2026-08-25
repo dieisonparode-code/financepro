@@ -1571,24 +1571,45 @@ function FinanceApp() {
   // registrado direto na tela Contas a Receber (não só via Fechamento de
   // Caixa) — mesma ideia (dinheiro que a empresa vai receber de volta do
   // funcionário), só que sem precisar de foto/fechamento nenhum.
+  //
+  // Pedido do usuário (25/08/2026, atualizado): "vale não vira despesa,
+  // porém desconta do saldo" — o dinheiro sai do caixa de verdade na
+  // hora, então cria uma despesa AGORA (desconta o Saldo já, categoria
+  // própria "Vale", fora de relatórios de Despesas Diversas/CMV) — a
+  // receita futura (data prevista) "devolve" o valor quando o
+  // funcionário pagar de volta. Mesmo mecanismo já usado no Fechamento
+  // de Caixa.
   async function registrarValeContasReceberHandler({
     nomeFuncionario,
     valor,
     dataPrevista,
   }) {
+    const lojaId = !vePermissaoTotal
+      ? perfil?.loja_id || null
+      : lojaDashboard !== "todas"
+      ? lojaDashboard
+      : null;
+    const hoje = hojeLocal();
+    const descricao = `Vale — ${nomeFuncionario}`;
+
+    await criarDespesaDoWhatsapp({
+      tipo: "despesa",
+      descricao,
+      fornecedor: nomeFuncionario,
+      categoria: "Vale",
+      valor,
+      data: hoje,
+      loja_id: lojaId,
+    });
+
     const salvo = await criarLancamento({
       tipo: "receita",
-      descricao: `Vale — ${nomeFuncionario}`,
+      descricao,
       fornecedor: nomeFuncionario,
       valor,
-      data: hojeLocal(),
+      data: hoje,
       data_prevista_recebimento: dataPrevista,
-      loja_id:
-        !vePermissaoTotal
-          ? perfil?.loja_id || null
-          : lojaDashboard !== "todas"
-          ? lojaDashboard
-          : null,
+      loja_id: lojaId,
     });
 
     setLancamentos((anteriores) => [salvo, ...anteriores]);

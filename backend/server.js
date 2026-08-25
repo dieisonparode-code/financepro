@@ -4340,13 +4340,59 @@ app.post(
 
           const dataVale = dataBrasiliaDe(vale.criado_em);
           const dataPrevistaStr = diaCincoDoProximoMes(dataVale);
+          const nomeDescricao = vale.nome_pessoa
+            ? `Vale — ${vale.nome_pessoa}`
+            : "Vale — funcionário";
+
+          // Pedido do usuário (25/08/2026): "vale não vira despesa, porém
+          // desconta do saldo, confere?" — o dinheiro sai do caixa DE
+          // VERDADE na hora que o vale é dado, então o Saldo tem que
+          // refletir isso na hora, não só quando a previsão de devolução
+          // chegar. Cria uma despesa AGORA (desconta o Saldo já) — a
+          // receita logo abaixo, com a data prevista futura, "devolve" o
+          // valor quando o funcionário efetivamente pagar de volta
+          // (desconto do salário). Continua NÃO sendo uma despesa "de
+          // verdade" pra fins de relatório (categoria própria "Vale",
+          // fora de Despesas Diversas/CMV), só existe pra dar baixa
+          // correta no Saldo.
+          const novaDespesaVale = {
+            id: Date.now() + vale.id - 1,
+            tipo: "despesa",
+            descricao: nomeDescricao,
+            valor: valorVale,
+            data: dataVale,
+            grupo: "",
+            categoria: "Vale",
+            subcategoria: "",
+            fornecedor: vale.nome_pessoa || "",
+            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — desconta o Saldo agora porque o dinheiro saiu do caixa de verdade; volta quando a receita prevista (devolução em ${dataPrevistaStr}) contar.`,
+            foto: vale.foto || "",
+            loja_id: vale.loja_id || null,
+            status: "aprovado",
+          };
+
+          const { error: erroDespesaVale } = await supabase
+            .from("lancamentos")
+            .insert([novaDespesaVale]);
+
+          if (erroDespesaVale) {
+            console.error(
+              "Erro ao criar despesa do vale (baixa no saldo):",
+              erroDespesaVale.message
+            );
+            falhas.push({
+              registro: vale.id,
+              tipo: "vale",
+              valor: valorVale,
+              motivo: erroDespesaVale.message,
+            });
+            continue;
+          }
 
           const novaReceita = {
             id: Date.now() + vale.id,
             tipo: "receita",
-            descricao: vale.nome_pessoa
-              ? `Vale — ${vale.nome_pessoa}`
-              : "Vale — funcionário",
+            descricao: nomeDescricao,
             valor: valorVale,
             data: dataVale,
             data_prevista_recebimento: dataPrevistaStr,
@@ -4354,7 +4400,7 @@ app.post(
             categoria: "",
             subcategoria: "",
             fornecedor: vale.nome_pessoa || "",
-            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — vale/adiantamento a descontar do funcionário. Previsão de 30 dias, ajuste se souber a data certa.`,
+            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — vale/adiantamento a descontar do funcionário. Previsão: pagamento do dia 5 do mês seguinte, ajuste se souber a data certa.`,
             foto: vale.foto || "",
             loja_id: vale.loja_id || null,
             forma_pagamento_id: null,
