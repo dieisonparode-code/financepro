@@ -25,12 +25,29 @@ registerSW({
 });
 
 let jaRecarregouPorAtualizacao = false;
+let atualizacaoPendente = false;
+
+// Pedido do usuário (25/08/2026): recarregar na hora que o SW novo assume
+// jogava a pessoa fora do que estava fazendo (tela preta, formulário
+// perdido) toda vez que a gente fazia deploy — e nesse projeto os deploys
+// são o dia inteiro. Agora só recarrega quando a aba NÃO está em uso
+// (usuário trocou de aba/minimizou/bloqueou a tela); enquanto a aba
+// estiver visível, a atualização fica pendente e não interrompe nada.
+function recarregarSeNecessario() {
+  if (jaRecarregouPorAtualizacao || !atualizacaoPendente) return;
+  if (document.hidden) {
+    jaRecarregouPorAtualizacao = true;
+    window.location.reload();
+  }
+}
 
 navigator.serviceWorker?.addEventListener("controllerchange", () => {
   if (jaRecarregouPorAtualizacao) return;
-  jaRecarregouPorAtualizacao = true;
-  window.location.reload();
+  atualizacaoPendente = true;
+  recarregarSeNecessario();
 });
+
+document.addEventListener("visibilitychange", recarregarSeNecessario);
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
