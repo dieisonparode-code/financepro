@@ -3153,17 +3153,13 @@ const pontoDeEquilibrio = useMemo(() => {
       .reduce((soma, item) => soma + Number(item.valor || 0), 0);
   }
 
-  // Subtrai o total selecionado do valor já digitado (ex.: salário
-  // bruto) — deixa o campo Valor com o líquido, pronto pra salvar.
-  function aplicarDescontoPendencias() {
-    const total = totalPendenciasSelecionadas();
-    const valorAtual = paraNumero(formulario.valor) || 0;
-    const novoValor = Math.max(0, valorAtual - total);
-
-    alterarCampo(
-      "valor",
-      novoValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
-    );
+  // Pedido do usuário (25/08/2026): o desconto não é mais um passo manual
+  // (botão "Descontar do valor") — o líquido é calculado ao vivo, só pra
+  // mostrar na tela, e aplicado sozinho na hora de salvar (ver
+  // salvarLancamento). O campo Valor continua sempre com o bruto digitado.
+  function valorLiquidoComPendencias() {
+    const bruto = paraNumero(formulario.valor) || 0;
+    return Math.max(0, bruto - totalPendenciasSelecionadas());
   }
 
   async function salvarLancamento(evento) {
@@ -3177,11 +3173,21 @@ const pontoDeEquilibrio = useMemo(() => {
         .replace(",", ".")
     );
 
-
     if (!valorNumerico || valorNumerico <= 0) {
       alert("Informe um valor válido.");
       return;
     }
+
+    // Pedido do usuário (25/08/2026): pagamento de salário desconta os
+    // vales/consumos marcados automaticamente ao salvar — não precisa
+    // mais clicar num botão "Descontar do valor" separado antes. O campo
+    // Valor continua com o bruto digitado; o que vai pro lançamento
+    // (Saldo) é o líquido.
+    const totalDescontoPendencias =
+      ehPagamentoSalario && tipoLancamento === "despesa"
+        ? totalPendenciasSelecionadas()
+        : 0;
+    const valorFinal = Math.max(0, valorNumerico - totalDescontoPendencias);
 
     if (!formulario.loja_id) {
       alert(
@@ -3225,7 +3231,7 @@ const pontoDeEquilibrio = useMemo(() => {
     const dados = {
       tipo: tipoLancamento,
       descricao: formulario.descricao.trim(),
-      valor: valorNumerico,
+      valor: valorFinal,
       grupo: formulario.grupo,
       categoria: formulario.categoria,
       subcategoria: formulario.subcategoria.trim(),
@@ -6673,31 +6679,17 @@ const pontoDeEquilibrio = useMemo(() => {
                             )
                           )}
 
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              marginTop: 8,
-                            }}
-                          >
+                          <div style={{ marginTop: 8 }}>
                             <strong>
-                              Total selecionado:{" "}
+                              Total a descontar:{" "}
                               {formatarMoeda(totalPendenciasSelecionadas())}
                             </strong>
-
-                            <button
-                              type="button"
-                              className="primary-button"
-                              disabled={pendenciasSelecionadas.length === 0}
-                              onClick={aplicarDescontoPendencias}
-                            >
-                              Descontar do valor
-                            </button>
                           </div>
 
                           <small className="foto-ajuda">
-                            Ao salvar essa despesa, os itens marcados são
+                            O desconto é aplicado sozinho ao salvar — o
+                            campo Valor abaixo mostra o líquido que vai
+                            sair do Saldo. Os itens marcados ficam
                             quitados (não aparecem mais pra descontar de
                             novo).
                           </small>
@@ -6756,9 +6748,30 @@ const pontoDeEquilibrio = useMemo(() => {
 
               <div className="form-row">
                 <label>
-                  <span className="rotulo-campo">
+                  <span
+                    className="rotulo-campo"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 8,
+                    }}
+                  >
                     Valor
                     <span className="campo-obrigatorio">Obrigatório</span>
+                    {ehPagamentoSalario &&
+                      pendenciasSelecionadas.length > 0 && (
+                        <span
+                          style={{
+                            marginLeft: "auto",
+                            fontWeight: 700,
+                            color: "#dc2626",
+                          }}
+                        >
+                          Total a descontar:{" "}
+                          {formatarMoeda(totalPendenciasSelecionadas())}
+                        </span>
+                      )}
                   </span>
                   <input
                     type="text"
@@ -6773,6 +6786,20 @@ const pontoDeEquilibrio = useMemo(() => {
                     placeholder="0,00"
                     required
                   />
+                  {ehPagamentoSalario &&
+                    pendenciasSelecionadas.length > 0 && (
+                      <small
+                        style={{
+                          display: "block",
+                          marginTop: 4,
+                          fontWeight: 700,
+                          color: "#16a34a",
+                        }}
+                      >
+                        Valor líquido a pagar:{" "}
+                        {formatarMoeda(valorLiquidoComPendencias())}
+                      </small>
+                    )}
                 </label>
 
                 <label>
