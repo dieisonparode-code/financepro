@@ -4035,51 +4035,20 @@ const pontoDeEquilibrio = useMemo(() => {
           </div>
         </div>
 
+        {/* Pedido do usuário (24/08/2026): "coloque em ordem alfabética a
+            coluna da esquerda" — reordenado só visualmente (mesmos
+            botões, mesmas condições de permissão, nada de comportamento
+            mudou), pela letra inicial do texto visível (ignorando
+            emoji). "Mais ▾" entra na posição de "M" como um item normal;
+            os itens de DENTRO do submenu também foram alfabetizados
+            entre si, separado do resto. */}
         <nav className="menu">
-          <button
-            className={pagina === "dashboard" ? "active" : ""}
-            onClick={() => setPagina("dashboard")}
-          >
-            Dashboard
-          </button>
-
-          {temPermissaoFinanceira("receitas") && (
+          {temPermissaoFechamento("conciliacao") && (
             <button
-              className={pagina === "receitas" ? "active" : ""}
-              onClick={() => setPagina("receitas")}
+              className={pagina === "conciliacao" ? "active" : ""}
+              onClick={() => setPagina("conciliacao")}
             >
-              Receitas
-            </button>
-          )}
-
-          {temPermissaoFinanceira("despesas") && (
-            <button
-              className={pagina === "despesas" ? "active" : ""}
-              onClick={() => setPagina("despesas")}
-            >
-              Despesas
-            </button>
-          )}
-
-          {temPermissaoFinanceira("fluxo_caixa") && (
-            <button
-              className={pagina === "fluxo" ? "active" : ""}
-              onClick={() => setPagina("fluxo")}
-            >
-              Fluxo de Caixa
-            </button>
-          )}
-
-          {/* Pedido do usuário (20/08/2026): Relatórios agora tem as
-              Retiradas de Sócios dentro (informação sensível) — a tela
-              inteira passou a ser só-admin, não é mais liberada por
-              permissão granular pra gerente/equipe. */}
-          {ehAdministrador && (
-            <button
-              className={pagina === "relatorios" ? "active" : ""}
-              onClick={() => setPagina("relatorios")}
-            >
-              Relatórios
+              Conciliação
             </button>
           )}
 
@@ -4110,21 +4079,28 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
+          <button
+            className={pagina === "dashboard" ? "active" : ""}
+            onClick={() => setPagina("dashboard")}
+          >
+            Dashboard
+          </button>
+
+          {temPermissaoFinanceira("despesas") && (
+            <button
+              className={pagina === "despesas" ? "active" : ""}
+              onClick={() => setPagina("despesas")}
+            >
+              Despesas
+            </button>
+          )}
+
           {temPermissaoFinanceira("contas_pagar") && (
             <button
               className={pagina === "despesas-recorrentes" ? "active" : ""}
               onClick={() => setPagina("despesas-recorrentes")}
             >
               🔁 Despesas Recorrentes
-            </button>
-          )}
-
-          {ehAdministrador && (
-            <button
-              className={pagina === "retiradas-socios" ? "active" : ""}
-              onClick={() => setPagina("retiradas-socios")}
-            >
-              💸 Retiradas de Sócios
             </button>
           )}
 
@@ -4137,30 +4113,12 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
-          {temPermissaoFinanceira("contas_pagar") && (
-            <button
-              className={pagina === "fornecedores" ? "active" : ""}
-              onClick={() => setPagina("fornecedores")}
-            >
-              🏭 Fornecedores
-            </button>
-          )}
-
           {temPermissao("fechamento_caixa") && (
             <button
               className={pagina === "fechamento" ? "active" : ""}
               onClick={() => setPagina("fechamento")}
             >
               Fechamento de Caixa
-            </button>
-          )}
-
-          {temPermissao("notas_fiscais") && (
-            <button
-              className={pagina === "notas-fiscais" ? "active" : ""}
-              onClick={() => setPagina("notas-fiscais")}
-            >
-              Nota Fiscal
             </button>
           )}
 
@@ -4174,21 +4132,21 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
-          {temPermissaoFechamento("vendas_saipos") && (
+          {temPermissaoFinanceira("fluxo_caixa") && (
             <button
-              className={pagina === "vendas-saipos" ? "active" : ""}
-              onClick={() => setPagina("vendas-saipos")}
+              className={pagina === "fluxo" ? "active" : ""}
+              onClick={() => setPagina("fluxo")}
             >
-              Vendas (Saipos)
+              Fluxo de Caixa
             </button>
           )}
 
-          {temPermissaoFechamento("conciliacao") && (
+          {temPermissaoFinanceira("contas_pagar") && (
             <button
-              className={pagina === "conciliacao" ? "active" : ""}
-              onClick={() => setPagina("conciliacao")}
+              className={pagina === "fornecedores" ? "active" : ""}
+              onClick={() => setPagina("fornecedores")}
             >
-              Conciliação
+              🏭 Fornecedores
             </button>
           )}
 
@@ -4207,6 +4165,15 @@ const pontoDeEquilibrio = useMemo(() => {
 
               {menuMaisAberto && (
                 <div style={{ paddingLeft: 16 }}>
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "backup" ? "active" : ""}
+                      onClick={() => setPagina("backup")}
+                    >
+                      💾 Backup
+                    </button>
+                  )}
+
                   {temPermissaoFinanceira("categorias") && (
                     <button
                       className={pagina === "categorias" ? "active" : ""}
@@ -4245,6 +4212,15 @@ const pontoDeEquilibrio = useMemo(() => {
 
                   {ehAdministrador && (
                     <button
+                      className={pagina === "auditoria" ? "active" : ""}
+                      onClick={() => setPagina("auditoria")}
+                    >
+                      Log de Auditoria
+                    </button>
+                  )}
+
+                  {ehAdministrador && (
+                    <button
                       className={pagina === "lojas" ? "active" : ""}
                       onClick={() => setPagina("lojas")}
                     >
@@ -4260,27 +4236,58 @@ const pontoDeEquilibrio = useMemo(() => {
                       Usuários
                     </button>
                   )}
-
-                  {ehAdministrador && (
-                    <button
-                      className={pagina === "auditoria" ? "active" : ""}
-                      onClick={() => setPagina("auditoria")}
-                    >
-                      Log de Auditoria
-                    </button>
-                  )}
-
-                  {ehAdministrador && (
-                    <button
-                      className={pagina === "backup" ? "active" : ""}
-                      onClick={() => setPagina("backup")}
-                    >
-                      💾 Backup
-                    </button>
-                  )}
                 </div>
               )}
             </>
+          )}
+
+          {temPermissao("notas_fiscais") && (
+            <button
+              className={pagina === "notas-fiscais" ? "active" : ""}
+              onClick={() => setPagina("notas-fiscais")}
+            >
+              Nota Fiscal
+            </button>
+          )}
+
+          {temPermissaoFinanceira("receitas") && (
+            <button
+              className={pagina === "receitas" ? "active" : ""}
+              onClick={() => setPagina("receitas")}
+            >
+              Receitas
+            </button>
+          )}
+
+          {/* Pedido do usuário (20/08/2026): Relatórios agora tem as
+              Retiradas de Sócios dentro (informação sensível) — a tela
+              inteira passou a ser só-admin, não é mais liberada por
+              permissão granular pra gerente/equipe. */}
+          {ehAdministrador && (
+            <button
+              className={pagina === "relatorios" ? "active" : ""}
+              onClick={() => setPagina("relatorios")}
+            >
+              Relatórios
+            </button>
+          )}
+
+          {ehAdministrador && (
+            <button
+              className={pagina === "retiradas-socios" ? "active" : ""}
+              onClick={() => setPagina("retiradas-socios")}
+            >
+              💸 Retiradas de Sócios
+            </button>
+          )}
+
+          {temPermissaoFechamento("vendas_saipos") && (
+            <button
+              className={pagina === "vendas-saipos" ? "active" : ""}
+              onClick={() => setPagina("vendas-saipos")}
+            >
+              Vendas (Saipos)
+            </button>
           )}
         </nav>
 
