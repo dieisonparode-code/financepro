@@ -6444,7 +6444,26 @@ const pontoDeEquilibrio = useMemo(() => {
               </button>
             </div>
 
-            <form onSubmit={salvarLancamento}>
+            <form
+              onSubmit={salvarLancamento}
+              // BUG REAL corrigido (25/08/2026): apertar Enter em
+              // QUALQUER campo de texto dentro de um <form> manda ele
+              // sozinho, por padrão do navegador — mesmo sem clicar no
+              // botão Salvar. Usuário reportou que apertando Enter/Esc
+              // tentando "sair" sem salvar, salvava do mesmo jeito.
+              // Bloqueia só o Enter em campo de texto de uma linha só
+              // (não em textarea, onde Enter deve continuar quebrando
+              // linha normal).
+              onKeyDown={(evento) => {
+                if (
+                  evento.key === "Enter" &&
+                  evento.target.tagName !== "TEXTAREA" &&
+                  evento.target.tagName !== "BUTTON"
+                ) {
+                  evento.preventDefault();
+                }
+              }}
+            >
               <label>
                 Fornecedor
                 <input
