@@ -6490,16 +6490,24 @@ const pontoDeEquilibrio = useMemo(() => {
                           {(pendenciasFuncionario.vales || []).map((item) => (
                             <label
                               key={`vale-${item.id}`}
-                              className="toque-alvo"
                               style={{
                                 display: "flex",
-                                alignItems: "center",
+                                flexDirection: "row",
+                                alignItems: "flex-start",
                                 gap: 8,
                                 marginBottom: 6,
+                                cursor: "pointer",
+                                fontWeight: 400,
                               }}
                             >
                               <input
                                 type="checkbox"
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  flexShrink: 0,
+                                  marginTop: 2,
+                                }}
                                 checked={pendenciasSelecionadas.includes(
                                   item.id
                                 )}
@@ -6507,8 +6515,11 @@ const pontoDeEquilibrio = useMemo(() => {
                                   alternarSelecaoPendencia(item.id)
                                 }
                               />
-                              🪙 {item.descricao} — {formatarMoeda(item.valor)}{" "}
-                              ({formatarData(item.data)})
+                              <span>
+                                🪙 {item.descricao} —{" "}
+                                {formatarMoeda(item.valor)} (
+                                {formatarData(item.data)})
+                              </span>
                             </label>
                           ))}
 
@@ -6516,16 +6527,24 @@ const pontoDeEquilibrio = useMemo(() => {
                             (item) => (
                               <label
                                 key={`consumo-${item.id}`}
-                                className="toque-alvo"
                                 style={{
                                   display: "flex",
-                                  alignItems: "center",
+                                  flexDirection: "row",
+                                  alignItems: "flex-start",
                                   gap: 8,
                                   marginBottom: 6,
+                                  cursor: "pointer",
+                                  fontWeight: 400,
                                 }}
                               >
                                 <input
                                   type="checkbox"
+                                  style={{
+                                    width: 18,
+                                    height: 18,
+                                    flexShrink: 0,
+                                    marginTop: 2,
+                                  }}
                                   checked={pendenciasSelecionadas.includes(
                                     item.id
                                   )}
@@ -6533,9 +6552,11 @@ const pontoDeEquilibrio = useMemo(() => {
                                     alternarSelecaoPendencia(item.id)
                                   }
                                 />
-                                🧾 {item.descricao} —{" "}
-                                {formatarMoeda(item.valor)} (
-                                {formatarData(item.data)})
+                                <span>
+                                  🧾 {item.descricao} —{" "}
+                                  {formatarMoeda(item.valor)} (
+                                  {formatarData(item.data)})
+                                </span>
                               </label>
                             )
                           )}
