@@ -880,6 +880,24 @@ export async function excluirUsuario(id) {
   });
 }
 
+// Pedido do usuário (25/08/2026): "ao lançar a folha ter a opção de
+// selecionar o funcionário e clicar em descontar vales e consumos aí
+// puxa o valor a ser descontado".
+export async function buscarPendenciasFuncionario(busca) {
+  return requisicao(
+    `/lancamentos/pendencias-funcionario?busca=${encodeURIComponent(busca)}`,
+    { headers: await cabecalhoAutenticado() }
+  );
+}
+
+export async function quitarLancamentos(ids) {
+  return requisicao("/lancamentos/quitar", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ ids }),
+  });
+}
+
 // Pedido do usuário (25/08/2026): notificação push de verdade (estilo
 // WhatsApp) a cada lançamento novo — usadas pela tela Feed do Dia.
 export async function buscarChavePublicaPush() {

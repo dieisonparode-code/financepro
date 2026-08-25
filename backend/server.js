@@ -783,6 +783,103 @@ app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (re
   }
 });
 
+// Pedido do usuário (25/08/2026): "ao lançar a folha ter a opção de
+// selecionar o funcionário e clicar em descontar vales e consumos aí
+// puxa o valor a ser descontado" — busca tudo que esse funcionário
+// ainda deve pra empresa e que ainda NÃO foi descontado de uma folha
+// (quitado_em vazio): vales (despesa, categoria "Vale") e Vendas a
+// Prazo Funcionário (receita importada da Saipos, fornecedor "A prazo —
+// NOME"). Busca por nome parcial (ex.: "joão" acha "João Silva").
+app.get(
+  "/lancamentos/pendencias-funcionario",
+  verificarPermissao(PERM_LANCAMENTOS),
+  async function (req, res) {
+    try {
+      const busca = (req.query.busca || "").trim();
+
+      if (!busca) {
+        return res.status(400).json({ erro: "Informe o nome do funcionário." });
+      }
+
+      const { data: vales, error: erroVales } = await supabase
+        .from("lancamentos")
+        .select("id, descricao, valor, data, fornecedor, loja_id")
+        .eq("tipo", "despesa")
+        .eq("categoria", "Vale")
+        .is("quitado_em", null)
+        .ilike("fornecedor", `%${busca}%`)
+        .order("data", { ascending: true });
+
+      if (erroVales) throw erroVales;
+
+      const { data: consumos, error: erroConsumos } = await supabase
+        .from("lancamentos")
+        .select("id, descricao, valor, data, fornecedor, loja_id")
+        .eq("tipo", "receita")
+        .is("quitado_em", null)
+        .ilike("fornecedor", `%A prazo%${busca}%`)
+        .order("data", { ascending: true });
+
+      if (erroConsumos) throw erroConsumos;
+
+      res.json({
+        vales: vales || [],
+        consumos: consumos || [],
+      });
+    } catch (erro) {
+      console.error(
+        "Erro ao buscar pendências do funcionário:",
+        erro.message
+      );
+
+      res.status(500).json({
+        erro: "Não foi possível buscar as pendências desse funcionário.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+// Marca vales/consumos como já descontados numa folha de pagamento —
+// não conta de novo no mês seguinte.
+app.post(
+  "/lancamentos/quitar",
+  verificarPermissao(PERM_LANCAMENTOS),
+  async function (req, res) {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+
+      if (!ids.length) {
+        return res.status(400).json({ erro: "Informe pelo menos um lançamento pra quitar." });
+      }
+
+      const { error } = await supabase
+        .from("lancamentos")
+        .update({ quitado_em: new Date().toISOString() })
+        .in("id", ids);
+
+      if (error) throw error;
+
+      registrarAuditoria(
+        req,
+        "quitou (folha de pagamento)",
+        "lancamentos",
+        null,
+        `${ids.length} lançamento(s): ${ids.join(", ")}`
+      );
+
+      res.json({ ok: true, quitados: ids.length });
+    } catch (erro) {
+      console.error("Erro ao quitar lançamentos:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível marcar como quitado.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 // Pedido do usuário (13/08/2026): histórico de preço pago por fornecedor,
 // pra identificar quem tá cobrando caro e quem tá com bom preço. Usa só a
 // tabela `lancamentos` (despesas) — quando uma Conta a Pagar é paga, ela já
@@ -4345,18 +4442,21 @@ app.post(
             : "Vale — funcionário";
 
           // Pedido do usuário (25/08/2026): "vale não vira despesa, porém
-          // desconta do saldo, confere?" — o dinheiro sai do caixa DE
-          // VERDADE na hora que o vale é dado, então o Saldo tem que
-          // refletir isso na hora, não só quando a previsão de devolução
-          // chegar. Cria uma despesa AGORA (desconta o Saldo já) — a
-          // receita logo abaixo, com a data prevista futura, "devolve" o
-          // valor quando o funcionário efetivamente pagar de volta
-          // (desconto do salário). Continua NÃO sendo uma despesa "de
-          // verdade" pra fins de relatório (categoria própria "Vale",
-          // fora de Despesas Diversas/CMV), só existe pra dar baixa
-          // correta no Saldo.
+          // desconta do saldo, confere?" — sim, precisa descontar, porque
+          // o dinheiro sai do caixa DE VERDADE na hora. Cria uma despesa
+          // AGORA (categoria própria "Vale", fora de Despesas Diversas/
+          // CMV pra não distorcer relatório).
+          //
+          // Pedido do usuário (25/08/2026, atualizado): "esse valor não
+          // entrará novamente, será descontado e lançado o valor
+          // repassado das folhas de pagamento" — ou seja, NÃO cria
+          // receita nenhuma automática pra "devolver" esse valor (isso
+          // dobraria a conta). A recuperação de verdade acontece quando
+          // a folha de pagamento daquele funcionário for lançada com o
+          // valor JÁ líquido (descontado o vale) — isso é feito na mão,
+          // fora do sistema, não por uma automação daqui.
           const novaDespesaVale = {
-            id: Date.now() + vale.id - 1,
+            id: Date.now() + vale.id,
             tipo: "despesa",
             descricao: nomeDescricao,
             valor: valorVale,
@@ -4365,15 +4465,18 @@ app.post(
             categoria: "Vale",
             subcategoria: "",
             fornecedor: vale.nome_pessoa || "",
-            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — desconta o Saldo agora porque o dinheiro saiu do caixa de verdade; volta quando a receita prevista (devolução em ${dataPrevistaStr}) contar.`,
+            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — desconta o Saldo agora, porque o dinheiro saiu do caixa de verdade. Descontar da folha de pagamento de ${vale.nome_pessoa || "funcionário"} (previsão: pagamento do dia 5 do mês seguinte) — a folha deve ser lançada já com o valor líquido, sem criar receita nenhuma pra "devolver" esse valor.`,
             foto: vale.foto || "",
             loja_id: vale.loja_id || null,
             status: "aprovado",
           };
 
-          const { error: erroDespesaVale } = await supabase
-            .from("lancamentos")
-            .insert([novaDespesaVale]);
+          const { data: despesaValeCriada, error: erroDespesaVale } =
+            await supabase
+              .from("lancamentos")
+              .insert([novaDespesaVale])
+              .select("id")
+              .single();
 
           if (erroDespesaVale) {
             console.error(
@@ -4389,52 +4492,14 @@ app.post(
             continue;
           }
 
-          const novaReceita = {
-            id: Date.now() + vale.id,
-            tipo: "receita",
-            descricao: nomeDescricao,
-            valor: valorVale,
-            data: dataVale,
-            data_prevista_recebimento: dataPrevistaStr,
-            grupo: "",
-            categoria: "",
-            subcategoria: "",
-            fornecedor: vale.nome_pessoa || "",
-            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — vale/adiantamento a descontar do funcionário. Previsão: pagamento do dia 5 do mês seguinte, ajuste se souber a data certa.`,
-            foto: vale.foto || "",
-            loja_id: vale.loja_id || null,
-            forma_pagamento_id: null,
-            status: "aprovado",
-          };
-
-          const { data: receitaCriada, error: erroReceita } = await supabase
-            .from("lancamentos")
-            .insert([novaReceita])
-            .select("id")
-            .single();
-
-          if (erroReceita) {
-            console.error(
-              "Erro ao criar receita do vale:",
-              erroReceita.message
-            );
-            falhas.push({
-              registro: vale.id,
-              tipo: "vale",
-              valor: valorVale,
-              motivo: erroReceita.message,
-            });
-            continue;
-          }
-
           receitasValeCriadas += 1;
 
           registrarAuditoria(
             req,
             "criou",
             "lancamentos",
-            receitaCriada.id,
-            `Receita automática (vale) do fechamento de caixa #${vale.id}: R$ ${valorVale.toFixed(2)} — ${vale.nome_pessoa || "sem nome"}`
+            despesaValeCriada.id,
+            `Despesa automática (vale, desconta Saldo) do fechamento de caixa #${vale.id}: R$ ${valorVale.toFixed(2)} — ${vale.nome_pessoa || "sem nome"} — descontar na folha de pagamento (previsão ${dataPrevistaStr})`
           );
         }
       } catch (erroVales) {

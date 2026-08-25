@@ -20,6 +20,8 @@ import {
   buscarChavePublicaPush,
   inscreverPush,
   desinscreverPush,
+  buscarPendenciasFuncionario,
+  quitarLancamentos,
   criarLancamento,
   lerNotaFiscal,
   atualizarCustosPorCompra,
@@ -632,6 +634,15 @@ function FinanceApp() {
 
   const [modalAberto, setModalAberto] = useState(false);
   const [tipoLancamento, setTipoLancamento] = useState("receita");
+
+  // Pedido do usuário (25/08/2026): "ao lançar a folha ter a opção de
+  // selecionar o funcionário e clicar em descontar vales e consumos aí
+  // puxa o valor a ser descontado" — puxa vales (despesa) e Vendas a
+  // Prazo Funcionário (receita da Saipos) pendentes daquele nome, marca
+  // como quitados quando a folha for salva de verdade.
+  const [pendenciasFuncionario, setPendenciasFuncionario] = useState(null);
+  const [pendenciasSelecionadas, setPendenciasSelecionadas] = useState([]);
+  const [carregandoPendencias, setCarregandoPendencias] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -2939,6 +2950,8 @@ const pontoDeEquilibrio = useMemo(() => {
     setModalAberto(false);
     setEditandoId(null);
     editandoIdRef.current = null;
+    setPendenciasFuncionario(null);
+    setPendenciasSelecionadas([]);
   }
 
   // Tecla Esc fecha o modal aberto (foto ou formulário de lançamento), sem
@@ -3060,6 +3073,68 @@ const pontoDeEquilibrio = useMemo(() => {
     } finally {
       setLendoNota(false);
     }
+  }
+
+  // Pedido do usuário (25/08/2026): busca vales e Vendas a Prazo
+  // Funcionário pendentes daquele nome (fornecedor já digitado no
+  // formulário) — mostra pra marcar quais entram no desconto da folha.
+  async function buscarPendenciasFuncionarioHandler() {
+    const busca = formulario.fornecedor.trim();
+
+    if (!busca) {
+      alert("Digite o nome do funcionário no campo Fornecedor primeiro.");
+      return;
+    }
+
+    setCarregandoPendencias(true);
+
+    try {
+      const resultado = await buscarPendenciasFuncionario(busca);
+      const todos = [
+        ...(resultado.vales || []),
+        ...(resultado.consumos || []),
+      ];
+      setPendenciasFuncionario(resultado);
+      // Começa com tudo marcado — usuário desmarca o que não quiser
+      // incluir dessa vez.
+      setPendenciasSelecionadas(todos.map((item) => item.id));
+    } catch (erro) {
+      alert(erro.message || "Não foi possível buscar as pendências.");
+    } finally {
+      setCarregandoPendencias(false);
+    }
+  }
+
+  function alternarSelecaoPendencia(id) {
+    setPendenciasSelecionadas((anteriores) =>
+      anteriores.includes(id)
+        ? anteriores.filter((item) => item !== id)
+        : [...anteriores, id]
+    );
+  }
+
+  function totalPendenciasSelecionadas() {
+    if (!pendenciasFuncionario) return 0;
+    const todos = [
+      ...(pendenciasFuncionario.vales || []),
+      ...(pendenciasFuncionario.consumos || []),
+    ];
+    return todos
+      .filter((item) => pendenciasSelecionadas.includes(item.id))
+      .reduce((soma, item) => soma + Number(item.valor || 0), 0);
+  }
+
+  // Subtrai o total selecionado do valor já digitado (ex.: salário
+  // bruto) — deixa o campo Valor com o líquido, pronto pra salvar.
+  function aplicarDescontoPendencias() {
+    const total = totalPendenciasSelecionadas();
+    const valorAtual = paraNumero(formulario.valor) || 0;
+    const novoValor = Math.max(0, valorAtual - total);
+
+    alterarCampo(
+      "valor",
+      novoValor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+    );
   }
 
   async function salvarLancamento(evento) {
@@ -3200,6 +3275,17 @@ const pontoDeEquilibrio = useMemo(() => {
       if (dados.fundo_retirada_id) {
         carregarFundosRetiradas();
       }
+
+      // Pedido do usuário (25/08/2026): ao salvar a folha de pagamento
+      // com vales/consumos marcados, quita eles agora (não aparecem mais
+      // como pendência pra puxar de novo no mês seguinte).
+      if (!editandoId && pendenciasSelecionadas.length > 0) {
+        quitarLancamentos(pendenciasSelecionadas).catch((erroQuitar) =>
+          console.error("Erro ao quitar vales/consumos:", erroQuitar)
+        );
+      }
+      setPendenciasFuncionario(null);
+      setPendenciasSelecionadas([]);
 
       fecharModal();
 
@@ -6370,6 +6456,124 @@ const pontoDeEquilibrio = useMemo(() => {
                   placeholder="Ex.: Distribuidora ABC"
                 />
               </label>
+
+              {/* Pedido do usuário (25/08/2026): "ao lançar a folha ter a
+                  opção de selecionar o funcionário e clicar em
+                  descontar vales e consumos aí puxa o valor a ser
+                  descontado" — usa o nome já digitado em Fornecedor
+                  pra buscar. */}
+              {tipoLancamento === "despesa" && !editandoId && (
+                <div style={{ marginBottom: 14 }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={buscarPendenciasFuncionarioHandler}
+                    disabled={carregandoPendencias}
+                  >
+                    {carregandoPendencias
+                      ? "Buscando..."
+                      : "🔍 Descontar vales e consumos pendentes"}
+                  </button>
+
+                  {pendenciasFuncionario && (
+                    <div
+                      className="panel"
+                      style={{ marginTop: 10, padding: 12 }}
+                    >
+                      {(pendenciasFuncionario.vales || []).length === 0 &&
+                      (pendenciasFuncionario.consumos || []).length === 0 ? (
+                        <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+                          Nenhum vale ou consumo pendente pra esse nome.
+                        </p>
+                      ) : (
+                        <>
+                          {(pendenciasFuncionario.vales || []).map((item) => (
+                            <label
+                              key={`vale-${item.id}`}
+                              className="toque-alvo"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                marginBottom: 6,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={pendenciasSelecionadas.includes(
+                                  item.id
+                                )}
+                                onChange={() =>
+                                  alternarSelecaoPendencia(item.id)
+                                }
+                              />
+                              🪙 {item.descricao} — {formatarMoeda(item.valor)}{" "}
+                              ({formatarData(item.data)})
+                            </label>
+                          ))}
+
+                          {(pendenciasFuncionario.consumos || []).map(
+                            (item) => (
+                              <label
+                                key={`consumo-${item.id}`}
+                                className="toque-alvo"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  marginBottom: 6,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={pendenciasSelecionadas.includes(
+                                    item.id
+                                  )}
+                                  onChange={() =>
+                                    alternarSelecaoPendencia(item.id)
+                                  }
+                                />
+                                🧾 {item.descricao} —{" "}
+                                {formatarMoeda(item.valor)} (
+                                {formatarData(item.data)})
+                              </label>
+                            )
+                          )}
+
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              marginTop: 8,
+                            }}
+                          >
+                            <strong>
+                              Total selecionado:{" "}
+                              {formatarMoeda(totalPendenciasSelecionadas())}
+                            </strong>
+
+                            <button
+                              type="button"
+                              className="primary-button"
+                              disabled={pendenciasSelecionadas.length === 0}
+                              onClick={aplicarDescontoPendencias}
+                            >
+                              Descontar do valor
+                            </button>
+                          </div>
+
+                          <small className="foto-ajuda">
+                            Ao salvar essa despesa, os itens marcados são
+                            quitados (não aparecem mais pra descontar de
+                            novo).
+                          </small>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {tipoLancamento === "despesa" && (
                 <div className="form-row">
