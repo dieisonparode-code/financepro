@@ -3189,6 +3189,28 @@ const pontoDeEquilibrio = useMemo(() => {
         : 0;
     const valorFinal = Math.max(0, valorNumerico - totalDescontoPendencias);
 
+    // Pedido do usuário (25/08/2026): a Conferência do Dia precisa
+    // mostrar, ao ver os detalhes do pagamento de salário, quais
+    // vales/consumos entraram no desconto — guarda esse detalhamento
+    // junto com o próprio lançamento (evita ter que cruzar tabelas
+    // depois pra montar essa tela).
+    const detalheDesconto =
+      ehPagamentoSalario &&
+      tipoLancamento === "despesa" &&
+      pendenciasSelecionadas.length > 0
+        ? [
+            ...(pendenciasFuncionario?.vales || []),
+            ...(pendenciasFuncionario?.consumos || []),
+          ]
+            .filter((item) => pendenciasSelecionadas.includes(item.id))
+            .map((item) => ({
+              id: item.id,
+              descricao: item.descricao,
+              valor: Number(item.valor || 0),
+              data: item.data,
+            }))
+        : [];
+
     if (!formulario.loja_id) {
       alert(
         "Selecione uma loja no seletor do topo da tela antes de salvar."
@@ -3232,6 +3254,7 @@ const pontoDeEquilibrio = useMemo(() => {
       tipo: tipoLancamento,
       descricao: formulario.descricao.trim(),
       valor: valorFinal,
+      detalhe_desconto: detalheDesconto,
       grupo: formulario.grupo,
       categoria: formulario.categoria,
       subcategoria: formulario.subcategoria.trim(),
@@ -6881,7 +6904,125 @@ const pontoDeEquilibrio = useMemo(() => {
               )}
 
 
-              {tipoLancamento === "despesa" && (
+              {/* Pedido do usuário (25/08/2026): pagamento de salário não
+                  precisa do checkbox + select separados — só 3 opções
+                  pra marcar de onde saiu o dinheiro. */}
+              {tipoLancamento === "despesa" && ehPagamentoSalario && (
+                <div
+                  className="form-row"
+                  style={{ flexDirection: "column", gap: 8 }}
+                >
+                  <span className="rotulo-campo">Pago com</span>
+
+                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+                    <label className="permissao-item">
+                      <input
+                        type="radio"
+                        name="origem-pagamento-salario"
+                        checked={
+                          formulario.pago_em_dinheiro &&
+                          !formulario.fundo_retirada_id
+                        }
+                        onChange={() => {
+                          alterarCampo("pago_em_dinheiro", true);
+                          alterarCampo("fundo_retirada_id", "");
+                          alterarCampo("valor_pago_cofre", "");
+                        }}
+                      />
+                      💵 Dinheiro (caixa)
+                    </label>
+
+                    <label className="permissao-item">
+                      <input
+                        type="radio"
+                        name="origem-pagamento-salario"
+                        checked={Boolean(formulario.fundo_retirada_id)}
+                        onChange={() => {
+                          const fundoDaLoja = fundosRetiradas.find(
+                            (fundo) =>
+                              fundo.status === "aberto" &&
+                              String(fundo.loja_id) ===
+                                String(formulario.loja_id)
+                          );
+
+                          if (!fundoDaLoja) {
+                            alert("Nenhum cofre aberto para essa loja.");
+                            return;
+                          }
+
+                          alterarCampo("pago_em_dinheiro", false);
+                          alterarCampo("fundo_retirada_id", fundoDaLoja.id);
+
+                          const disponivel =
+                            Number(fundoDaLoja.valor) -
+                            Number(fundoDaLoja.valor_usado || 0);
+                          const valorDespesa =
+                            paraNumero(formulario.valor) || 0;
+                          const sugestao = Math.min(disponivel, valorDespesa);
+                          alterarCampo(
+                            "valor_pago_cofre",
+                            sugestao.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          );
+                        }}
+                      />
+                      💰 Cofre
+                    </label>
+
+                    <label className="permissao-item">
+                      <input
+                        type="radio"
+                        name="origem-pagamento-salario"
+                        checked={
+                          !formulario.pago_em_dinheiro &&
+                          !formulario.fundo_retirada_id
+                        }
+                        onChange={() => {
+                          alterarCampo("pago_em_dinheiro", false);
+                          alterarCampo("fundo_retirada_id", "");
+                          alterarCampo("valor_pago_cofre", "");
+                        }}
+                      />
+                      📱 Pix
+                    </label>
+                  </div>
+
+                  {formulario.fundo_retirada_id &&
+                    fundosRetiradas.filter(
+                      (fundo) =>
+                        fundo.status === "aberto" &&
+                        String(fundo.loja_id) === String(formulario.loja_id)
+                    ).length > 1 && (
+                      <select
+                        value={formulario.fundo_retirada_id}
+                        onChange={(evento) =>
+                          alterarCampo("fundo_retirada_id", evento.target.value)
+                        }
+                      >
+                        {fundosRetiradas
+                          .filter(
+                            (fundo) =>
+                              fundo.status === "aberto" &&
+                              String(fundo.loja_id) ===
+                                String(formulario.loja_id)
+                          )
+                          .map((fundo) => (
+                            <option key={fundo.id} value={fundo.id}>
+                              {fundo.descricao || "Cofre"} — disponível{" "}
+                              {formatarMoeda(
+                                Number(fundo.valor) -
+                                  Number(fundo.valor_usado || 0)
+                              )}
+                            </option>
+                          ))}
+                      </select>
+                    )}
+                </div>
+              )}
+
+              {tipoLancamento === "despesa" && !ehPagamentoSalario && (
                 <label className="permissao-item">
                   <input
                     type="checkbox"
@@ -6900,6 +7041,7 @@ const pontoDeEquilibrio = useMemo(() => {
                   Saldo geral normal, sem mexer em fundo nenhum. Só
                   aparece se tiver algum fundo aberto pra loja escolhida. */}
               {tipoLancamento === "despesa" &&
+                !ehPagamentoSalario &&
                 fundosRetiradas.some(
                   (fundo) =>
                     fundo.status === "aberto" &&
@@ -7020,353 +7162,429 @@ const pontoDeEquilibrio = useMemo(() => {
                   rows="3"
                 />
               </label>
-              <div className="foto-upload">
-                <span className="foto-upload-title">
-                  📄 Foto da nota
-                </span>
+              {ehPagamentoSalario ? (
+                // Pedido do usuário (25/08/2026): pagamento de salário não
+                // precisa de leitura automática, foto extra nem foto da
+                // mercadoria (com localização) — só um anexo simples do
+                // comprovante.
+                <div className="foto-upload">
+                  <span className="foto-upload-title">
+                    📄 Comprovante do pagamento
+                  </span>
 
-                <input
-                  id="foto-comprovante"
-                  type="file"
-                  accept="image/*"
-                  disabled={processandoFoto}
-                  onChange={async (evento) => {
-                    const arquivo = evento.target.files?.[0];
+                  <input
+                    id="foto-comprovante-salario"
+                    type="file"
+                    accept="image/*"
+                    disabled={processandoFoto}
+                    onChange={async (evento) => {
+                      const arquivo = evento.target.files?.[0];
 
-                    if (!arquivo) return;
+                      if (!arquivo) return;
 
-                    setProcessandoFoto(true);
+                      setProcessandoFoto(true);
 
-                    try {
-                      const fotoComprimida = await comprimirImagem(arquivo);
-                      alterarCampo("foto", fotoComprimida);
-                      await lerNotaAutomaticamente(fotoComprimida);
-                    } catch (erro) {
-                      console.error("Erro ao processar a foto:", erro);
-                      alert(
-                        erro.message ||
-                          "Não foi possível processar a foto selecionada."
-                      );
-                    } finally {
-                      setProcessandoFoto(false);
-                      evento.target.value = "";
-                    }
-                  }}
-                />
-
-                <label
-                  htmlFor="foto-comprovante"
-                  className="foto-button"
-                  style={
-                    processandoFoto || lendoNota
-                      ? { opacity: 0.6, pointerEvents: "none" }
-                      : undefined
-                  }
-                >
-                  {processandoFoto
-                    ? "Processando foto..."
-                    : lendoNota
-                    ? "🤖 Lendo nota automaticamente..."
-                    : "📷📄 Tirar foto ou anexar e ler nota automaticamente"}
-                </label>
-
-                <small className="foto-ajuda">
-                  Escolhe da câmera ou da galeria — sem localização, pode
-                  anexar de qualquer lugar.
-                </small>
-              </div>
-
-              {formulario.foto && (
-                <div className="foto-preview">
-                  <img
-                    src={formulario.foto}
-                    alt="Pré-visualização da nota"
+                      try {
+                        const fotoComprimida = await comprimirImagem(arquivo);
+                        alterarCampo("foto", fotoComprimida);
+                      } catch (erro) {
+                        console.error("Erro ao processar a foto:", erro);
+                        alert(
+                          erro.message ||
+                            "Não foi possível processar a foto selecionada."
+                        );
+                      } finally {
+                        setProcessandoFoto(false);
+                        evento.target.value = "";
+                      }
+                    }}
                   />
 
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => lerNotaAutomaticamente()}
-                    disabled={lendoNota}
-                  >
-                    {lendoNota ? "Lendo nota..." : "🤖 Ler novamente"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => alterarCampo("foto", "")}
-                  >
-                    Remover foto
-                  </button>
-                </div>
-              )}
-
-              <div className="foto-upload">
-                <input
-                  id="tirar-mais-foto"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={adicionandoFotoExtra}
-                  onChange={async (evento) => {
-                    const arquivo = evento.target.files?.[0];
-
-                    if (!arquivo) return;
-
-                    setAdicionandoFotoExtra(true);
-
-                    try {
-                      const fotoComprimida = await comprimirImagem(arquivo);
-
-                      setFormulario((anterior) => ({
-                        ...anterior,
-                        fotos_extra: [
-                          ...(anterior.fotos_extra || []),
-                          fotoComprimida,
-                        ],
-                      }));
-                    } catch (erro) {
-                      console.error("Erro ao anexar foto extra:", erro);
-                      alert(
-                        erro.message || "Não foi possível anexar essa foto."
-                      );
-                    } finally {
-                      setAdicionandoFotoExtra(false);
-                      evento.target.value = "";
+                  <label
+                    htmlFor="foto-comprovante-salario"
+                    className="foto-button"
+                    style={
+                      processandoFoto
+                        ? { opacity: 0.6, pointerEvents: "none" }
+                        : undefined
                     }
-                  }}
-                />
+                  >
+                    {processandoFoto ? "Processando foto..." : "📷 Anexar foto"}
+                  </label>
 
-                <label
-                  htmlFor="tirar-mais-foto"
-                  className="primary-button"
-                  style={
-                    adicionandoFotoExtra
-                      ? { opacity: 0.6, pointerEvents: "none" }
-                      : { display: "inline-block", textAlign: "center" }
-                  }
-                >
-                  {adicionandoFotoExtra ? "Anexando..." : "📷 Tirar mais foto"}
-                </label>
+                  <small className="foto-ajuda">
+                    Escolhe da câmera ou da galeria — sem leitura automática,
+                    sem localização.
+                  </small>
 
-                <input
-                  id="anexar-mais-fotos"
-                  type="file"
-                  accept="image/*"
-                  disabled={adicionandoFotoExtra}
-                  onChange={async (evento) => {
-                    const arquivo = evento.target.files?.[0];
-
-                    if (!arquivo) return;
-
-                    setAdicionandoFotoExtra(true);
-
-                    try {
-                      const fotoComprimida = await comprimirImagem(arquivo);
-
-                      setFormulario((anterior) => ({
-                        ...anterior,
-                        fotos_extra: [
-                          ...(anterior.fotos_extra || []),
-                          fotoComprimida,
-                        ],
-                      }));
-                    } catch (erro) {
-                      console.error("Erro ao anexar foto extra:", erro);
-                      alert(
-                        erro.message || "Não foi possível anexar essa foto."
-                      );
-                    } finally {
-                      setAdicionandoFotoExtra(false);
-                      evento.target.value = "";
-                    }
-                  }}
-                />
-
-                <label
-                  htmlFor="anexar-mais-fotos"
-                  className="primary-button"
-                  style={
-                    adicionandoFotoExtra
-                      ? { opacity: 0.6, pointerEvents: "none" }
-                      : {
-                          display: "inline-block",
-                          textAlign: "center",
-                          marginTop: 8,
-                        }
-                  }
-                >
-                  {adicionandoFotoExtra
-                    ? "Anexando..."
-                    : "📎 Anexar mais foto"}
-                </label>
-
-                <small className="foto-ajuda">
-                  Um botão tira a foto na hora, o outro escolhe da galeria —
-                  pode clicar quantas vezes quiser pra anexar mais de uma.
-                </small>
-              </div>
-
-              {formulario.fotos_extra?.length > 0 && (
-                <div
-                  className="foto-preview"
-                  style={{ display: "flex", flexWrap: "wrap", gap: 10 }}
-                >
-                  {formulario.fotos_extra.map((fotoExtra, indice) => (
-                    <div key={indice} style={{ position: "relative" }}>
+                  {formulario.foto && (
+                    <div className="foto-preview">
                       <img
-                        src={fotoExtra}
-                        alt={`Foto extra ${indice + 1}`}
-                        style={{
-                          width: 90,
-                          height: 90,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                        }}
+                        src={formulario.foto}
+                        alt="Pré-visualização do comprovante"
                       />
 
                       <button
                         type="button"
-                        className="delete-button"
-                        style={{
-                          position: "absolute",
-                          top: -6,
-                          right: -6,
-                          padding: "2px 6px",
-                          fontSize: 12,
-                        }}
+                        className="secondary-button"
+                        onClick={() => alterarCampo("foto", "")}
+                      >
+                        Remover foto
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="foto-upload">
+                    <span className="foto-upload-title">
+                      📄 Foto da nota
+                    </span>
+
+                    <input
+                      id="foto-comprovante"
+                      type="file"
+                      accept="image/*"
+                      disabled={processandoFoto}
+                      onChange={async (evento) => {
+                        const arquivo = evento.target.files?.[0];
+
+                        if (!arquivo) return;
+
+                        setProcessandoFoto(true);
+
+                        try {
+                          const fotoComprimida = await comprimirImagem(arquivo);
+                          alterarCampo("foto", fotoComprimida);
+                          await lerNotaAutomaticamente(fotoComprimida);
+                        } catch (erro) {
+                          console.error("Erro ao processar a foto:", erro);
+                          alert(
+                            erro.message ||
+                              "Não foi possível processar a foto selecionada."
+                          );
+                        } finally {
+                          setProcessandoFoto(false);
+                          evento.target.value = "";
+                        }
+                      }}
+                    />
+
+                    <label
+                      htmlFor="foto-comprovante"
+                      className="foto-button"
+                      style={
+                        processandoFoto || lendoNota
+                          ? { opacity: 0.6, pointerEvents: "none" }
+                          : undefined
+                      }
+                    >
+                      {processandoFoto
+                        ? "Processando foto..."
+                        : lendoNota
+                        ? "🤖 Lendo nota automaticamente..."
+                        : "📷📄 Tirar foto ou anexar e ler nota automaticamente"}
+                    </label>
+
+                    <small className="foto-ajuda">
+                      Escolhe da câmera ou da galeria — sem localização, pode
+                      anexar de qualquer lugar.
+                    </small>
+                  </div>
+
+                  {formulario.foto && (
+                    <div className="foto-preview">
+                      <img
+                        src={formulario.foto}
+                        alt="Pré-visualização da nota"
+                      />
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => lerNotaAutomaticamente()}
+                        disabled={lendoNota}
+                      >
+                        {lendoNota ? "Lendo nota..." : "🤖 Ler novamente"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => alterarCampo("foto", "")}
+                      >
+                        Remover foto
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="foto-upload">
+                    <input
+                      id="tirar-mais-foto"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={adicionandoFotoExtra}
+                      onChange={async (evento) => {
+                        const arquivo = evento.target.files?.[0];
+
+                        if (!arquivo) return;
+
+                        setAdicionandoFotoExtra(true);
+
+                        try {
+                          const fotoComprimida = await comprimirImagem(arquivo);
+
+                          setFormulario((anterior) => ({
+                            ...anterior,
+                            fotos_extra: [
+                              ...(anterior.fotos_extra || []),
+                              fotoComprimida,
+                            ],
+                          }));
+                        } catch (erro) {
+                          console.error("Erro ao anexar foto extra:", erro);
+                          alert(
+                            erro.message || "Não foi possível anexar essa foto."
+                          );
+                        } finally {
+                          setAdicionandoFotoExtra(false);
+                          evento.target.value = "";
+                        }
+                      }}
+                    />
+
+                    <label
+                      htmlFor="tirar-mais-foto"
+                      className="primary-button"
+                      style={
+                        adicionandoFotoExtra
+                          ? { opacity: 0.6, pointerEvents: "none" }
+                          : { display: "inline-block", textAlign: "center" }
+                      }
+                    >
+                      {adicionandoFotoExtra ? "Anexando..." : "📷 Tirar mais foto"}
+                    </label>
+
+                    <input
+                      id="anexar-mais-fotos"
+                      type="file"
+                      accept="image/*"
+                      disabled={adicionandoFotoExtra}
+                      onChange={async (evento) => {
+                        const arquivo = evento.target.files?.[0];
+
+                        if (!arquivo) return;
+
+                        setAdicionandoFotoExtra(true);
+
+                        try {
+                          const fotoComprimida = await comprimirImagem(arquivo);
+
+                          setFormulario((anterior) => ({
+                            ...anterior,
+                            fotos_extra: [
+                              ...(anterior.fotos_extra || []),
+                              fotoComprimida,
+                            ],
+                          }));
+                        } catch (erro) {
+                          console.error("Erro ao anexar foto extra:", erro);
+                          alert(
+                            erro.message || "Não foi possível anexar essa foto."
+                          );
+                        } finally {
+                          setAdicionandoFotoExtra(false);
+                          evento.target.value = "";
+                        }
+                      }}
+                    />
+
+                    <label
+                      htmlFor="anexar-mais-fotos"
+                      className="primary-button"
+                      style={
+                        adicionandoFotoExtra
+                          ? { opacity: 0.6, pointerEvents: "none" }
+                          : {
+                              display: "inline-block",
+                              textAlign: "center",
+                              marginTop: 8,
+                            }
+                      }
+                    >
+                      {adicionandoFotoExtra
+                        ? "Anexando..."
+                        : "📎 Anexar mais foto"}
+                    </label>
+
+                    <small className="foto-ajuda">
+                      Um botão tira a foto na hora, o outro escolhe da galeria —
+                      pode clicar quantas vezes quiser pra anexar mais de uma.
+                    </small>
+                  </div>
+
+                  {formulario.fotos_extra?.length > 0 && (
+                    <div
+                      className="foto-preview"
+                      style={{ display: "flex", flexWrap: "wrap", gap: 10 }}
+                    >
+                      {formulario.fotos_extra.map((fotoExtra, indice) => (
+                        <div key={indice} style={{ position: "relative" }}>
+                          <img
+                            src={fotoExtra}
+                            alt={`Foto extra ${indice + 1}`}
+                            style={{
+                              width: 90,
+                              height: 90,
+                              objectFit: "cover",
+                              borderRadius: 8,
+                            }}
+                          />
+
+                          <button
+                            type="button"
+                            className="delete-button"
+                            style={{
+                              position: "absolute",
+                              top: -6,
+                              right: -6,
+                              padding: "2px 6px",
+                              fontSize: 12,
+                            }}
+                            onClick={() =>
+                              setFormulario((anterior) => ({
+                                ...anterior,
+                                fotos_extra: anterior.fotos_extra.filter(
+                                  (_, i) => i !== indice
+                                ),
+                              }))
+                            }
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="foto-upload">
+                    <span className="foto-upload-title">
+                      📦 Foto da mercadoria
+                    </span>
+
+                    <input
+                      id="foto-mercadoria"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={processandoFotoMercadoria}
+                      onChange={async (evento) => {
+                        const arquivo = evento.target.files?.[0];
+
+                        if (!arquivo) return;
+
+                        setProcessandoFotoMercadoria(true);
+
+                        try {
+                          const [fotoComprimida, localizacao] =
+                            await Promise.all([
+                              comprimirImagem(arquivo),
+                              capturarLocalizacao(),
+                            ]);
+
+                          setFormulario((anterior) => ({
+                            ...anterior,
+                            foto_mercadoria: fotoComprimida,
+                            latitude: localizacao?.latitude ?? null,
+                            longitude: localizacao?.longitude ?? null,
+                            precisao_metros:
+                              localizacao?.precisao_metros ?? null,
+                            capturado_em: localizacao?.capturado_em ?? null,
+                          }));
+
+                          if (!localizacao) {
+                            alert(
+                              "Não foi possível capturar a localização. A foto foi salva mesmo assim, mas sem o registro do local."
+                            );
+                          }
+                        } catch (erro) {
+                          console.error(
+                            "Erro ao processar a foto da mercadoria:",
+                            erro
+                          );
+                          alert(
+                            erro.message ||
+                              "Não foi possível processar a foto selecionada."
+                          );
+                        } finally {
+                          setProcessandoFotoMercadoria(false);
+                          evento.target.value = "";
+                        }
+                      }}
+                    />
+
+                    <label
+                      htmlFor="foto-mercadoria"
+                      className="foto-button"
+                      style={
+                        processandoFotoMercadoria
+                          ? { opacity: 0.6, pointerEvents: "none" }
+                          : undefined
+                      }
+                    >
+                      {processandoFotoMercadoria
+                        ? "Capturando foto e local..."
+                        : "📦 Anexar foto da mercadoria"}
+                    </label>
+
+                    <small className="foto-ajuda">
+                      Registra a localização no momento da foto — precisa
+                      ser tirada na hora, na loja.
+                    </small>
+                  </div>
+
+                  {formulario.foto_mercadoria && (
+                    <div className="foto-preview">
+                      <img
+                        src={formulario.foto_mercadoria}
+                        alt="Pré-visualização da mercadoria"
+                      />
+
+                      {formulario.latitude && formulario.longitude ? (
+                        <span className="foto-geo-status">
+                          📍 Localização capturada
+                          {formulario.precisao_metros
+                            ? ` (±${Math.round(
+                                formulario.precisao_metros
+                              )}m)`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span className="foto-geo-status foto-geo-status-alerta">
+                          ⚠️ Sem localização registrada
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        className="secondary-button"
                         onClick={() =>
                           setFormulario((anterior) => ({
                             ...anterior,
-                            fotos_extra: anterior.fotos_extra.filter(
-                              (_, i) => i !== indice
-                            ),
+                            foto_mercadoria: "",
+                            latitude: null,
+                            longitude: null,
+                            precisao_metros: null,
+                            capturado_em: null,
                           }))
                         }
                       >
-                        ×
+                        Remover foto
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="foto-upload">
-                <span className="foto-upload-title">
-                  📦 Foto da mercadoria
-                </span>
-
-                <input
-                  id="foto-mercadoria"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={processandoFotoMercadoria}
-                  onChange={async (evento) => {
-                    const arquivo = evento.target.files?.[0];
-
-                    if (!arquivo) return;
-
-                    setProcessandoFotoMercadoria(true);
-
-                    try {
-                      const [fotoComprimida, localizacao] =
-                        await Promise.all([
-                          comprimirImagem(arquivo),
-                          capturarLocalizacao(),
-                        ]);
-
-                      setFormulario((anterior) => ({
-                        ...anterior,
-                        foto_mercadoria: fotoComprimida,
-                        latitude: localizacao?.latitude ?? null,
-                        longitude: localizacao?.longitude ?? null,
-                        precisao_metros:
-                          localizacao?.precisao_metros ?? null,
-                        capturado_em: localizacao?.capturado_em ?? null,
-                      }));
-
-                      if (!localizacao) {
-                        alert(
-                          "Não foi possível capturar a localização. A foto foi salva mesmo assim, mas sem o registro do local."
-                        );
-                      }
-                    } catch (erro) {
-                      console.error(
-                        "Erro ao processar a foto da mercadoria:",
-                        erro
-                      );
-                      alert(
-                        erro.message ||
-                          "Não foi possível processar a foto selecionada."
-                      );
-                    } finally {
-                      setProcessandoFotoMercadoria(false);
-                      evento.target.value = "";
-                    }
-                  }}
-                />
-
-                <label
-                  htmlFor="foto-mercadoria"
-                  className="foto-button"
-                  style={
-                    processandoFotoMercadoria
-                      ? { opacity: 0.6, pointerEvents: "none" }
-                      : undefined
-                  }
-                >
-                  {processandoFotoMercadoria
-                    ? "Capturando foto e local..."
-                    : "📦 Anexar foto da mercadoria"}
-                </label>
-
-                <small className="foto-ajuda">
-                  Registra a localização no momento da foto — precisa
-                  ser tirada na hora, na loja.
-                </small>
-              </div>
-
-              {formulario.foto_mercadoria && (
-                <div className="foto-preview">
-                  <img
-                    src={formulario.foto_mercadoria}
-                    alt="Pré-visualização da mercadoria"
-                  />
-
-                  {formulario.latitude && formulario.longitude ? (
-                    <span className="foto-geo-status">
-                      📍 Localização capturada
-                      {formulario.precisao_metros
-                        ? ` (±${Math.round(
-                            formulario.precisao_metros
-                          )}m)`
-                        : ""}
-                    </span>
-                  ) : (
-                    <span className="foto-geo-status foto-geo-status-alerta">
-                      ⚠️ Sem localização registrada
-                    </span>
                   )}
-
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() =>
-                      setFormulario((anterior) => ({
-                        ...anterior,
-                        foto_mercadoria: "",
-                        latitude: null,
-                        longitude: null,
-                        precisao_metros: null,
-                        capturado_em: null,
-                      }))
-                    }
-                  >
-                    Remover foto
-                  </button>
-                </div>
+                </>
               )}
 
               <div className="modal-actions">

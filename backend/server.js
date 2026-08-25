@@ -423,6 +423,12 @@ function prepararLancamento(dados = {}) {
       : null,
     valor_pago_cofre:
       dados.valor_pago_cofre != null ? Number(dados.valor_pago_cofre) : 0,
+    // Pedido do usuário (25/08/2026): pagamento de salário guarda aqui
+    // quais vales/consumos foram descontados, pra Conferência do Dia
+    // mostrar o detalhamento sem precisar cruzar outras tabelas.
+    detalhe_desconto: Array.isArray(dados.detalhe_desconto)
+      ? dados.detalhe_desconto
+      : null,
   };
 }
 

@@ -74,15 +74,22 @@ function CardLancamento({ item, nomeLoja, buscarFoto, aoAmpliar }) {
   }, [item.id, item.tem_foto]);
 
   const ehDespesa = item.tipo === "despesa";
+  const temDetalheDesconto = Array.isArray(item.detalhe_desconto)
+    ? item.detalhe_desconto.length > 0
+    : false;
+  const podeVerDetalhe = Boolean(foto) || temDetalheDesconto;
 
   return (
     <div className="feed-card">
       <button
         type="button"
         className="feed-card-foto"
-        onClick={() => foto && aoAmpliar(foto)}
-        disabled={!foto}
-        title={foto ? "Ver comprovante ampliado" : undefined}
+        onClick={() =>
+          podeVerDetalhe &&
+          aoAmpliar({ foto, detalheDesconto: item.detalhe_desconto })
+        }
+        disabled={!podeVerDetalhe}
+        title={podeVerDetalhe ? "Ver detalhes" : undefined}
       >
         {item.tem_foto ? (
           carregandoFoto ? (
@@ -95,6 +102,11 @@ function CardLancamento({ item, nomeLoja, buscarFoto, aoAmpliar }) {
         ) : (
           <span className="feed-foto-placeholder feed-foto-vazia">
             {ehDespesa ? "💸" : "💰"}
+          </span>
+        )}
+        {temDetalheDesconto && (
+          <span className="feed-foto-badge" title="Tem vales/consumos descontados">
+            🧾
           </span>
         )}
       </button>
@@ -264,11 +276,38 @@ function FeedLancamentos({
           }}
         >
           <div className="modal modal-foto">
-            <img
-              src={fotoAmpliada}
-              alt="Comprovante ampliado"
-              className="foto-modal-imagem"
-            />
+            {fotoAmpliada.foto && (
+              <img
+                src={fotoAmpliada.foto}
+                alt="Comprovante ampliado"
+                className="foto-modal-imagem"
+              />
+            )}
+
+            {Array.isArray(fotoAmpliada.detalheDesconto) &&
+              fotoAmpliada.detalheDesconto.length > 0 && (
+                <div className="feed-detalhe-desconto">
+                  <strong>🧾 Vales/consumos descontados:</strong>
+                  <ul>
+                    {fotoAmpliada.detalheDesconto.map((desconto) => (
+                      <li key={desconto.id}>
+                        {desconto.descricao} — {formatarMoeda(desconto.valor)}
+                        {desconto.data ? ` (${desconto.data.split("-").reverse().join("/")})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                  <span className="feed-detalhe-desconto-total">
+                    Total descontado:{" "}
+                    {formatarMoeda(
+                      fotoAmpliada.detalheDesconto.reduce(
+                        (soma, item) => soma + Number(item.valor || 0),
+                        0
+                      )
+                    )}
+                  </span>
+                </div>
+              )}
+
             <button
               type="button"
               className="secondary-button"

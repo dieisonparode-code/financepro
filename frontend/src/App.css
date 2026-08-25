@@ -1153,6 +1153,7 @@ td {
 }
 
 .feed-card-foto {
+  position: relative;
   display: grid;
   place-items: center;
   width: 56px;
@@ -1164,6 +1165,45 @@ td {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.05);
   cursor: default;
+}
+
+.feed-foto-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: 13px;
+  background: #0753cc;
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 2px #071627;
+}
+
+.feed-detalhe-desconto {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+
+.feed-detalhe-desconto ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.feed-detalhe-desconto li {
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.feed-detalhe-desconto-total {
+  display: block;
+  margin-top: 10px;
+  font-weight: 700;
+  color: #f97316;
 }
 
 .feed-card-foto:disabled {
