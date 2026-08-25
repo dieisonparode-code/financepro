@@ -6727,9 +6727,19 @@ function prepararRetiradaSocio(dados = {}) {
 // sócio, observação) continuam só-admin. Essa rota devolve só o mínimo
 // pra recalcular o Saldo certo (id, valor, data, loja_id), sem vazar
 // quem sacou quanto pra quem não é admin.
+//
+// BUG REAL corrigido (24/08/2026): a permissão exigida era
+// ["saldo", "financeiro"] — só que "financeiro" é uma chave LEGADO, que
+// não existe mais em nenhum perfil de usuário (foi removida a
+// compatibilidade com chaves antigas há um tempo). Na prática, isso
+// bloqueava TODO usuário não-admin (403 silencioso), inclusive quem
+// tinha "fechamento_caixa" — o exato oposto do que o comentário acima
+// descreve como intenção. Mesmo bug em mais 4 rotas de Saldo/Cofre
+// (achado ao investigar um "Retirada pro Cofre" dando "sem permissão"
+// pra um usuário comum). Trocado "financeiro" por "fechamento_caixa".
 app.get(
   "/retiradas-socios/resumo",
-  verificarPermissao(["saldo", "financeiro"]),
+  verificarPermissao(["fechamento_caixa", "saldo"]),
   async function (req, res) {
     try {
       const { data, error } = await supabase
@@ -6845,7 +6855,7 @@ app.delete("/retiradas-socios/:id", verificarAdmin, async function (req, res) {
 // "pago com esse fundo" é que desconta de verdade.
 app.get(
   "/fundo-retiradas-caixa",
-  verificarPermissao(["saldo", "financeiro"]),
+  verificarPermissao(["fechamento_caixa", "saldo"]),
   async function (req, res) {
     try {
       // Não seleciona "foto" aqui — esse endpoint é buscado toda vez que
@@ -6875,7 +6885,7 @@ app.get(
 
 app.post(
   "/fundo-retiradas-caixa",
-  verificarPermissao(["saldo", "financeiro"]),
+  verificarPermissao(["fechamento_caixa", "saldo"]),
   async function (req, res) {
     try {
       const lojaId = Number(req.body.loja_id);
@@ -6947,7 +6957,7 @@ app.post(
 // /fechamentos-caixa/:id/foto, não vem junto na listagem pra não pesar.
 app.get(
   "/fundo-retiradas-caixa/:id/foto",
-  verificarPermissao(["saldo", "financeiro"]),
+  verificarPermissao(["fechamento_caixa", "saldo"]),
   async function (req, res) {
     try {
       const id = Number(req.params.id);
@@ -6984,7 +6994,7 @@ app.get(
 // recalcular o Saldo certo da loja dele.
 app.get(
   "/emprestimos-entre-lojas/resumo",
-  verificarPermissao(["saldo", "financeiro"]),
+  verificarPermissao(["fechamento_caixa", "saldo"]),
   async function (req, res) {
     try {
       const { data, error } = await supabase
