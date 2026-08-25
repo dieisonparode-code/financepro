@@ -297,15 +297,40 @@ function ContasReceber({
   const blocosPorDataIFood = agruparPorData(previstosIFood);
   const datasOrdenadasIFood = Object.keys(blocosPorDataIFood).sort();
 
+  // Pedido do usuário (25/08/2026): "pesquisa única onde abaixo aparecerá
+  // consumo e pode ser em amarelo mesmo vales" — a mesma busca/lista que
+  // já mostrava os consumos (Vendas A prazo) agora também traz os vales
+  // pendentes (despesa categoria "Vale", ainda não quitados), marcados
+  // pra aparecer em amarelo e diferenciar visualmente do consumo.
+  const valesPendentesParaLista = lancamentos
+    .filter(
+      (item) =>
+        item.tipo === "despesa" &&
+        item.categoria === "Vale" &&
+        !item.quitado_em
+    )
+    .map((item) => ({
+      ...item,
+      _ehVale: true,
+      // Vale não tem "data prevista de recebimento" (não gera receita
+      // automática) — usa a própria data do lançamento só pra entrar no
+      // mesmo agrupamento por data da lista.
+      data_prevista_recebimento: item.data,
+    }));
+
+  const itensListaUnificada = [...previstosOutros, ...valesPendentesParaLista];
+
   const buscaReceberLimpa = buscaReceber.trim().toLowerCase();
 
   const previstosFiltrados = buscaReceberLimpa
-    ? previstosOutros.filter((item) =>
-        `${item.descricao || ""} ${nomeFormaPagamento(item.forma_pagamento_id)}`
+    ? itensListaUnificada.filter((item) =>
+        `${item.descricao || ""} ${item.fornecedor || ""} ${
+          item._ehVale ? "vale" : nomeFormaPagamento(item.forma_pagamento_id)
+        }`
           .toLowerCase()
           .includes(buscaReceberLimpa)
       )
-    : previstosOutros;
+    : itensListaUnificada;
 
   const blocosPorData = agruparPorData(previstosFiltrados);
 
@@ -669,75 +694,10 @@ function ContasReceber({
       </article>
 
       <article className="panel categoria-lista-panel">
-        <div className="panel-header">
-          <div>
-            <span className="eyebrow">Previsão</span>
-            <h2>Contas a Receber</h2>
-          </div>
-
-          <strong>{previstosFiltrados.length}</strong>
-        </div>
-
-        <div
-          className="panel"
-          style={{ marginBottom: 14, padding: 14 }}
-        >
-          <span className="eyebrow">👤 Funcionários</span>
-
-          <input
-            type="text"
-            value={buscaFuncionario}
-            onChange={(evento) => setBuscaFuncionario(evento.target.value)}
-            placeholder="🔎 Pesquisar por nome..."
-            style={{ marginTop: 8, marginBottom: 10 }}
-          />
-
-          {funcionariosFiltrados.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
-              {buscaFuncionario.trim()
-                ? "Nenhum funcionário encontrado com esse nome."
-                : "Nenhum funcionário cadastrado."}
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
-              }}
-            >
-              {funcionariosFiltrados.map((funcionario) => {
-                const pendente = pendenciaDoFuncionario(funcionario.nome);
-                return (
-                  <span
-                    key={funcionario.id}
-                    className="badge-status badge-status-pendente"
-                    title={
-                      pendente > 0
-                        ? "Vale/consumo pendente de desconto na folha"
-                        : "Sem vale/consumo pendente"
-                    }
-                  >
-                    {funcionario.nome}
-                    {pendente > 0 ? ` — ${formatarMoeda(pendente)}` : ""}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {criarFuncionario && (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={adicionarFuncionarioNaListaHandler}
-              style={{ marginTop: 10 }}
-            >
-              + Novo funcionário...
-            </button>
-          )}
-        </div>
-
+        {/* Pedido do usuário (25/08/2026): "registrar vale fique no topo
+            à direita, só subir acima de contas a receber" — o formulário
+            de Vale vira o primeiro bloco da coluna, acima até do
+            cabeçalho "Contas a Receber". */}
         {ehAdministrador && registrarVale && (
           <form
             onSubmit={salvarVale}
@@ -808,6 +768,75 @@ function ContasReceber({
           </form>
         )}
 
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">Previsão</span>
+            <h2>Contas a Receber</h2>
+          </div>
+
+          <strong>{previstosFiltrados.length}</strong>
+        </div>
+
+        <div
+          className="panel"
+          style={{ marginBottom: 14, padding: 14 }}
+        >
+          <span className="eyebrow">👤 Funcionários</span>
+
+          <input
+            type="text"
+            value={buscaFuncionario}
+            onChange={(evento) => setBuscaFuncionario(evento.target.value)}
+            placeholder="🔎 Pesquisar por nome..."
+            style={{ marginTop: 8, marginBottom: 10 }}
+          />
+
+          {funcionariosFiltrados.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+              {buscaFuncionario.trim()
+                ? "Nenhum funcionário encontrado com esse nome."
+                : "Nenhum funcionário cadastrado."}
+            </p>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {funcionariosFiltrados.map((funcionario) => {
+                const pendente = pendenciaDoFuncionario(funcionario.nome);
+                return (
+                  <span
+                    key={funcionario.id}
+                    className="badge-status badge-status-pendente"
+                    title={
+                      pendente > 0
+                        ? "Vale/consumo pendente de desconto na folha"
+                        : "Sem vale/consumo pendente"
+                    }
+                  >
+                    {funcionario.nome}
+                    {pendente > 0 ? ` — ${formatarMoeda(pendente)}` : ""}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {criarFuncionario && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={adicionarFuncionarioNaListaHandler}
+              style={{ marginTop: 10 }}
+            >
+              + Novo funcionário...
+            </button>
+          )}
+        </div>
+
         <div style={{ margin: "0 0 12px" }}>
           <input
             type="text"
@@ -817,10 +846,11 @@ function ContasReceber({
           />
         </div>
 
-        {previstosOutros.length === 0 ? (
+        {itensListaUnificada.length === 0 ? (
           <div className="empty-state">
-            Nenhuma previsão de recebimento. Escolha uma forma de pagamento
-            ao lançar uma receita pra aparecer aqui.
+            Nenhuma previsão de recebimento nem vale pendente. Escolha uma
+            forma de pagamento ao lançar uma receita, ou registre um vale,
+            pra aparecer aqui.
           </div>
         ) : datasOrdenadas.length === 0 ? (
           <div className="empty-state">
@@ -846,14 +876,33 @@ function ContasReceber({
 
                 <div className="categorias-lista">
                   {itens.map((item) => (
-                    <div className="categoria-item" key={item.id}>
+                    <div
+                      className="categoria-item"
+                      key={item.id}
+                      style={
+                        item._ehVale
+                          ? {
+                              background: "rgba(234, 179, 8, 0.12)",
+                              borderRadius: 8,
+                              padding: "10px 8px",
+                            }
+                          : undefined
+                      }
+                    >
                       <div className="categoria-identificacao">
-                        <div className="categoria-icone">💰</div>
+                        <div className="categoria-icone">
+                          {item._ehVale ? "🪙" : "💰"}
+                        </div>
 
                         <div>
-                          <strong>{item.descricao}</strong>
+                          <strong style={item._ehVale ? { color: "#eab308" } : undefined}>
+                            {item.descricao || item.fornecedor}
+                          </strong>
                           <div>
-                            {nomeFormaPagamento(item.forma_pagamento_id)} —{" "}
+                            {item._ehVale
+                              ? "Vale"
+                              : nomeFormaPagamento(item.forma_pagamento_id)}{" "}
+                            —{" "}
                             {formatarMoeda(
                               item.valor_liquido_esperado ?? item.valor
                             )}
