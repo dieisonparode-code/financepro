@@ -643,6 +643,11 @@ function FinanceApp() {
   const [pendenciasFuncionario, setPendenciasFuncionario] = useState(null);
   const [pendenciasSelecionadas, setPendenciasSelecionadas] = useState([]);
   const [carregandoPendencias, setCarregandoPendencias] = useState(false);
+  // Pedido do usuário (25/08/2026): checkbox "Pagamento de salários" —
+  // só mostra o botão de descontar vales/consumos quando essa despesa
+  // for marcada como folha de pagamento (evita aparecer sempre, pra
+  // qualquer despesa qualquer).
+  const [ehPagamentoSalario, setEhPagamentoSalario] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [fotoVisualizada, setFotoVisualizada] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -2952,6 +2957,7 @@ const pontoDeEquilibrio = useMemo(() => {
     editandoIdRef.current = null;
     setPendenciasFuncionario(null);
     setPendenciasSelecionadas([]);
+    setEhPagamentoSalario(false);
   }
 
   // Tecla Esc fecha o modal aberto (foto ou formulário de lançamento), sem
@@ -6476,25 +6482,54 @@ const pontoDeEquilibrio = useMemo(() => {
                 />
               </label>
 
-              {/* Pedido do usuário (25/08/2026): "ao lançar a folha ter a
-                  opção de selecionar o funcionário e clicar em
-                  descontar vales e consumos aí puxa o valor a ser
-                  descontado" — usa o nome já digitado em Fornecedor
-                  pra buscar. */}
+              {/* Pedido do usuário (25/08/2026): "ao lado desse botão
+                  descontar tem que ter um quadrado antes dele pra
+                  marcar escrito pagamento de salários" — o botão de
+                  descontar vale/consumo só aparece quando esse
+                  checkbox está marcado, pra não ficar mostrando à toa
+                  em qualquer despesa comum. */}
               {tipoLancamento === "despesa" && !editandoId && (
                 <div style={{ marginBottom: 14 }}>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={buscarPendenciasFuncionarioHandler}
-                    disabled={carregandoPendencias}
+                  <label
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: 10,
+                      fontWeight: 400,
+                      cursor: "pointer",
+                    }}
                   >
-                    {carregandoPendencias
-                      ? "Buscando..."
-                      : "🔍 Descontar vales e consumos pendentes"}
-                  </button>
+                    <input
+                      type="checkbox"
+                      style={{ width: 18, height: 18, flexShrink: 0 }}
+                      checked={ehPagamentoSalario}
+                      onChange={(evento) => {
+                        setEhPagamentoSalario(evento.target.checked);
+                        if (!evento.target.checked) {
+                          setPendenciasFuncionario(null);
+                          setPendenciasSelecionadas([]);
+                        }
+                      }}
+                    />
+                    💰 Pagamento de salários
+                  </label>
 
-                  {pendenciasFuncionario && (
+                  {ehPagamentoSalario && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={buscarPendenciasFuncionarioHandler}
+                      disabled={carregandoPendencias}
+                    >
+                      {carregandoPendencias
+                        ? "Buscando..."
+                        : "🔍 Descontar vales e consumos pendentes"}
+                    </button>
+                  )}
+
+                  {ehPagamentoSalario && pendenciasFuncionario && (
                     <div
                       className="panel"
                       style={{ marginTop: 10, padding: 12 }}
