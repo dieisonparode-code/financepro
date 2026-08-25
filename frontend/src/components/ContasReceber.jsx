@@ -385,6 +385,35 @@ function ContasReceber({
       )
     : funcionarios;
 
+  // Pedido do usuário (25/08/2026): "preciso total por funcionário
+  // também de vales e consumo" — volta o valor quebrado por pessoa nos
+  // badges, agora com o mesmo cálculo corrigido do total geral (só
+  // vale + venda "A prazo" — não mistura com PIX/Cartão/Brendi).
+  function pendenciaDoFuncionario(nome) {
+    const nomeBusca = nome.toLowerCase();
+
+    const vales = lancamentos.filter(
+      (item) =>
+        item.tipo === "despesa" &&
+        item.categoria === "Vale" &&
+        !item.quitado_em &&
+        (item.fornecedor || "").toLowerCase().includes(nomeBusca)
+    );
+
+    const consumos = lancamentos.filter(
+      (item) =>
+        item.tipo === "receita" &&
+        !item.quitado_em &&
+        (item.fornecedor || "").toLowerCase().includes("a prazo") &&
+        (item.fornecedor || "").toLowerCase().includes(nomeBusca)
+    );
+
+    return [...vales, ...consumos].reduce(
+      (soma, item) => soma + Number(item.valor || 0),
+      0
+    );
+  }
+
   async function adicionarFuncionarioNaListaHandler() {
     const nomeNovo = window.prompt("Nome do novo funcionário:");
     if (!nomeNovo || !nomeNovo.trim()) return;
@@ -786,14 +815,23 @@ function ContasReceber({
                 gap: 8,
               }}
             >
-              {funcionariosFiltrados.map((funcionario) => (
-                <span
-                  key={funcionario.id}
-                  className="badge-status badge-status-pendente"
-                >
-                  {funcionario.nome}
-                </span>
-              ))}
+              {funcionariosFiltrados.map((funcionario) => {
+                const pendente = pendenciaDoFuncionario(funcionario.nome);
+                return (
+                  <span
+                    key={funcionario.id}
+                    className="badge-status badge-status-pendente"
+                    title={
+                      pendente > 0
+                        ? "Vale/consumo pendente de desconto na folha"
+                        : "Sem vale/consumo pendente"
+                    }
+                  >
+                    {funcionario.nome}
+                    {pendente > 0 ? ` — ${formatarMoeda(pendente)}` : ""}
+                  </span>
+                );
+              })}
             </div>
           )}
 
