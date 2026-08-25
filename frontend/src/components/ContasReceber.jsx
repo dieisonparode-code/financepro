@@ -794,18 +794,18 @@ function ContasReceber({
         ) : (
           datasOrdenadas.map((data) => {
             const itens = blocosPorData[data];
-            const total = itens.reduce(
-              (soma, item) =>
-                soma + Number(item.valor_liquido_esperado ?? item.valor),
-              0
-            );
 
             return (
               <div className="panel" key={data} style={{ marginBottom: 14 }}>
+                {/* Pedido do usuário (25/08/2026): "os R$500,00 ali
+                    parece estar bugado, não tem necessidade" — esse
+                    total quebrado por data só somava aquele dia (dava
+                    a impressão de estar errado do lado do total
+                    combinado em verde). O total de verdade já aparece
+                    acima. */}
                 <div className="panel-header">
                   <div>
                     <span className="eyebrow">{formatarData(data)}</span>
-                    <h2>{formatarMoeda(total)}</h2>
                   </div>
                 </div>
 
