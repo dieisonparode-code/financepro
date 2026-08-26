@@ -4803,19 +4803,9 @@ const pontoDeEquilibrio = useMemo(() => {
       );
     })()}
 
-  {ehAdministrador &&
-    statusWhatsappBot &&
-    statusWhatsappBot.ligado === false && (
-      <div className="alerta-contas-pagar" style={{ background: "rgba(239, 68, 68, 0.15)" }}>
-        <strong>
-          🔴 Robô do WhatsApp parece desligado
-          {statusWhatsappBot.minutos_desde_ultimo_sinal != null
-            ? ` — sem sinal há ${Math.round(statusWhatsappBot.minutos_desde_ultimo_sinal)} minuto(s)`
-            : " — nunca recebi sinal dele"}
-          . Fotos e PDFs mandados no grupo não estão sendo processados.
-        </strong>
-      </div>
-    )}
+  {/* Pedido do usuário (26/08/2026): "desative a mensagem do robô já que
+      desativamos ele" — WhatsApp foi desligado de propósito, esse aviso
+      não faz mais sentido. */}
 
   {pagina !== "dashboard" && (
     <header className="topbar">
