@@ -430,12 +430,30 @@ function Conciliacao({ lojaId }) {
       const formatarDataCurta = (iso) =>
         new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR");
 
+      // BUG REAL corrigido (26/08/2026): estimar o turno pelo criado_em
+      // do PRÓPRIO registro de caixa_dinheiro_informado dá a data em que
+      // a foto foi LIDA (processada), não a data real do turno — se
+      // alguém só lê a foto de ontem hoje de manhã, o turno "sumia" da
+      // comparação (caso real: fechamento de 25/08 lido só às 10h de
+      // 26/08 não era achado como "turno de ontem"). fechamentos_caixa
+      // já tem a data real lida do papel (data_abertura_turno) — usa
+      // ela quando existir, só cai pro criado_em como estimativa se
+      // ainda não tiver sido lida.
+      function turnoRealDoRegistro(registro) {
+        const fechamento = fechamentosDisponiveis.find(
+          (item) => item.id === registro.fechamento_id
+        );
+        return (
+          fechamento?.data_abertura_turno || hojeDoRegistro(registro.criado_em)
+        );
+      }
+
       const registroDeOntem = [...registros]
         .reverse()
-        .find((item) => hojeDoRegistro(item.criado_em) === ontemReal);
+        .find((item) => turnoRealDoRegistro(item) === ontemReal);
       const registroDeHoje = [...registros]
         .reverse()
-        .find((item) => hojeDoRegistro(item.criado_em) === hojeReal);
+        .find((item) => turnoRealDoRegistro(item) === hojeReal);
 
       if (!registroDeOntem) {
         setAvisoAberturaFechamento({
