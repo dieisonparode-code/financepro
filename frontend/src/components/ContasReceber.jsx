@@ -842,6 +842,16 @@ function ContasReceber({
                               item.valor_liquido_esperado ?? item.valor
                             )}
                           </div>
+                          {/* Pedido do usuário (26/08/2026): o cabeçalho
+                              do grupo é a previsão de recebimento (não
+                              necessariamente quando a compra aconteceu
+                              de verdade) — mostra aqui a data real do
+                              lançamento, item por item. */}
+                          {item.data && (
+                            <div style={{ fontSize: 12, opacity: 0.7 }}>
+                              {formatarData(item.data)}
+                            </div>
+                          )}
                         </div>
                       </div>
 
