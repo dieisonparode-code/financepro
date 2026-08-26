@@ -398,15 +398,28 @@ function criarFormularioInicial(tipo = "receita") {
   };
 }
 // Pedido do usuário (26/08/2026): reajuste de saldo — o valor real em
-// conta nessa data era R$ 74.239,00 (o sistema estava mostrando
+// conta nessa data era R$ 74.239,00 às 12h28 (o sistema estava mostrando
 // R$ 81.792,81). Novo ponto de partida fixo do card "Saldo" do Dashboard —
 // a partir daqui, toda venda recebida soma e toda despesa (incluindo
 // contas a pagar que forem pagas, que já viram despesa lançada) desconta
 // automaticamente, sem precisar mexer em nada. Lançamentos de antes dessa
 // data não entram de novo na conta porque já estão embutidos nesse valor.
+// BUG REAL corrigido no mesmo dia: como o corte é por DATA (não por
+// horário), qualquer despesa lançada depois das 12h28 mas ainda no dia
+// 26/08 ficava de fora pra sempre (nunca soma, porque "data > 26/08"
+// nunca inclui o próprio 26/08) — 3 despesas reais (Facebook R$800,
+// Tibery prime carnes R$883,93, João Carlos Cunha R$126,00, lançadas
+// entre 13h19-13h22) não estavam descontando o Saldo. Corrigido
+// diminuindo o valor inicial nesses R$1.809,93 (74.239,00 − 1.809,93 =
+// 72.429,07), pra essas 3 já ficarem embutidas certinho, sem esperar até
+// amanhã e sem contar 2x. Daqui pra frente, um reajuste de saldo feito no
+// MEIO do dia precisa considerar isso: ou usar a data de ONTEM (deixa
+// tudo de hoje contar fresco, arriscando contar 2x o que já tinha
+// acontecido antes do ajuste), ou subtrair manualmente o que for lançado
+// depois do ajuste no mesmo dia (o que foi feito aqui).
 // (Ajustes anteriores: 24/08/2026 = R$ 79.804,87; 18/08/2026 =
 // R$ 106.430,13 — mantidos aqui só de histórico, não usados mais.)
-const SALDO_INICIAL_VALOR = 74239.0;
+const SALDO_INICIAL_VALOR = 72429.07;
 const SALDO_INICIAL_DATA = "2026-08-26";
 // O valor acima é o saldo real da loja Uberlândia (a única em operação de
 // fato quando esse valor foi informado) — não é um caixa único somado de
