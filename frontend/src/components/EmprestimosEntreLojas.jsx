@@ -17,12 +17,16 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
+// BUG REAL corrigido (26/08/2026): usava o relógio/fuso do próprio
+// aparelho — se estivesse errado, salvava com a data errada sem
+// ninguém perceber. Agora usa sempre o fuso fixo da loja.
 function hojeLocal() {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, "0");
-  const dia = String(agora.getDate()).padStart(2, "0");
-  return `${ano}-${mes}-${dia}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function EmprestimosEntreLojas({

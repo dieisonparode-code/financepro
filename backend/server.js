@@ -761,7 +761,7 @@ setInterval(function () {
 }, 60 * 1000);
 
 const colunasListagem =
-  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao, fundo_retirada_id, valor_pago_cofre, exclusao_solicitada_em, exclusao_solicitada_por";
+  "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao, fundo_retirada_id, valor_pago_cofre, exclusao_solicitada_em, exclusao_solicitada_por, criado_por, quitado_em, detalhe_desconto";
 
 app.get("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (req, res) {
   try {

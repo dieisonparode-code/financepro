@@ -298,17 +298,25 @@ function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
   return raioTerra * c;
 }
 
-// Usa o fuso horário do próprio dispositivo (não força UTC) — toISOString()
-// converte pra UTC, e isso já causou lançamento salvando com a data de
-// amanhã pra quem está num fuso mais atrasado (ex.: Mato Grosso, UTC-4)
-// perto da meia-noite local (que já é o dia seguinte em UTC).
+// BUG REAL corrigido (26/08/2026): essa função usava o relógio/fuso do
+// PRÓPRIO APARELHO (`new Date().getFullYear()/getMonth()/getDate()`) —
+// intencional na época pra evitar um bug diferente (toISOString() força
+// UTC, dava dia errado perto da meia-noite pra quem tá em Mato Grosso,
+// UTC-4). Só que isso deixou o sistema refém do relógio/fuso configurado
+// em CADA aparelho — uma funcionária lançou uma despesa às 12h07 (bem
+// longe de meia-noite) com o celular/notebook num fuso ou data errados,
+// e o lançamento salvou com "ontem" em vez de "hoje", sem ninguém
+// perceber na hora. Agora usa sempre o fuso FIXO da loja (America/Sao_
+// Paulo — Uberlândia é UTC-3, mesmo fuso usado no backend em
+// `dataBrasilia()`), do mesmo jeito que todo o resto do sistema já
+// calcula "hoje" — não depende mais do relógio de quem está lançando.
 function hojeLocal() {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, "0");
-  const dia = String(agora.getDate()).padStart(2, "0");
-
-  return `${ano}-${mes}-${dia}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 // Confirmado com o print real do portal do iFood (10/08/2026): o repasse é
@@ -398,29 +406,25 @@ function criarFormularioInicial(tipo = "receita") {
   };
 }
 // Pedido do usuário (26/08/2026): reajuste de saldo — o valor real em
-// conta nessa data era R$ 74.239,00 às 12h28 (o sistema estava mostrando
-// R$ 81.792,81). Novo ponto de partida fixo do card "Saldo" do Dashboard —
-// a partir daqui, toda venda recebida soma e toda despesa (incluindo
-// contas a pagar que forem pagas, que já viram despesa lançada) desconta
-// automaticamente, sem precisar mexer em nada. Lançamentos de antes dessa
-// data não entram de novo na conta porque já estão embutidos nesse valor.
-// BUG REAL corrigido no mesmo dia: como o corte é por DATA (não por
-// horário), qualquer despesa lançada depois das 12h28 mas ainda no dia
-// 26/08 ficava de fora pra sempre (nunca soma, porque "data > 26/08"
-// nunca inclui o próprio 26/08) — 3 despesas reais (Facebook R$800,
-// Tibery prime carnes R$883,93, João Carlos Cunha R$126,00, lançadas
-// entre 13h19-13h22) não estavam descontando o Saldo. Corrigido
-// diminuindo o valor inicial nesses R$1.809,93 (74.239,00 − 1.809,93 =
-// 72.429,07), pra essas 3 já ficarem embutidas certinho, sem esperar até
-// amanhã e sem contar 2x. Daqui pra frente, um reajuste de saldo feito no
-// MEIO do dia precisa considerar isso: ou usar a data de ONTEM (deixa
-// tudo de hoje contar fresco, arriscando contar 2x o que já tinha
-// acontecido antes do ajuste), ou subtrair manualmente o que for lançado
-// depois do ajuste no mesmo dia (o que foi feito aqui).
+// conta às 12h28 desse dia era R$ 74.239,00 (o sistema estava mostrando
+// R$ 81.792,81). BUG REAL corrigido no mesmo dia (2 rodadas): como o
+// corte é por DATA (não por horário), qualquer despesa lançada DEPOIS
+// das 12h28 mas ainda no dia 26/08 ficava de fora pra sempre ("data >
+// 26/08" nunca inclui o próprio 26/08) — primeiro apareceram 3 despesas
+// assim (Facebook, Tibery, João Carlos Cunha), depois mais uma (Gálatta
+// Food Service). Em vez de continuar remendando uma por uma, a correção
+// definitiva foi trocar a data de corte pra ONTEM (25/08) e recalcular o
+// valor pra "fim do dia 25/08": pegou as despesas reais já lançadas
+// ANTES das 12h28 de hoje (R$4.840,15 — essas já estavam embutidas no
+// R$74.239,00 real informado) e somou de volta (74.239,00 + 4.840,15 =
+// 79.079,15). Resultado: com a data de corte em 25/08, TODA despesa de
+// 26/08 em diante conta sozinha, sem precisar de ajuste manual de novo —
+// o saldo batia R$71.713,70 pelos dois cálculos (remendo manual e essa
+// versão), confirmando que está certo.
 // (Ajustes anteriores: 24/08/2026 = R$ 79.804,87; 18/08/2026 =
 // R$ 106.430,13 — mantidos aqui só de histórico, não usados mais.)
-const SALDO_INICIAL_VALOR = 72429.07;
-const SALDO_INICIAL_DATA = "2026-08-26";
+const SALDO_INICIAL_VALOR = 79079.15;
+const SALDO_INICIAL_DATA = "2026-08-25";
 // O valor acima é o saldo real da loja Uberlândia (a única em operação de
 // fato quando esse valor foi informado) — não é um caixa único somado de
 // todas as lojas. Usado pra o card Saldo não mostrar esse valor quando
