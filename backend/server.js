@@ -8253,6 +8253,19 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
       throw error;
     }
 
+    // BUG REAL corrigido (26/08/2026): o comentário abaixo já dizia que só
+    // devia marcar "feito" se NENHUMA loja tivesse falhado — mas o código
+    // marcava sempre, incondicionalmente, mesmo quando uma loja falhava
+    // (o catch de dentro do loop capturava o erro só pra logar, sem
+    // avisar o código depois do loop). Resultado real (madrugada de
+    // 26/08): Uberlândia falhou 1x (erro transitório, parece coincidir
+    // com um redeploy) e o dia inteiro ficou marcado como "importado",
+    // sem tentar de novo — mesmo o setInterval rodando a cada minuto o
+    // dia inteiro. Agora só marca como "feito" se TODAS as lojas
+    // importaram sem erro; se alguma falhou, tenta de novo no próximo
+    // minuto, como sempre foi a intenção.
+    let houveFalha = false;
+
     for (const loja of lojasComSaipos || []) {
       try {
         const resultado = await importarVendasSaiposComoLancamentos(
@@ -8275,6 +8288,7 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
           },
         ]);
       } catch (erroLoja) {
+        houveFalha = true;
         console.error(
           `Erro na importação automática da Saipos pra loja "${loja.nome}":`,
           erroLoja.message
@@ -8286,11 +8300,12 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
       }
     }
 
-    // Só marca como "feito" depois de terminar sem erro no laço acima —
-    // se uma loja específica falhou, ela já foi logada e vai ficar sem
-    // esse dia importado (precisa do botão manual), mas isso não trava a
-    // tentativa de amanhã.
-    ultimaDataImportadaAutomaticamente = dataAlvo;
+    // Só marca como "feito" se NENHUMA loja falhou — se alguma falhou,
+    // deixa sem marcar, pra tentar de novo (todas as lojas, não só a que
+    // falhou) no próximo minuto.
+    if (!houveFalha) {
+      ultimaDataImportadaAutomaticamente = dataAlvo;
+    }
   } catch (erro) {
     console.error(
       "Erro na importação automática diária da Saipos — vai tentar de novo no próximo minuto:",
