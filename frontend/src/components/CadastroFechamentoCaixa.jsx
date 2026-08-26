@@ -469,9 +469,9 @@ function CadastroFechamentoCaixa({
       // onde saiu o dinheiro do vale ("dinheiro_caixa" desconta o
       // dinheiro esperado no caixa igual a Diária Boy/Cozinha paga em
       // dinheiro; "pix" desconta só o Saldo geral, comportamento padrão
-      // de sempre; "cofre" desconta do Fundo de Retirada escolhido).
+      // de sempre; "cofre" desconta automático do Fundo de Retirada com
+      // saldo — não precisa escolher qual, é somativo).
       origemPagamento: "pix",
-      fundoRetiradaId: "",
     });
     setEnviandoTipo(null);
 
@@ -516,6 +516,41 @@ function CadastroFechamentoCaixa({
     return paraNumero(texto);
   }
 
+  // Pedido do usuário (26/08/2026): "essa parte tem que ser uma só,
+  // somativa — ao selecionar cofre acima essa não precisa selecionar"
+  // — o Cofre é UM saldo só pro usuário, não uma lista de retiradas pra
+  // escolher. Some tudo que está aberto pra essa loja; o registro
+  // específico que leva o desconto é escolhido sozinho (o que sobra
+  // menos, pra não deixar troco espalhado em vários).
+  const fundosCofreLoja = fundosRetiradas.filter(
+    (fundo) =>
+      fundo.status === "aberto" &&
+      fundo.conta_para_cofre !== false &&
+      String(fundo.loja_id) === String(lojaId)
+  );
+
+  const disponivelDoFundo = (fundo) =>
+    Number(fundo.valor || 0) - Number(fundo.valor_usado || 0);
+
+  const fundosCofreDisponivelTotal = fundosCofreLoja.reduce(
+    (soma, fundo) => soma + disponivelDoFundo(fundo),
+    0
+  );
+
+  function escolherFundoCofreAutomatico(valorNecessario) {
+    const suficientes = fundosCofreLoja
+      .filter((fundo) => disponivelDoFundo(fundo) >= valorNecessario - 0.01)
+      .sort((a, b) => disponivelDoFundo(a) - disponivelDoFundo(b));
+
+    if (suficientes.length > 0) return suficientes[0];
+
+    const maiores = [...fundosCofreLoja].sort(
+      (a, b) => disponivelDoFundo(b) - disponivelDoFundo(a)
+    );
+
+    return maiores[0] || null;
+  }
+
   async function confirmarRascunhoDiaria() {
     if (!rascunhoDiaria) return;
 
@@ -535,17 +570,15 @@ function CadastroFechamentoCaixa({
       return;
     }
 
-    if (
-      ehVale &&
-      rascunhoDiaria.origemPagamento === "cofre" &&
-      !rascunhoDiaria.fundoRetiradaId
-    ) {
-      alert("Escolha de qual Cofre saiu o dinheiro do vale.");
-      setRascunhoDiaria((anterior) =>
-        anterior ? { ...anterior, salvando: false } : anterior
-      );
-      return;
-    }
+    // Pedido do usuário (26/08/2026): "essa parte tem que ser uma só,
+    // somativa" — não pergunta qual retirada específica, escolhe
+    // sozinho de qual registro sai (o Cofre é UM saldo só na visão do
+    // usuário). Se não tiver nada aberto, cai pro Saldo geral igual já
+    // acontece em Despesas (não bloqueia o vale por causa disso).
+    const fundoCofreEscolhido =
+      ehVale && rascunhoDiaria.origemPagamento === "cofre"
+        ? escolherFundoCofreAutomatico(valorNumerico || 0)
+        : null;
 
     try {
       if (ehRetiradaCofre) {
@@ -592,10 +625,7 @@ function CadastroFechamentoCaixa({
         // vale — só faz sentido pro tipo "vale", os outros tipos não
         // mandam nada (backend usa o padrão de sempre nesse caso).
         origem_pagamento: ehVale ? rascunhoDiaria.origemPagamento : null,
-        fundo_retirada_id:
-          ehVale && rascunhoDiaria.origemPagamento === "cofre"
-            ? rascunhoDiaria.fundoRetiradaId
-            : null,
+        fundo_retirada_id: fundoCofreEscolhido?.id || null,
       });
 
       setRascunhoDiaria(null);
@@ -1247,7 +1277,6 @@ function CadastroFechamentoCaixa({
                       setRascunhoDiaria((anterior) => ({
                         ...anterior,
                         origemPagamento: "dinheiro_caixa",
-                        fundoRetiradaId: "",
                       }))
                     }
                   />
@@ -1264,7 +1293,6 @@ function CadastroFechamentoCaixa({
                       setRascunhoDiaria((anterior) => ({
                         ...anterior,
                         origemPagamento: "pix",
-                        fundoRetiradaId: "",
                       }))
                     }
                   />
@@ -1289,38 +1317,19 @@ function CadastroFechamentoCaixa({
               </div>
             )}
 
+            {/* Pedido do usuário (26/08/2026): "essa parte tem que ser
+                uma só, somativa — ao selecionar cofre acima essa não
+                precisa selecionar" — o Cofre é UM saldo só pro usuário,
+                não uma lista de retiradas pra escolher. Mostra só o
+                total; qual registro específico leva o desconto é
+                escolhido sozinho ao confirmar. */}
             {rascunhoDiaria.tipo === "vale" &&
               rascunhoDiaria.origemPagamento === "cofre" && (
-                <label>
-                  Qual Cofre?
-                  <select
-                    value={rascunhoDiaria.fundoRetiradaId}
-                    disabled={rascunhoDiaria.salvando}
-                    onChange={(evento) =>
-                      setRascunhoDiaria((anterior) => ({
-                        ...anterior,
-                        fundoRetiradaId: evento.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Selecione...</option>
-                    {fundosRetiradas
-                      .filter(
-                        (fundo) =>
-                          fundo.status === "aberto" &&
-                          fundo.conta_para_cofre !== false &&
-                          String(fundo.loja_id) === String(lojaId)
-                      )
-                      .map((fundo) => (
-                        <option key={fundo.id} value={fundo.id}>
-                          {fundo.descricao || "Cofre"} — disponível{" "}
-                          {formatarMoeda(
-                            Number(fundo.valor) - Number(fundo.valor_usado || 0)
-                          )}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <small className="foto-ajuda">
+                  {fundosCofreDisponivelTotal > 0
+                    ? `🔒 Cofre disponível: ${formatarMoeda(fundosCofreDisponivelTotal)} — desconta sozinho de lá.`
+                    : "⚠️ Nenhum saldo no Cofre agora — vai descontar do Saldo geral."}
+                </small>
               )}
 
             <label>

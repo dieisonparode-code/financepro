@@ -95,7 +95,44 @@ function ContasReceber({
   // ideia já usada no Vale do Fechamento de Caixa, agora também aqui
   // (que é onde o usuário realmente registra vale no dia a dia).
   const [valeOrigemPagamento, setValeOrigemPagamento] = useState("pix");
-  const [valeFundoRetiradaId, setValeFundoRetiradaId] = useState("");
+
+  // Pedido do usuário (26/08/2026): "essa parte tem que ser uma só,
+  // somativa — ao selecionar cofre acima essa não precisa selecionar,
+  // ali circulado é só histórico de entrada e saída" — o Cofre é UM
+  // saldo só pro usuário, não uma lista de retiradas pra escolher.
+  // Some tudo que está aberto pra essa loja e mostra só o total; o
+  // registro específico que vai levar o desconto é escolhido sozinho
+  // (o que sobra menos, pra não deixar troco espalhado em vários).
+  const fundosCofreLoja = useMemo(() => {
+    return fundosRetiradas.filter(
+      (fundo) =>
+        fundo.status === "aberto" &&
+        fundo.conta_para_cofre !== false &&
+        String(fundo.loja_id) === String(lojaId)
+    );
+  }, [fundosRetiradas, lojaId]);
+
+  const disponivelDoFundo = (fundo) =>
+    Number(fundo.valor || 0) - Number(fundo.valor_usado || 0);
+
+  const totalCofreDisponivel = fundosCofreLoja.reduce(
+    (soma, fundo) => soma + disponivelDoFundo(fundo),
+    0
+  );
+
+  function escolherFundoCofreAutomatico(valorNecessario) {
+    const suficientes = fundosCofreLoja
+      .filter((fundo) => disponivelDoFundo(fundo) >= valorNecessario - 0.01)
+      .sort((a, b) => disponivelDoFundo(a) - disponivelDoFundo(b));
+
+    if (suficientes.length > 0) return suficientes[0];
+
+    const maiores = [...fundosCofreLoja].sort(
+      (a, b) => disponivelDoFundo(b) - disponivelDoFundo(a)
+    );
+
+    return maiores[0] || null;
+  }
 
   // Pedido do usuário (25/08/2026): "registrar vale também tem que puxar
   // nome lá do cadastro como feito na situação de pagamento de salário"
@@ -132,10 +169,15 @@ function ContasReceber({
       return;
     }
 
-    if (valeOrigemPagamento === "cofre" && !valeFundoRetiradaId) {
-      alert("Escolha de qual Cofre saiu o dinheiro do vale.");
-      return;
-    }
+    // Pedido do usuário (26/08/2026): "essa parte tem que ser uma só,
+    // somativa" — não pergunta qual retirada específica, escolhe
+    // sozinho de qual registro sai (o Cofre é UM saldo só na visão do
+    // usuário). Se não tiver nada aberto, cai pro Saldo geral igual já
+    // acontece em Despesas (não bloqueia o vale por causa disso).
+    const fundoEscolhido =
+      valeOrigemPagamento === "cofre"
+        ? escolherFundoCofreAutomatico(valorNumerico)
+        : null;
 
     setSalvandoVale(true);
 
@@ -145,13 +187,12 @@ function ContasReceber({
         valor: valorNumerico,
         dataPrevista: valeData,
         origemPagamento: valeOrigemPagamento,
-        fundoRetiradaId: valeFundoRetiradaId,
+        fundoRetiradaId: fundoEscolhido?.id || null,
       });
 
       setValeNome("");
       setValeValor("");
       setValeOrigemPagamento("pix");
-      setValeFundoRetiradaId("");
     } catch (erro) {
       alert(erro.message || "Não foi possível registrar o vale.");
     } finally {
@@ -752,10 +793,7 @@ function ContasReceber({
                   name="origem-pagamento-vale-receber"
                   checked={valeOrigemPagamento === "dinheiro_caixa"}
                   disabled={salvandoVale}
-                  onChange={() => {
-                    setValeOrigemPagamento("dinheiro_caixa");
-                    setValeFundoRetiradaId("");
-                  }}
+                  onChange={() => setValeOrigemPagamento("dinheiro_caixa")}
                 />
                 💵 Dinheiro do caixa
               </label>
@@ -766,10 +804,7 @@ function ContasReceber({
                   name="origem-pagamento-vale-receber"
                   checked={valeOrigemPagamento === "pix"}
                   disabled={salvandoVale}
-                  onChange={() => {
-                    setValeOrigemPagamento("pix");
-                    setValeFundoRetiradaId("");
-                  }}
+                  onChange={() => setValeOrigemPagamento("pix")}
                 />
                 💳 Pix (conta)
               </label>
@@ -787,31 +822,11 @@ function ContasReceber({
             </div>
 
             {valeOrigemPagamento === "cofre" && (
-              <label>
-                Qual Cofre?
-                <select
-                  value={valeFundoRetiradaId}
-                  disabled={salvandoVale}
-                  onChange={(evento) => setValeFundoRetiradaId(evento.target.value)}
-                >
-                  <option value="">Selecione...</option>
-                  {fundosRetiradas
-                    .filter(
-                      (fundo) =>
-                        fundo.status === "aberto" &&
-                        fundo.conta_para_cofre !== false &&
-                        String(fundo.loja_id) === String(lojaId)
-                    )
-                    .map((fundo) => (
-                      <option key={fundo.id} value={fundo.id}>
-                        {fundo.descricao || "Cofre"} — disponível{" "}
-                        {formatarMoeda(
-                          Number(fundo.valor) - Number(fundo.valor_usado || 0)
-                        )}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <small className="foto-ajuda">
+                {totalCofreDisponivel > 0
+                  ? `🔒 Cofre disponível: ${formatarMoeda(totalCofreDisponivel)} — desconta sozinho de lá.`
+                  : "⚠️ Nenhum saldo no Cofre agora — vai descontar do Saldo geral."}
+              </small>
             )}
 
             <label>
