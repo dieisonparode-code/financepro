@@ -50,6 +50,7 @@ function ContasReceber({
   criarFuncionario,
   fundosRetiradas = [],
   lojaId = null,
+  caixaFechadoHoje = false,
 }) {
   const [nome, setNome] = useState("");
   const [operadora, setOperadora] = useState("");
@@ -167,6 +168,17 @@ function ContasReceber({
 
     if (!valeData) {
       alert("Escolha a data prevista de devolução.");
+      return;
+    }
+
+    // Pedido do usuário (26/08/2026): "bloqueie opção dinheiro do caixa
+    // quando o caixa estiver fechado" — trava aqui também, não só
+    // desabilitando o rádio (cobre o caso de já estar marcado quando o
+    // Fechamento foi finalizado no meio do preenchimento).
+    if (valeOrigemPagamento === "dinheiro_caixa" && caixaFechadoHoje) {
+      alert(
+        'O caixa de hoje já foi fechado (Fechamento finalizado) — "Dinheiro do caixa" não pode mais ser usado. Escolha Pix ou Cofre.'
+      );
       return;
     }
 
@@ -809,12 +821,18 @@ function ContasReceber({
                 de um lugar diferente (dinheiro do caixa / Saldo geral
                 via Pix / Cofre), com rastro no Log de Auditoria. */}
             <div className="permissoes-grid" style={{ marginTop: "8px", marginBottom: "8px" }}>
-              <label className="permissao-item" style={{ marginBottom: "6px" }}>
+              <label
+                className="permissao-item"
+                style={{
+                  marginBottom: "6px",
+                  opacity: caixaFechadoHoje ? 0.5 : 1,
+                }}
+              >
                 <input
                   type="radio"
                   name="origem-pagamento-vale-receber"
                   checked={valeOrigemPagamento === "dinheiro_caixa"}
-                  disabled={salvandoVale}
+                  disabled={salvandoVale || caixaFechadoHoje}
                   onChange={() => setValeOrigemPagamento("dinheiro_caixa")}
                 />
                 💵 Dinheiro do caixa
@@ -842,6 +860,13 @@ function ContasReceber({
                 🔒 Cofre
               </label>
             </div>
+
+            {caixaFechadoHoje && (
+              <small className="foto-ajuda">
+                🔒 Caixa já fechado hoje (Fechamento finalizado) —
+                "Dinheiro do caixa" bloqueado até abrir de novo amanhã.
+              </small>
+            )}
 
             {valeOrigemPagamento === "cofre" && (
               <small className="foto-ajuda">

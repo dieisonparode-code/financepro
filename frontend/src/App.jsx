@@ -320,6 +320,36 @@ function hojeLocal() {
   }).format(new Date());
 }
 
+// Mesma ideia do hojeLocal(), mas pra converter um timestamp qualquer
+// (ex: criado_em de um registro) pra "YYYY-MM-DD" no fuso fixo da loja.
+function dataLocalDe(dataIso) {
+  if (!dataIso) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(dataIso));
+}
+
+// Pedido do usuário (26/08/2026): "bloqueie opção dinheiro do caixa
+// quando o caixa estiver fechado, somente consiga finalizar quando
+// caixa estiver aberto" — o usuário escolheu: só considera "fechado"
+// depois que alguém clica em "Finalizar Fechamento" (fecha tudo desde
+// sempre/desde a última vez). Reabre sozinho no dia seguinte (não
+// existe um botão de "abrir caixa" separado — o novo dia já é aberto).
+function caixaEstaFechadoHoje(finalizacoes) {
+  if (!Array.isArray(finalizacoes) || finalizacoes.length === 0) return false;
+
+  // Backend já devolve ordenado desc por criado_em, e a lista em tela
+  // sempre insere a nova finalização no início — o [0] é sempre a mais
+  // recente.
+  const maisRecente = finalizacoes[0];
+  if (!maisRecente?.criado_em) return false;
+
+  return dataLocalDe(maisRecente.criado_em) === hojeLocal();
+}
+
 // Confirmado com o print real do portal do iFood (10/08/2026): o repasse é
 // por SEMANA fechada (segunda a domingo), pago sempre na quarta da semana
 // SEGUINTE — não é "a próxima quarta depois da venda". Uma venda de
@@ -3311,6 +3341,21 @@ const pontoDeEquilibrio = useMemo(() => {
       return;
     }
 
+    // Pedido do usuário (26/08/2026): "bloqueie opção dinheiro do caixa
+    // quando o caixa estiver fechado" — trava também aqui (não só
+    // desabilitando o rádio), cobre o caso raro de já estar marcado
+    // quando o Fechamento foi finalizado no meio do preenchimento.
+    if (
+      tipoLancamento === "despesa" &&
+      formulario.pago_em_dinheiro &&
+      caixaEstaFechadoHoje(finalizacoesFechamentoCaixa)
+    ) {
+      alert(
+        "O caixa de hoje já foi fechado (Fechamento finalizado) — \"Dinheiro do caixa\" não pode mais ser usado. Escolha Pix ou Cofre."
+      );
+      return;
+    }
+
     // Pedido do usuário (25/08/2026): pagamento de salário desconta os
     // vales/consumos marcados automaticamente ao salvar — não precisa
     // mais clicar num botão "Descontar do valor" separado antes. O campo
@@ -5584,6 +5629,7 @@ const pontoDeEquilibrio = useMemo(() => {
                 ? lojaDashboard
                 : null
             }
+            caixaFechadoHoje={caixaEstaFechadoHoje(finalizacoesFechamentoCaixa)}
           />
         )}
 
@@ -7104,7 +7150,14 @@ const pontoDeEquilibrio = useMemo(() => {
                   <span className="rotulo-campo">Pago com</span>
 
                   <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-                    <label className="permissao-item">
+                    <label
+                      className="permissao-item"
+                      style={
+                        caixaEstaFechadoHoje(finalizacoesFechamentoCaixa)
+                          ? { opacity: 0.5 }
+                          : undefined
+                      }
+                    >
                       <input
                         type="radio"
                         name="origem-pagamento-salario"
@@ -7112,6 +7165,7 @@ const pontoDeEquilibrio = useMemo(() => {
                           formulario.pago_em_dinheiro &&
                           !formulario.fundo_retirada_id
                         }
+                        disabled={caixaEstaFechadoHoje(finalizacoesFechamentoCaixa)}
                         onChange={() => {
                           alterarCampo("pago_em_dinheiro", true);
                           alterarCampo("fundo_retirada_id", "");
@@ -7211,43 +7265,75 @@ const pontoDeEquilibrio = useMemo(() => {
                 </div>
               )}
 
+              {/* Pedido do usuário (26/08/2026): "aqui deve vir descrito
+                  de onde veio o pagamento pix caixa cofre" — unifica os
+                  2 checkboxes independentes (Pago em dinheiro + Pago
+                  com Cofre) num único grupo de 3 opções explícitas,
+                  igual já é feito no Pagamento de Salário e no Vale.
+                  "bloqueie opção dinheiro do caixa quando o caixa
+                  estiver fechado" — só bloqueia depois que alguém
+                  clica em Finalizar Fechamento (reabre sozinho no dia
+                  seguinte). */}
               {tipoLancamento === "despesa" && !ehPagamentoSalario && (
-                <label className="permissao-item">
-                  <input
-                    type="checkbox"
-                    checked={formulario.pago_em_dinheiro}
-                    onChange={(evento) =>
-                      alterarCampo("pago_em_dinheiro", evento.target.checked)
-                    }
-                  />
-                  💵 Pago em dinheiro (saiu do caixa)
-                </label>
-              )}
+                <div
+                  className="form-row"
+                  style={{ flexDirection: "column", gap: 8 }}
+                >
+                  <span className="rotulo-campo">Pago com</span>
 
-              {/* Pedido do usuário (22/08/2026): despesa paga com dinheiro
-                  de um Fundo de Retirada (retirada genérica de caixa
-                  ainda não gasta) — se não marcar nada aqui, desconta do
-                  Saldo geral normal, sem mexer em fundo nenhum. Só
-                  aparece se tiver algum fundo aberto pra loja escolhida.
-                  Pedido do usuário (26/08/2026): "essa parte tem que ser
-                  uma só, somativa" — o Cofre é UM saldo só, não uma
-                  lista de retiradas pra escolher (mesma simplificação
-                  já feita no Vale) — checkbox simples em vez de select,
-                  qual retirada específica leva o desconto é escolhido
-                  sozinho na hora de salvar. */}
-              {tipoLancamento === "despesa" &&
-                !ehPagamentoSalario &&
-                fundosCofreDaLoja(formulario.loja_id).length > 0 && (
-                  <div className="form-row" style={{ flexDirection: "column" }}>
+                  <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+                    <label
+                      className="permissao-item"
+                      style={
+                        caixaEstaFechadoHoje(finalizacoesFechamentoCaixa)
+                          ? { opacity: 0.5 }
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="origem-pagamento-despesa"
+                        checked={
+                          formulario.pago_em_dinheiro &&
+                          !formulario.fundo_retirada_id
+                        }
+                        disabled={caixaEstaFechadoHoje(finalizacoesFechamentoCaixa)}
+                        onChange={() => {
+                          alterarCampo("pago_em_dinheiro", true);
+                          alterarCampo("fundo_retirada_id", "");
+                          alterarCampo("valor_pago_cofre", "");
+                        }}
+                      />
+                      💵 Dinheiro do caixa
+                    </label>
+
                     <label className="permissao-item">
                       <input
-                        type="checkbox"
-                        checked={Boolean(formulario.fundo_retirada_id)}
-                        onChange={(evento) => {
-                          const marcado = evento.target.checked;
-                          alterarCampo("fundo_retirada_id", marcado ? "auto" : "");
+                        type="radio"
+                        name="origem-pagamento-despesa"
+                        checked={
+                          !formulario.pago_em_dinheiro &&
+                          !formulario.fundo_retirada_id
+                        }
+                        onChange={() => {
+                          alterarCampo("pago_em_dinheiro", false);
+                          alterarCampo("fundo_retirada_id", "");
+                          alterarCampo("valor_pago_cofre", "");
+                        }}
+                      />
+                      💳 Pix
+                    </label>
 
-                          if (marcado) {
+                    {fundosCofreDaLoja(formulario.loja_id).length > 0 && (
+                      <label className="permissao-item">
+                        <input
+                          type="radio"
+                          name="origem-pagamento-despesa"
+                          checked={Boolean(formulario.fundo_retirada_id)}
+                          onChange={() => {
+                            alterarCampo("pago_em_dinheiro", false);
+                            alterarCampo("fundo_retirada_id", "auto");
+
                             const disponivel = totalCofreDisponivelDaLoja(
                               formulario.loja_id
                             );
@@ -7260,36 +7346,43 @@ const pontoDeEquilibrio = useMemo(() => {
                                 maximumFractionDigits: 2,
                               })
                             );
-                          } else {
-                            alterarCampo("valor_pago_cofre", "");
-                          }
-                        }}
-                      />
-                      💰 Pago com dinheiro do Cofre
-                    </label>
-
-                    {formulario.fundo_retirada_id && (
-                      <>
-                        <small className="foto-ajuda">
-                          🔒 Cofre disponível:{" "}
-                          {formatarMoeda(
-                            totalCofreDisponivelDaLoja(formulario.loja_id)
-                          )}{" "}
-                          — desconta sozinho de lá.
-                        </small>
-                        <label>
-                          Quanto vem do Cofre? (resto desconta do Saldo)
-                          <CampoValor
-                            value={formulario.valor_pago_cofre}
-                            onChange={(novoValor) =>
-                              alterarCampo("valor_pago_cofre", novoValor)
-                            }
-                          />
-                        </label>
-                      </>
+                          }}
+                        />
+                        🔒 Cofre
+                      </label>
                     )}
                   </div>
-                )}
+
+                  {caixaEstaFechadoHoje(finalizacoesFechamentoCaixa) && (
+                    <small className="foto-ajuda">
+                      🔒 Caixa já fechado hoje (Fechamento finalizado) —
+                      "Dinheiro do caixa" bloqueado até abrir de novo
+                      amanhã.
+                    </small>
+                  )}
+
+                  {formulario.fundo_retirada_id && (
+                    <>
+                      <small className="foto-ajuda">
+                        🔒 Cofre disponível:{" "}
+                        {formatarMoeda(
+                          totalCofreDisponivelDaLoja(formulario.loja_id)
+                        )}{" "}
+                        — desconta sozinho de lá.
+                      </small>
+                      <label>
+                        Quanto vem do Cofre? (resto desconta do Saldo)
+                        <CampoValor
+                          value={formulario.valor_pago_cofre}
+                          onChange={(novoValor) =>
+                            alterarCampo("valor_pago_cofre", novoValor)
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+              )}
 
               {tipoLancamento === "receita" && (
                 <label>

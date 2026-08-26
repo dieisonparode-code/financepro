@@ -274,6 +274,22 @@ function CadastroFechamentoCaixa({
       )
     : null;
 
+  // Pedido do usuário (26/08/2026): "bloqueie opção dinheiro do caixa
+  // quando o caixa estiver fechado, somente consiga finalizar quando
+  // caixa estiver aberto" — o usuário escolheu: só considera "fechado"
+  // depois que alguém clica em Finalizar Fechamento (reabre sozinho no
+  // dia seguinte).
+  const dataFormatador = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const caixaFechadoHoje =
+    ultimaFinalizacao != null &&
+    dataFormatador.format(new Date(ultimaFinalizacao)) ===
+      dataFormatador.format(new Date());
+
   // Nunca mistura loja — só mostra o que é da loja selecionada no topo (ou
   // registros antigos sem loja gravada, que aparecem pra todas).
   const registrosDaLoja = lojaId
@@ -564,6 +580,24 @@ function CadastroFechamentoCaixa({
 
     if (ehVale && !rascunhoDiaria.nomePessoa.trim()) {
       alert("Digite o nome do funcionário que pegou o vale.");
+      setRascunhoDiaria((anterior) =>
+        anterior ? { ...anterior, salvando: false } : anterior
+      );
+      return;
+    }
+
+    // Pedido do usuário (26/08/2026): "bloqueie opção dinheiro do caixa
+    // quando o caixa estiver fechado" — trava aqui também, não só
+    // desabilitando o rádio (cobre o caso de já estar marcado quando o
+    // Fechamento foi finalizado no meio do preenchimento).
+    if (
+      ehVale &&
+      rascunhoDiaria.origemPagamento === "dinheiro_caixa" &&
+      caixaFechadoHoje
+    ) {
+      alert(
+        'O caixa de hoje já foi fechado (Fechamento finalizado) — "Dinheiro do caixa" não pode mais ser usado. Escolha Pix ou Cofre.'
+      );
       setRascunhoDiaria((anterior) =>
         anterior ? { ...anterior, salvando: false } : anterior
       );
@@ -1267,12 +1301,18 @@ function CadastroFechamentoCaixa({
                 de Auditoria na hora de finalizar o fechamento. */}
             {rascunhoDiaria.tipo === "vale" && (
               <div className="permissoes-grid" style={{ marginTop: "8px", marginBottom: "8px" }}>
-                <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                <label
+                  className="permissao-item"
+                  style={{
+                    marginBottom: "6px",
+                    opacity: caixaFechadoHoje ? 0.5 : 1,
+                  }}
+                >
                   <input
                     type="radio"
                     name="origem-pagamento-vale"
                     checked={rascunhoDiaria.origemPagamento === "dinheiro_caixa"}
-                    disabled={rascunhoDiaria.salvando}
+                    disabled={rascunhoDiaria.salvando || caixaFechadoHoje}
                     onChange={() =>
                       setRascunhoDiaria((anterior) => ({
                         ...anterior,
@@ -1315,6 +1355,13 @@ function CadastroFechamentoCaixa({
                   🔒 Cofre
                 </label>
               </div>
+            )}
+
+            {rascunhoDiaria.tipo === "vale" && caixaFechadoHoje && (
+              <small className="foto-ajuda">
+                🔒 Caixa já fechado hoje (Fechamento finalizado) —
+                "Dinheiro do caixa" bloqueado até abrir de novo amanhã.
+              </small>
             )}
 
             {/* Pedido do usuário (26/08/2026): "essa parte tem que ser
