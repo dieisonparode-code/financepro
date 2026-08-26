@@ -53,6 +53,14 @@ export async function buscarLancamentos() {
   return requisicao("/lancamentos", { headers: await cabecalhoAutenticado() });
 }
 
+// Pedido do usuário (26/08/2026): aviso no Dashboard quando a
+// importação diária da Saipos (ontem) ainda não terminou.
+export async function buscarStatusImportacaoSaipos() {
+  return requisicao("/saipos/status-importacao-diaria", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function baixarBackupCompleto() {
   return requisicao("/backup/exportar", {
     headers: await cabecalhoAutenticado(),

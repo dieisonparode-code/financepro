@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./dashboardPremium.css";
 import UserMenu from "./UserMenu";
+import { buscarStatusImportacaoSaipos } from "../services/api";
 
 const MESES = [
   ["2026-01", "Janeiro de 2026"],
@@ -242,6 +243,53 @@ export default function DashboardPremium({
       return novo;
     });
   }
+
+  // Pedido do usuário (26/08/2026): "o que faremos pra não acontecer de
+  // novo?" — aviso aqui quando a importação automática da Saipos de
+  // ONTEM ainda não terminou até uma hora razoável da manhã (7h). Fica
+  // conferindo de tempos em tempos e some sozinho assim que a
+  // importação (automática ou pelo botão manual) terminar — não precisa
+  // recarregar a página.
+  const [statusImportacaoSaipos, setStatusImportacaoSaipos] = useState(null);
+
+  useEffect(() => {
+    if (!ehAdministrador) return;
+
+    let cancelado = false;
+
+    function conferir() {
+      buscarStatusImportacaoSaipos()
+        .then((resultado) => {
+          if (!cancelado) setStatusImportacaoSaipos(resultado);
+        })
+        .catch(() => {
+          // Falha ao conferir não é motivo pra alarmar sozinho — só não
+          // mostra nada dessa vez, tenta de novo na próxima.
+        });
+    }
+
+    conferir();
+    const intervalo = setInterval(conferir, 5 * 60 * 1000);
+
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [ehAdministrador]);
+
+  const horaAgoraBrasilia = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hour12: false,
+    }).format(new Date())
+  );
+
+  const mostrarAvisoImportacaoSaipos =
+    ehAdministrador &&
+    statusImportacaoSaipos &&
+    !statusImportacaoSaipos.completo &&
+    horaAgoraBrasilia >= 7;
 
   // Pedido do usuário (19/08/2026): ordem fixa dos botões de loja no
   // Dashboard — Sinop, Sorriso, Rondonópolis, Uberlândia. Qualquer loja
@@ -657,6 +705,30 @@ export default function DashboardPremium({
 
   return (
     <main className="fpdash">
+      {mostrarAvisoImportacaoSaipos && (
+        <div
+          style={{
+            background: "rgba(234, 179, 8, 0.15)",
+            border: "1px solid #eab308",
+            borderRadius: 10,
+            padding: "12px 16px",
+            marginBottom: 16,
+            fontSize: 14,
+          }}
+        >
+          ⚠️ A importação automática das vendas da Saipos de{" "}
+          <strong>
+            {new Date(
+              `${statusImportacaoSaipos.data}T12:00:00`
+            ).toLocaleDateString("pt-BR")}
+          </strong>{" "}
+          ainda não terminou. Consumo/vendas a prazo de funcionários e
+          outras formas de pagamento podem estar faltando em Contas a
+          Receber. O sistema tenta de novo sozinho a cada minuto — se
+          demorar muito, avise pra conferir manualmente.
+        </div>
+      )}
+
       <header className="fp-topo">
         <div>
           <h1>Olá, Dieison! 👋</h1>

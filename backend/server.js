@@ -8325,6 +8325,24 @@ setInterval(function () {
   rodarImportacaoAutomaticaDiariaSaipos();
 }, 60 * 1000);
 
+// Pedido do usuário (26/08/2026): "o que faremos pra não acontecer de
+// novo?" — aviso visível no Dashboard quando a importação automática de
+// ONTEM ainda não terminou até uma certa hora da manhã. Some sozinho
+// assim que a importação (automática ou pelo botão manual) terminar sem
+// erro — reflete direto a mesma flag que controla os retries, não
+// precisa de nenhuma lógica nova pra saber quando já deu certo.
+app.get(
+  "/saipos/status-importacao-diaria",
+  verificarLogin,
+  async function (req, res) {
+    const ontem = dataBrasilia(1);
+    res.json({
+      data: ontem,
+      completo: ultimaDataImportadaAutomaticamente === ontem,
+    });
+  }
+);
+
 let ultimoDiaGeradoDespesasRecorrentes = null;
 
 // Quantos dias ANTES do vencimento a Conta a Pagar já deve aparecer —
