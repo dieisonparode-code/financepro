@@ -126,6 +126,7 @@ import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
 import DespesasRecorrentes from "./components/DespesasRecorrentes";
 import RetiradasSocios from "./components/RetiradasSocios";
+import ExtratoCofre from "./components/ExtratoCofre";
 import EmprestimosEntreLojas from "./components/EmprestimosEntreLojas";
 import Fornecedores from "./components/Fornecedores";
 import ContasReceber from "./components/ContasReceber";
@@ -4522,6 +4523,19 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
+          {/* Pedido do usuário (26/08/2026): "fica somente o extrato
+              doque foi pago com dinheiro do cofre, entradas e saidas mas
+              so do cofre" — mesma permissão de quem mexe no Fechamento
+              de Caixa, já que é lá que o Cofre é abastecido/gasto. */}
+          {temPermissao("fechamento_caixa") && (
+            <button
+              className={pagina === "extrato-cofre" ? "active" : ""}
+              onClick={() => setPagina("extrato-cofre")}
+            >
+              🔒 Extrato do Cofre
+            </button>
+          )}
+
           {ehAdministrador && (
             <button
               className={pagina === "whatsapp-fila" ? "active" : ""}
@@ -5529,6 +5543,15 @@ const pontoDeEquilibrio = useMemo(() => {
             lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
             adicionar={adicionarRetiradaSocioHandler}
             remover={removerRetiradaSocioHandler}
+          />
+        )}
+
+        {pagina === "extrato-cofre" && temPermissao("fechamento_caixa") && (
+          <ExtratoCofre
+            fundosRetiradas={fundosRetiradas}
+            lancamentos={lancamentos}
+            lojas={lojas}
+            lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
           />
         )}
 
