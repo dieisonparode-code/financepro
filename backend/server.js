@@ -8888,6 +8888,20 @@ app.post(
   "/integracoes/whatsapp/foto",
   verificarTokenWhatsapp,
   async function (req, res) {
+    // Pedido do usuário (26/08/2026): "retirar o WhatsApp de lançar no
+    // sistema pra não cobrar mais" — desativa esse caminho de vez, direto
+    // no início, ANTES de qualquer chamada de IA (custo zero garantido,
+    // mesmo que o bot no PC continue rodando e mandando foto por engano).
+    // Também elimina risco de duplicar: só o app/site cria lançamento
+    // agora, uma única porta de entrada. Pra reativar no futuro, é só
+    // apagar este bloco.
+    return res.status(200).json({
+      ok: false,
+      destino: "integracao_desativada",
+      mensagem:
+        "Integração do WhatsApp desativada — lance direto pelo site/app.",
+    });
+
     try {
       const { foto, legenda, loja_id, remetente } = req.body;
 
