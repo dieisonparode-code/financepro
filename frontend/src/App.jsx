@@ -1649,6 +1649,8 @@ function FinanceApp() {
     nomeFuncionario,
     valor,
     dataPrevista,
+    origemPagamento,
+    fundoRetiradaId,
   }) {
     const lojaId = !vePermissaoTotal
       ? perfil?.loja_id || null
@@ -1665,6 +1667,12 @@ function FinanceApp() {
     // dataPrevista fica sem uso aqui, mantido no parâmetro só para não
     // quebrar o formulário que ainda pede essa data (histórico de
     // referência do funcionário, não gera lançamento nenhum).
+    //
+    // Pedido do usuário (26/08/2026): "de cada um precisa ter o rastro
+    // e descontar de cada parte marcada" — mesmas 3 opções do Vale do
+    // Fechamento de Caixa, só que aqui passa direto por POST
+    // /lancamentos, que já sabe descontar o Cofre sozinho (mesmo
+    // mecanismo usado em Despesas).
     await criarDespesaDoWhatsapp({
       tipo: "despesa",
       descricao,
@@ -1673,6 +1681,10 @@ function FinanceApp() {
       valor,
       data: hoje,
       loja_id: lojaId,
+      pago_em_dinheiro: origemPagamento === "dinheiro_caixa",
+      fundo_retirada_id:
+        origemPagamento === "cofre" ? fundoRetiradaId : null,
+      valor_pago_cofre: origemPagamento === "cofre" ? valor : null,
     });
   }
 
@@ -5486,6 +5498,14 @@ const pontoDeEquilibrio = useMemo(() => {
             ehAdministrador={ehAdministrador}
             funcionarios={funcionarios}
             criarFuncionario={criarFuncionarioESincronizarHandler}
+            fundosRetiradas={fundosRetiradas}
+            lojaId={
+              !vePermissaoTotal
+                ? perfil?.loja_id || null
+                : lojaDashboard !== "todas"
+                ? lojaDashboard
+                : null
+            }
           />
         )}
 

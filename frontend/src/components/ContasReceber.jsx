@@ -47,6 +47,8 @@ function ContasReceber({
   ehAdministrador = false,
   funcionarios = [],
   criarFuncionario,
+  fundosRetiradas = [],
+  lojaId = null,
 }) {
   const [nome, setNome] = useState("");
   const [operadora, setOperadora] = useState("");
@@ -87,6 +89,13 @@ function ContasReceber({
   const [valeValor, setValeValor] = useState("");
   const [valeData, setValeData] = useState(diaCincoDoProximoMes);
   const [salvandoVale, setSalvandoVale] = useState(false);
+  // Pedido do usuário (26/08/2026): "3 checkbox pequenos e bem
+  // separados, para clicar de onde foi pago o vale... de cada um
+  // precisa ter o rastro e descontar de cada parte marcada" — mesma
+  // ideia já usada no Vale do Fechamento de Caixa, agora também aqui
+  // (que é onde o usuário realmente registra vale no dia a dia).
+  const [valeOrigemPagamento, setValeOrigemPagamento] = useState("pix");
+  const [valeFundoRetiradaId, setValeFundoRetiradaId] = useState("");
 
   // Pedido do usuário (25/08/2026): "registrar vale também tem que puxar
   // nome lá do cadastro como feito na situação de pagamento de salário"
@@ -123,6 +132,11 @@ function ContasReceber({
       return;
     }
 
+    if (valeOrigemPagamento === "cofre" && !valeFundoRetiradaId) {
+      alert("Escolha de qual Cofre saiu o dinheiro do vale.");
+      return;
+    }
+
     setSalvandoVale(true);
 
     try {
@@ -130,10 +144,14 @@ function ContasReceber({
         nomeFuncionario: valeNome.trim(),
         valor: valorNumerico,
         dataPrevista: valeData,
+        origemPagamento: valeOrigemPagamento,
+        fundoRetiradaId: valeFundoRetiradaId,
       });
 
       setValeNome("");
       setValeValor("");
+      setValeOrigemPagamento("pix");
+      setValeFundoRetiradaId("");
     } catch (erro) {
       alert(erro.message || "Não foi possível registrar o vale.");
     } finally {
@@ -722,6 +740,79 @@ function ContasReceber({
                 />
               </label>
             </div>
+
+            {/* Pedido do usuário (26/08/2026): de onde saiu o dinheiro
+                do vale — mutuamente exclusivo, cada opção descontando
+                de um lugar diferente (dinheiro do caixa / Saldo geral
+                via Pix / Cofre), com rastro no Log de Auditoria. */}
+            <div className="permissoes-grid" style={{ marginTop: "8px", marginBottom: "8px" }}>
+              <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                <input
+                  type="radio"
+                  name="origem-pagamento-vale-receber"
+                  checked={valeOrigemPagamento === "dinheiro_caixa"}
+                  disabled={salvandoVale}
+                  onChange={() => {
+                    setValeOrigemPagamento("dinheiro_caixa");
+                    setValeFundoRetiradaId("");
+                  }}
+                />
+                💵 Dinheiro do caixa
+              </label>
+
+              <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                <input
+                  type="radio"
+                  name="origem-pagamento-vale-receber"
+                  checked={valeOrigemPagamento === "pix"}
+                  disabled={salvandoVale}
+                  onChange={() => {
+                    setValeOrigemPagamento("pix");
+                    setValeFundoRetiradaId("");
+                  }}
+                />
+                💳 Pix (conta)
+              </label>
+
+              <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                <input
+                  type="radio"
+                  name="origem-pagamento-vale-receber"
+                  checked={valeOrigemPagamento === "cofre"}
+                  disabled={salvandoVale}
+                  onChange={() => setValeOrigemPagamento("cofre")}
+                />
+                🔒 Cofre
+              </label>
+            </div>
+
+            {valeOrigemPagamento === "cofre" && (
+              <label>
+                Qual Cofre?
+                <select
+                  value={valeFundoRetiradaId}
+                  disabled={salvandoVale}
+                  onChange={(evento) => setValeFundoRetiradaId(evento.target.value)}
+                >
+                  <option value="">Selecione...</option>
+                  {fundosRetiradas
+                    .filter(
+                      (fundo) =>
+                        fundo.status === "aberto" &&
+                        fundo.conta_para_cofre !== false &&
+                        String(fundo.loja_id) === String(lojaId)
+                    )
+                    .map((fundo) => (
+                      <option key={fundo.id} value={fundo.id}>
+                        {fundo.descricao || "Cofre"} — disponível{" "}
+                        {formatarMoeda(
+                          Number(fundo.valor) - Number(fundo.valor_usado || 0)
+                        )}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
 
             <label>
               Previsão de desconto (referência — dia 5 já sugerido, não
