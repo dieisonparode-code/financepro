@@ -436,21 +436,32 @@ function criarFormularioInicial(tipo = "receita") {
     data: hojeLocal(),
   };
 }
-// Pedido do usuário (26/08/2026): reajuste de saldo — o valor real em
-// conta às 12h28 desse dia era R$ 74.239,00. BUG REAL corrigido no mesmo
-// dia: como o corte é por DATA (não por horário), despesa lançada
-// DEPOIS das 12h28 mas ainda no dia 26/08 ficava de fora pra sempre
-// ("data > 26/08" nunca inclui o próprio 26/08). Apareceram 4 despesas
-// assim ao longo do dia (Facebook R$800, Tibery prime carnes R$883,93,
-// João Carlos Cunha R$126, Gálatta Food Service R$715,37 — total
-// R$2.525,30). Corrigido diminuindo o valor inicial por esse total
-// (74.239,00 − 2.525,30 = 71.713,70), pra ficarem embutidas certinho, na
-// data de corte de hoje mesmo (sem mexer a data de corte pra ontem — a
-// pedido do usuário, mantém o jeito mais simples/direto de ajustar).
-// (Ajustes anteriores: 24/08/2026 = R$ 79.804,87; 18/08/2026 =
-// R$ 106.430,13 — mantidos aqui só de histórico, não usados mais.)
-const SALDO_INICIAL_VALOR = 71713.7;
-const SALDO_INICIAL_DATA = "2026-08-26";
+// Pedido do usuário (26/08/2026): CORREÇÃO DEFINITIVA do bug que já
+// tinha voltado 2x no mesmo dia (data de corte = HOJE fazia toda
+// despesa lançada ao longo do próprio dia "26/08 > 26/08" ser falso
+// pra sempre — não é um bug de horário, é estrutural: enquanto a data
+// de corte for HOJE, vai sempre sumir despesa nova até virar amanhã).
+// Dessa vez a correção NÃO foi só somar/subtrair o valor de novo
+// (isso ia voltar a quebrar assim que mais uma despesa fosse lançada
+// hoje) — a data de corte foi movida pra ONTEM (25/08), que nunca mais
+// precisa mudar: qualquer despesa de hoje ou de qualquer dia futuro
+// automaticamente bate "data > 25/08 = true" e entra na conta sozinha,
+// pra sempre, sem precisar de ajuste manual de novo.
+//
+// Valor calculado a partir do saldo REAL verificado (R$74.239,00 às
+// 12h28 de 26/08) MENOS as despesas que já tinham acontecido de
+// verdade ANTES desse horário nesse mesmo dia (R$4.230,15) — pra
+// voltar exatamente pro saldo do fim do dia 25/08, sem nenhuma
+// despesa de 26/08 embutida (a data de corte agora cuida delas todas
+// sozinha, incluindo as que ainda nem tinham sido descontadas: 5
+// Diárias Boy de R$410,00 e mais 4 despesas de R$3.235,81 lançadas à
+// tarde/noite, que o ajuste anterior tinha deixado passar).
+// 74.239,00 + 4.230,15 = 78.469,15
+// (Ajustes anteriores, todos com o MESMO problema estrutural, mantidos
+// só de histórico: 26/08/2026 = R$71.713,70 (corte 26/08); 24/08/2026
+// = R$79.804,87; 18/08/2026 = R$106.430,13.)
+const SALDO_INICIAL_VALOR = 78469.15;
+const SALDO_INICIAL_DATA = "2026-08-25";
 // O valor acima é o saldo real da loja Uberlândia (a única em operação de
 // fato quando esse valor foi informado) — não é um caixa único somado de
 // todas as lojas. Usado pra o card Saldo não mostrar esse valor quando
