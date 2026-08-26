@@ -465,6 +465,13 @@ function CadastroFechamentoCaixa({
       nomePessoa: "",
       lendo: true,
       avisoLeitura: "",
+      // Pedido do usuário (26/08/2026): só usado no tipo "vale" — de
+      // onde saiu o dinheiro do vale ("dinheiro_caixa" desconta o
+      // dinheiro esperado no caixa igual a Diária Boy/Cozinha paga em
+      // dinheiro; "pix" desconta só o Saldo geral, comportamento padrão
+      // de sempre; "cofre" desconta do Fundo de Retirada escolhido).
+      origemPagamento: "pix",
+      fundoRetiradaId: "",
     });
     setEnviandoTipo(null);
 
@@ -528,6 +535,18 @@ function CadastroFechamentoCaixa({
       return;
     }
 
+    if (
+      ehVale &&
+      rascunhoDiaria.origemPagamento === "cofre" &&
+      !rascunhoDiaria.fundoRetiradaId
+    ) {
+      alert("Escolha de qual Cofre saiu o dinheiro do vale.");
+      setRascunhoDiaria((anterior) =>
+        anterior ? { ...anterior, salvando: false } : anterior
+      );
+      return;
+    }
+
     try {
       if (ehRetiradaCofre) {
         if (!valorNumerico || valorNumerico <= 0) {
@@ -569,6 +588,14 @@ function CadastroFechamentoCaixa({
           : 0,
         nome_pessoa:
           ehPagoDinheiroCaixa || ehVale ? rascunhoDiaria.nomePessoa : "",
+        // Pedido do usuário (26/08/2026): de onde saiu o dinheiro do
+        // vale — só faz sentido pro tipo "vale", os outros tipos não
+        // mandam nada (backend usa o padrão de sempre nesse caso).
+        origem_pagamento: ehVale ? rascunhoDiaria.origemPagamento : null,
+        fundo_retirada_id:
+          ehVale && rascunhoDiaria.origemPagamento === "cofre"
+            ? rascunhoDiaria.fundoRetiradaId
+            : null,
       });
 
       setRascunhoDiaria(null);
@@ -1201,6 +1228,100 @@ function CadastroFechamentoCaixa({
                 </select>
               </label>
             )}
+
+            {/* Pedido do usuário (26/08/2026): "3 checkbox pequenos e bem
+                separados, para clicar de onde foi pago o vale... de cada
+                um precisa ter o rastro e descontar de cada parte
+                marcada" — mutuamente exclusivos (radio), cada opção
+                desconta de um lugar diferente e fica registrado no Log
+                de Auditoria na hora de finalizar o fechamento. */}
+            {rascunhoDiaria.tipo === "vale" && (
+              <div className="permissoes-grid" style={{ marginTop: "8px", marginBottom: "8px" }}>
+                <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                  <input
+                    type="radio"
+                    name="origem-pagamento-vale"
+                    checked={rascunhoDiaria.origemPagamento === "dinheiro_caixa"}
+                    disabled={rascunhoDiaria.salvando}
+                    onChange={() =>
+                      setRascunhoDiaria((anterior) => ({
+                        ...anterior,
+                        origemPagamento: "dinheiro_caixa",
+                        fundoRetiradaId: "",
+                      }))
+                    }
+                  />
+                  💵 Dinheiro do caixa
+                </label>
+
+                <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                  <input
+                    type="radio"
+                    name="origem-pagamento-vale"
+                    checked={rascunhoDiaria.origemPagamento === "pix"}
+                    disabled={rascunhoDiaria.salvando}
+                    onChange={() =>
+                      setRascunhoDiaria((anterior) => ({
+                        ...anterior,
+                        origemPagamento: "pix",
+                        fundoRetiradaId: "",
+                      }))
+                    }
+                  />
+                  💳 Pix (conta)
+                </label>
+
+                <label className="permissao-item" style={{ marginBottom: "6px" }}>
+                  <input
+                    type="radio"
+                    name="origem-pagamento-vale"
+                    checked={rascunhoDiaria.origemPagamento === "cofre"}
+                    disabled={rascunhoDiaria.salvando}
+                    onChange={() =>
+                      setRascunhoDiaria((anterior) => ({
+                        ...anterior,
+                        origemPagamento: "cofre",
+                      }))
+                    }
+                  />
+                  🔒 Cofre
+                </label>
+              </div>
+            )}
+
+            {rascunhoDiaria.tipo === "vale" &&
+              rascunhoDiaria.origemPagamento === "cofre" && (
+                <label>
+                  Qual Cofre?
+                  <select
+                    value={rascunhoDiaria.fundoRetiradaId}
+                    disabled={rascunhoDiaria.salvando}
+                    onChange={(evento) =>
+                      setRascunhoDiaria((anterior) => ({
+                        ...anterior,
+                        fundoRetiradaId: evento.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Selecione...</option>
+                    {fundosRetiradas
+                      .filter(
+                        (fundo) =>
+                          fundo.status === "aberto" &&
+                          fundo.conta_para_cofre !== false &&
+                          String(fundo.loja_id) === String(lojaId)
+                      )
+                      .map((fundo) => (
+                        <option key={fundo.id} value={fundo.id}>
+                          {fundo.descricao || "Cofre"} — disponível{" "}
+                          {formatarMoeda(
+                            Number(fundo.valor) - Number(fundo.valor_usado || 0)
+                          )}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
 
             <label>
               Valor total do recibo

@@ -432,6 +432,68 @@ function prepararLancamento(dados = {}) {
   };
 }
 
+// Pedido do usuário (22/08/2026, reaproveitado 26/08/2026 pro Vale do
+// Fechamento de Caixa): calcula quanto de uma despesa pode realmente
+// sair do Cofre escolhido — nunca mais que o valor pedido, nunca mais
+// que o disponível no Cofre, nunca mais que o valor total da despesa.
+// Se o Cofre não tiver saldo suficiente (ou nem existir mais), cai pro
+// comportamento padrão (desconta tudo do Saldo normal) — nunca
+// bloqueia o lançamento por causa disso.
+async function calcularPagamentoCofre(fundoRetiradaId, valorPedido, valorDespesa) {
+  if (!fundoRetiradaId) {
+    return { fundoValido: null, valorPagoCofreEfetivo: 0 };
+  }
+
+  const { data: fundo } = await supabase
+    .from("fundo_retiradas_caixa")
+    .select("*")
+    .eq("id", fundoRetiradaId)
+    .single();
+
+  const disponivelNoFundo = fundo
+    ? Number(fundo.valor || 0) - Number(fundo.valor_usado || 0)
+    : 0;
+
+  const valorPagoCofreEfetivo = Math.min(
+    Number(valorPedido || 0) > 0 ? Number(valorPedido) : Number(valorDespesa || 0),
+    disponivelNoFundo,
+    Number(valorDespesa || 0)
+  );
+
+  if (fundo && valorPagoCofreEfetivo > 0.01) {
+    return {
+      fundoValido: fundo,
+      valorPagoCofreEfetivo: Number(valorPagoCofreEfetivo.toFixed(2)),
+    };
+  }
+
+  return { fundoValido: null, valorPagoCofreEfetivo: 0 };
+}
+
+// Abate de verdade do Cofre — só chamar DEPOIS da despesa já ter sido
+// criada com sucesso (mesma ordem de sempre: primeiro garante que o
+// lançamento existe, só depois mexe no saldo do Cofre).
+async function abaterDoFundoCofre(fundoValido, valorPagoCofreEfetivo) {
+  if (!fundoValido || valorPagoCofreEfetivo <= 0) return;
+
+  try {
+    const novoValorUsado = Number(
+      (Number(fundoValido.valor_usado || 0) + valorPagoCofreEfetivo).toFixed(2)
+    );
+
+    await supabase
+      .from("fundo_retiradas_caixa")
+      .update({
+        valor_usado: novoValorUsado,
+        status: novoValorUsado >= Number(fundoValido.valor) - 0.01 ? "esgotado" : "aberto",
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("id", fundoValido.id);
+  } catch (erroAbaterFundo) {
+    console.error("Erro ao abater do Cofre:", erroAbaterFundo.message);
+  }
+}
+
 function prepararLoja(dados = {}) {
   return {
     nome: (dados.nome || "").trim(),
@@ -460,6 +522,15 @@ function prepararFechamentoCaixa(dados = {}) {
     // Usado hoje só pelo tipo "comandas_canceladas" — lido automaticamente
     // da foto (nome do cliente já usa nome_pessoa, que já existia).
     telefone: (dados.telefone || "").trim(),
+    // Pedido do usuário (26/08/2026): só usado no tipo "vale" — de onde
+    // saiu o dinheiro do vale ("dinheiro_caixa" | "pix" | "cofre").
+    // "de cada um precisa ter o rastro e descontar de cada parte
+    // marcada" — usado na finalização do fechamento pra decidir onde
+    // descontar (dinheiro em caixa / Saldo geral / Cofre).
+    origem_pagamento: dados.origem_pagamento || null,
+    fundo_retirada_id: dados.fundo_retirada_id
+      ? Number(dados.fundo_retirada_id)
+      : null,
   };
 }
 
@@ -3730,7 +3801,7 @@ app.delete("/contas-pagar/:id", verificarPermissao(PERM_CONTAS_PAGAR), async fun
 });
 
 const colunasFechamentoListagem =
-  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, telefone, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento, data_abertura_turno";
+  "id, loja_id, tipo, nome_pessoa, valor, valor_pago_dinheiro, telefone, tem_foto, observacao, criado_em, valores_informados, sistema_manual, conciliacao_finalizada_em, ordem_formas_pagamento, data_abertura_turno, origem_pagamento, fundo_retirada_id";
 
 app.get("/fechamentos-caixa", verificarPermissao(PERM_FECHAMENTO_CAIXA), async function (req, res) {
   try {
@@ -4505,7 +4576,9 @@ app.post(
       try {
         let consultaVales = supabase
           .from("fechamentos_caixa")
-          .select("id, foto, valor, nome_pessoa, criado_em, loja_id")
+          .select(
+            "id, foto, valor, nome_pessoa, criado_em, loja_id, origem_pagamento, fundo_retirada_id"
+          )
           .eq("tipo", "vale")
           .lte("criado_em", data.criado_em);
 
@@ -4547,6 +4620,28 @@ app.post(
           // a folha de pagamento daquele funcionário for lançada com o
           // valor JÁ líquido (descontado o vale) — isso é feito na mão,
           // fora do sistema, não por uma automação daqui.
+          // Pedido do usuário (26/08/2026): "3 checkbox... para clicar
+          // de onde foi pago o vale, dinheiro do caixa... pix... ou do
+          // cofre... de cada um precisa ter o rastro e descontar de
+          // cada parte marcada". "dinheiro_caixa" é igual à Diária Boy/
+          // Cozinha paga em dinheiro (pago_em_dinheiro:true — mesmo
+          // mecanismo que já informa o "dinheiro esperado no caixa" da
+          // Conciliação); "pix" é o comportamento padrão de sempre (só
+          // desconta o Saldo geral); "cofre" desconta do Fundo de
+          // Retirada escolhido em vez do Saldo geral, com fallback pro
+          // Saldo geral se o Cofre não tiver saldo suficiente.
+          const origemPagamento = vale.origem_pagamento || "pix";
+          const ehDinheiroCaixa = origemPagamento === "dinheiro_caixa";
+
+          const { fundoValido, valorPagoCofreEfetivo } =
+            origemPagamento === "cofre"
+              ? await calcularPagamentoCofre(
+                  vale.fundo_retirada_id,
+                  valorVale,
+                  valorVale
+                )
+              : { fundoValido: null, valorPagoCofreEfetivo: 0 };
+
           const novaDespesaVale = {
             id: Date.now() + vale.id,
             tipo: "despesa",
@@ -4557,10 +4652,19 @@ app.post(
             categoria: "Vale",
             subcategoria: "",
             fornecedor: vale.nome_pessoa || "",
-            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — desconta o Saldo agora, porque o dinheiro saiu do caixa de verdade. Descontar da folha de pagamento de ${vale.nome_pessoa || "funcionário"} (previsão: pagamento do dia 5 do mês seguinte) — a folha deve ser lançada já com o valor líquido, sem criar receita nenhuma pra "devolver" esse valor.`,
+            observacao: `Gerado automaticamente ao finalizar o fechamento de caixa (registro #${vale.id}) — desconta ${
+              ehDinheiroCaixa
+                ? "o dinheiro do caixa"
+                : fundoValido
+                ? "o Cofre"
+                : "o Saldo"
+            } agora, porque o dinheiro saiu de verdade. Descontar da folha de pagamento de ${vale.nome_pessoa || "funcionário"} (previsão: pagamento do dia 5 do mês seguinte) — a folha deve ser lançada já com o valor líquido, sem criar receita nenhuma pra "devolver" esse valor.`,
             foto: vale.foto || "",
             loja_id: vale.loja_id || null,
             status: "aprovado",
+            pago_em_dinheiro: ehDinheiroCaixa,
+            fundo_retirada_id: fundoValido ? fundoValido.id : null,
+            valor_pago_cofre: fundoValido ? valorPagoCofreEfetivo : 0,
           };
 
           const { data: despesaValeCriada, error: erroDespesaVale } =
@@ -4590,12 +4694,32 @@ app.post(
           // movimentações.
           enviarPushNovoLancamento(novaDespesaVale);
 
+          // Só abate do Cofre DEPOIS da despesa já criada com sucesso
+          // (mesma ordem de sempre — nunca mexe no saldo do Cofre antes
+          // de garantir que o lançamento existe).
+          if (fundoValido) {
+            await abaterDoFundoCofre(fundoValido, valorPagoCofreEfetivo);
+          }
+
+          // Pedido do usuário (26/08/2026): "de cada um precisa ter o
+          // rastro" — deixa explícito no Log de Auditoria de onde saiu
+          // o dinheiro do vale.
+          const rastroOrigem = ehDinheiroCaixa
+            ? " — pago com dinheiro do caixa (desconta o dinheiro esperado no caixa)"
+            : fundoValido
+            ? valorPagoCofreEfetivo >= valorVale - 0.01
+              ? ` — pago inteiro com o Cofre #${fundoValido.id} (não descontou o Saldo geral)`
+              : ` — pago parcial: R$${valorPagoCofreEfetivo.toFixed(2)} do Cofre #${fundoValido.id} + R$${(valorVale - valorPagoCofreEfetivo).toFixed(2)} do Saldo geral`
+            : origemPagamento === "cofre"
+            ? " — tentou marcar Cofre, mas não tinha saldo suficiente lá — descontou do Saldo geral"
+            : " — pago via Pix, descontou do Saldo geral";
+
           registrarAuditoria(
             req,
             "criou",
             "lancamentos",
             despesaValeCriada.id,
-            `Despesa automática (vale, desconta Saldo) do fechamento de caixa #${vale.id}: R$ ${valorVale.toFixed(2)} — ${vale.nome_pessoa || "sem nome"} — descontar na folha de pagamento (previsão ${dataPrevistaStr})`
+            `Despesa automática (vale, desconta Saldo) do fechamento de caixa #${vale.id}: R$ ${valorVale.toFixed(2)} — ${vale.nome_pessoa || "sem nome"}${rastroOrigem} — descontar na folha de pagamento (previsão ${dataPrevistaStr})`
           );
         }
       } catch (erroVales) {
