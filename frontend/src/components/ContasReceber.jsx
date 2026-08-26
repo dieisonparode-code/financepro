@@ -62,6 +62,10 @@ function ContasReceber({
   // lista inteira por data.
   const [buscaReceber, setBuscaReceber] = useState("");
 
+  // Pedido do usuário (26/08/2026): "Contas Recebidas" — painel separado
+  // pra vale/consumo já descontados na folha, fechado por padrão.
+  const [mostrarRecebidas, setMostrarRecebidas] = useState(false);
+
   // Pedido do usuário (25/08/2026): registrar um "Vale" (dinheiro que a
   // empresa vai receber de volta do funcionário) direto por aqui, sem
   // precisar passar pelo Fechamento de Caixa.
@@ -332,6 +336,20 @@ function ContasReceber({
       .filter((item) => (item.fornecedor || "").toLowerCase().includes("a prazo"))
       .reduce((soma, item) => soma + Number(item.valor_liquido_esperado ?? item.valor), 0) +
     valesPendentesParaLista.reduce((soma, item) => soma + Number(item.valor), 0);
+
+  // Pedido do usuário (26/08/2026): "tem que ir para Contas Recebidas" —
+  // vale/consumo já descontados na folha (quitado_em preenchido) saem da
+  // lista de pendentes e aparecem aqui, separados.
+  const itensRecebidos = lancamentos
+    .filter((item) => item.quitado_em)
+    .filter(
+      (item) =>
+        (item.tipo === "despesa" && item.categoria === "Vale") ||
+        (item.tipo === "receita" &&
+          (item.fornecedor || "").toLowerCase().includes("a prazo"))
+    )
+    .map((item) => ({ ...item, _ehVale: item.tipo === "despesa" }))
+    .sort((a, b) => new Date(b.quitado_em) - new Date(a.quitado_em));
 
   const buscaReceberLimpa = buscaReceber.trim().toLowerCase();
 
@@ -875,6 +893,66 @@ function ContasReceber({
               </div>
             );
           })
+        )}
+
+        {/* Pedido do usuário (26/08/2026): vale/consumo já descontados na
+            folha saem de "pendente" e ficam aqui — fechado por padrão. */}
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setMostrarRecebidas((anterior) => !anterior)}
+          style={{ marginTop: 14 }}
+        >
+          {mostrarRecebidas ? "▲" : "▼"} 📥 Contas Recebidas (
+          {
+            itensRecebidos.filter(
+              (item) =>
+                !buscaReceberLimpa ||
+                (item.fornecedor || "").toLowerCase().includes(buscaReceberLimpa)
+            ).length
+          }
+          )
+        </button>
+
+        {mostrarRecebidas && (
+          <div className="panel" style={{ marginTop: 10, padding: 14 }}>
+            {itensRecebidos
+              .filter(
+                (item) =>
+                  !buscaReceberLimpa ||
+                  (item.fornecedor || "")
+                    .toLowerCase()
+                    .includes(buscaReceberLimpa)
+              )
+              .map((item) => (
+                <div className="categoria-item" key={item.id}>
+                  <div className="categoria-identificacao">
+                    <div className="categoria-icone">
+                      {item._ehVale ? "🪙" : "💰"}
+                    </div>
+                    <div>
+                      <strong>{item.descricao || item.fornecedor}</strong>
+                      <div>
+                        {item._ehVale ? "Vale" : "Consumo"} —{" "}
+                        {formatarMoeda(item.valor)}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        Recebido em{" "}
+                        {new Date(item.quitado_em).toLocaleString("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+            {itensRecebidos.length === 0 && (
+              <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+                Nenhum vale/consumo recebido ainda.
+              </p>
+            )}
+          </div>
         )}
       </article>
 

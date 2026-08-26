@@ -1652,10 +1652,16 @@ function Conciliacao({ lojaId }) {
     <section className="conciliacao-layout">
       {temDiferencaNoConfronto && (
         <div
-          className="fp-alerta-cmv fp-alerta-cmv-critico"
+          className={
+            confrontoCalculado.diferencaTotal > 0
+              ? "fp-alerta-cmv fp-alerta-cmv-critico"
+              : "fp-alerta-cmv fp-alerta-cmv-sucesso"
+          }
           style={{ marginBottom: "16px" }}
         >
-          <span className="fp-alerta-cmv-icone">🚨</span>
+          <span className="fp-alerta-cmv-icone">
+            {confrontoCalculado.diferencaTotal > 0 ? "🚨" : "✅"}
+          </span>
 
           <div>
             <strong>

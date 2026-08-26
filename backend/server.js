@@ -866,6 +866,20 @@ app.post(
 
       if (error) throw error;
 
+      // Pedido do usuário (26/08/2026): "o consumo entra no saldo quando
+      // clicado pra descontar do salário, tem que ser na hora". Antes o
+      // consumo (receita "A prazo") só contava no Saldo quando a data
+      // prevista de recebimento chegasse — agora, ao quitar, marca como
+      // "conciliado" também (mesmo campo que a Conciliação usa), o que já
+      // faz o Saldo contar esse valor imediatamente, sem esperar a data.
+      // Só se aplica a receitas — vale (despesa) já conta no Saldo desde
+      // que foi lançado, não precisa de nada a mais aqui.
+      await supabase
+        .from("lancamentos")
+        .update({ status_conciliacao: "conciliado" })
+        .in("id", ids)
+        .eq("tipo", "receita");
+
       registrarAuditoria(
         req,
         "quitou (folha de pagamento)",

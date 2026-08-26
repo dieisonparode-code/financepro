@@ -345,6 +345,19 @@ body {
   color: var(--fp-vermelho, #ff3545);
 }
 
+/* Pedido do usuário (26/08/2026): diferença de "sobra" (informado >
+   esperado) não é um problema do mesmo jeito que "falta" — fica em
+   verde, só "falta" continua vermelho. */
+.fp-alerta-cmv-sucesso {
+  color: #dcfce7;
+  background: rgba(34, 197, 94, .16);
+  border-color: rgba(34, 197, 94, .4);
+}
+
+.fp-alerta-cmv-sucesso strong {
+  color: #22c55e;
+}
+
 .fp-lojas-seletor {
   display: flex;
   flex-wrap: wrap;
