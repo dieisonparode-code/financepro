@@ -2811,6 +2811,13 @@ app.put("/contas-pagar/:id/pagar", verificarPermissao(PERM_CONTAS_PAGAR), async 
       `${data.descricao} (${data.valor}) — despesa #${despesaCriada.id} lançada no saldo`
     );
 
+    // Pedido do usuário (26/08/2026): "preciso de notificação de 100% das
+    // movimentações" — pagar uma conta a pagar cria uma despesa de
+    // verdade (acima), mas não passava pelo POST /lancamentos, então
+    // nunca notificava. Mesma função usada lá, sem await de propósito
+    // (não pode atrasar a resposta do pagamento).
+    enviarPushNovoLancamento(despesaCriada);
+
     // Pedido do usuário (21/08/2026): "paguei essa conta com o saldo de
     // OUTRA loja" — em vez de um formulário separado, é uma marcação
     // aqui mesmo na hora de pagar. A despesa acima já ficou lançada
@@ -4374,6 +4381,12 @@ app.post(
             } else {
               despesasDinheiroCriadas += 1;
 
+              // Pedido do usuário (26/08/2026): notificação de 100% das
+              // movimentações — essa despesa (diária paga em dinheiro)
+              // nunca passava pelo POST /lancamentos, então não
+              // notificava.
+              enviarPushNovoLancamento(novaDespesa);
+
               registrarAuditoria(
                 req,
                 "criou",
@@ -4572,6 +4585,10 @@ app.post(
           }
 
           receitasValeCriadas += 1;
+
+          // Pedido do usuário (26/08/2026): notificação de 100% das
+          // movimentações.
+          enviarPushNovoLancamento(novaDespesaVale);
 
           registrarAuditoria(
             req,
@@ -6264,6 +6281,10 @@ app.post(
 
       if (error) throw error;
 
+      // Pedido do usuário (26/08/2026): notificação de 100% das
+      // movimentações.
+      enviarPushNovoLancamento(despesaCriada);
+
       registrarAuditoria(
         req,
         "criou",
@@ -6541,6 +6562,10 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura, re
       console.error("Erro ao lançar retirada automática:", erroCriar.message);
       continue;
     }
+
+    // Pedido do usuário (26/08/2026): notificação de 100% das
+    // movimentações.
+    enviarPushNovoLancamento(criada);
 
     registrarAuditoria(
       req,
@@ -9108,6 +9133,11 @@ app.post(
 
         if (error) throw error;
 
+        // Pedido do usuário (26/08/2026): notificação de 100% das
+        // movimentações — despesas vindas do WhatsApp nunca passavam
+        // pelo POST /lancamentos, então nunca notificavam.
+        enviarPushNovoLancamento(novoLancamento);
+
         registrarAuditoria(
           req,
           "criou (via WhatsApp)",
@@ -9240,6 +9270,10 @@ app.post(
           .single();
 
         if (error) throw error;
+
+        // Pedido do usuário (26/08/2026): notificação de 100% das
+        // movimentações.
+        enviarPushNovoLancamento(novoLancamento);
 
         registrarAuditoria(
           req,
