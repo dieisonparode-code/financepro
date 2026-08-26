@@ -44,6 +44,7 @@ function ContasReceber({
   removerFormaPagamento,
   buscarFoto,
   registrarVale,
+  removerItem,
   ehAdministrador = false,
   funcionarios = [],
   criarFuncionario,
@@ -212,6 +213,27 @@ function ContasReceber({
       alert(erro.message || "Não foi possível carregar a foto.");
     } finally {
       setCarregandoFotoId(null);
+    }
+  }
+
+  // Pedido do usuário (26/08/2026): "preciso de opção de excluir só meu
+  // usuário contas a receber" — exclui o lançamento de verdade (vale ou
+  // consumo), não só esconde da lista.
+  async function excluirItemPendente(item) {
+    if (!removerItem) return;
+
+    const confirmar = window.confirm(
+      `Excluir "${item.descricao || item.fornecedor}" (${formatarMoeda(
+        item.valor_liquido_esperado ?? item.valor
+      )})? Essa ação não pode ser desfeita.`
+    );
+
+    if (!confirmar) return;
+
+    try {
+      await removerItem(item.id);
+    } catch (erro) {
+      alert(erro.message || "Não foi possível excluir.");
     }
   }
 
@@ -982,18 +1004,34 @@ function ContasReceber({
                         </div>
                       </div>
 
-                      {item.tem_foto && (
+                      {(item.tem_foto || (ehAdministrador && removerItem)) && (
                         <div className="transaction-actions">
-                          <button
-                            type="button"
-                            className="edit-button"
-                            disabled={carregandoFotoId === item.id}
-                            onClick={() => verFoto(item)}
-                          >
-                            {carregandoFotoId === item.id
-                              ? "Carregando..."
-                              : "Ver foto"}
-                          </button>
+                          {item.tem_foto && (
+                            <button
+                              type="button"
+                              className="edit-button"
+                              disabled={carregandoFotoId === item.id}
+                              onClick={() => verFoto(item)}
+                            >
+                              {carregandoFotoId === item.id
+                                ? "Carregando..."
+                                : "Ver foto"}
+                            </button>
+                          )}
+
+                          {/* Pedido do usuário (26/08/2026): "preciso de
+                              opção de excluir só meu usuário contas a
+                              receber" — só administrador vê o botão,
+                              igual o resto da tela (Registrar Vale). */}
+                          {ehAdministrador && removerItem && (
+                            <button
+                              type="button"
+                              className="delete-button"
+                              onClick={() => excluirItemPendente(item)}
+                            >
+                              Excluir
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

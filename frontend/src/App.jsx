@@ -3251,6 +3251,50 @@ const pontoDeEquilibrio = useMemo(() => {
     return Math.max(0, bruto - totalPendenciasSelecionadas());
   }
 
+  // Pedido do usuário (26/08/2026): "essa parte tem que ser uma só,
+  // somativa ao selecionar cofre acima essa nao precisa selecionar" —
+  // o Cofre é UM saldo só pro usuário, não uma lista de retiradas pra
+  // escolher (mesma simplificação já feita no Vale). Escolhe sozinho
+  // de qual registro sai (o que sobra menos, sem deixar troco
+  // espalhado em vários).
+  function disponivelDoFundoCofre(fundo) {
+    return Number(fundo.valor || 0) - Number(fundo.valor_usado || 0);
+  }
+
+  function fundosCofreDaLoja(lojaIdAlvo) {
+    return fundosRetiradas.filter(
+      (fundo) =>
+        fundo.status === "aberto" &&
+        fundo.conta_para_cofre !== false &&
+        String(fundo.loja_id) === String(lojaIdAlvo)
+    );
+  }
+
+  function totalCofreDisponivelDaLoja(lojaIdAlvo) {
+    return fundosCofreDaLoja(lojaIdAlvo).reduce(
+      (soma, fundo) => soma + disponivelDoFundoCofre(fundo),
+      0
+    );
+  }
+
+  function escolherFundoCofreAutomatico(valorNecessario, lojaIdAlvo) {
+    const candidatos = fundosCofreDaLoja(lojaIdAlvo);
+
+    const suficientes = candidatos
+      .filter(
+        (fundo) => disponivelDoFundoCofre(fundo) >= valorNecessario - 0.01
+      )
+      .sort((a, b) => disponivelDoFundoCofre(a) - disponivelDoFundoCofre(b));
+
+    if (suficientes.length > 0) return suficientes[0];
+
+    const maiores = [...candidatos].sort(
+      (a, b) => disponivelDoFundoCofre(b) - disponivelDoFundoCofre(a)
+    );
+
+    return maiores[0] || null;
+  }
+
   async function salvarLancamento(evento) {
     evento.preventDefault();
 
@@ -3366,9 +3410,16 @@ const pontoDeEquilibrio = useMemo(() => {
       forma_pagamento_id: formulario.forma_pagamento_id || null,
       pago_em_dinheiro:
         tipoLancamento === "despesa" ? Boolean(formulario.pago_em_dinheiro) : false,
+      // Pedido do usuário (26/08/2026): "essa parte tem que ser uma só,
+      // somativa" — formulario.fundo_retirada_id guarda só um sinalizador
+      // ("auto"), não um id de retirada específico. Escolhe sozinho qual
+      // fundo real vai levar o desconto na hora de salvar.
       fundo_retirada_id:
         tipoLancamento === "despesa" && formulario.fundo_retirada_id
-          ? formulario.fundo_retirada_id
+          ? escolherFundoCofreAutomatico(
+              paraNumero(formulario.valor_pago_cofre) || 0,
+              formulario.loja_id
+            )?.id || null
           : null,
       valor_pago_cofre:
         tipoLancamento === "despesa" && formulario.fundo_retirada_id
@@ -3458,6 +3509,32 @@ const pontoDeEquilibrio = useMemo(() => {
   // exclusão de sempre — se o lançamento for de um mês já encerrado, o
   // backend rejeita e pede senha, então avisa em vez de travar calado.
   async function removerDespesaDeContasPagas(id) {
+    try {
+      const resultado = await excluirLancamento(id);
+
+      if (resultado?.pendente) {
+        setLancamentos((anteriores) =>
+          anteriores.map((item) => (item.id === id ? resultado.lancamento : item))
+        );
+        alert(resultado.mensagem);
+        return;
+      }
+
+      setLancamentos((anteriores) => anteriores.filter((item) => item.id !== id));
+    } catch (erro) {
+      alert(
+        erro.message ||
+          "Não foi possível excluir — se for de um mês já encerrado, exclua pela tela Despesas (pede sua senha)."
+      );
+    }
+  }
+
+  // Pedido do usuário (26/08/2026): "preciso de opção de excluir só meu
+  // usuário contas a receber" — mesmo mecanismo de sempre (excluirLancamento),
+  // só que chamado direto da lista de pendentes em Contas a Receber. Só
+  // administrador vê o botão (gate já feito no próprio componente, igual
+  // o resto da tela).
+  async function removerItemDeContasReceber(id) {
     try {
       const resultado = await excluirLancamento(id);
 
@@ -5495,6 +5572,7 @@ const pontoDeEquilibrio = useMemo(() => {
             removerFormaPagamento={removerFormaPagamento}
             buscarFoto={buscarFotoLancamento}
             registrarVale={registrarValeContasReceberHandler}
+            removerItem={removerItemDeContasReceber}
             ehAdministrador={ehAdministrador}
             funcionarios={funcionarios}
             criarFuncionario={criarFuncionarioESincronizarHandler}
@@ -7150,37 +7228,29 @@ const pontoDeEquilibrio = useMemo(() => {
                   de um Fundo de Retirada (retirada genérica de caixa
                   ainda não gasta) — se não marcar nada aqui, desconta do
                   Saldo geral normal, sem mexer em fundo nenhum. Só
-                  aparece se tiver algum fundo aberto pra loja escolhida. */}
+                  aparece se tiver algum fundo aberto pra loja escolhida.
+                  Pedido do usuário (26/08/2026): "essa parte tem que ser
+                  uma só, somativa" — o Cofre é UM saldo só, não uma
+                  lista de retiradas pra escolher (mesma simplificação
+                  já feita no Vale) — checkbox simples em vez de select,
+                  qual retirada específica leva o desconto é escolhido
+                  sozinho na hora de salvar. */}
               {tipoLancamento === "despesa" &&
                 !ehPagamentoSalario &&
-                fundosRetiradas.some(
-                  (fundo) =>
-                    fundo.status === "aberto" &&
-                    String(fundo.loja_id) === String(formulario.loja_id)
-                ) && (
-                  <div className="form-row">
-                    <label>
-                      💰 Pago com dinheiro do Cofre
-                      <select
-                        value={formulario.fundo_retirada_id}
+                fundosCofreDaLoja(formulario.loja_id).length > 0 && (
+                  <div className="form-row" style={{ flexDirection: "column" }}>
+                    <label className="permissao-item">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(formulario.fundo_retirada_id)}
                         onChange={(evento) => {
-                          const novoFundoId = evento.target.value;
-                          alterarCampo("fundo_retirada_id", novoFundoId);
+                          const marcado = evento.target.checked;
+                          alterarCampo("fundo_retirada_id", marcado ? "auto" : "");
 
-                          // Pedido do usuário (22/08/2026): pode ser
-                          // pagamento PARCIAL (ex: conta de R$600, R$200
-                          // do Cofre e R$400 do Saldo) — ao escolher um
-                          // Cofre, já sugere o valor total da despesa
-                          // (ou o disponível no Cofre, o que for menor)
-                          // como ponto de partida, editável.
-                          if (novoFundoId) {
-                            const fundoEscolhido = fundosRetiradas.find(
-                              (fundo) => String(fundo.id) === String(novoFundoId)
+                          if (marcado) {
+                            const disponivel = totalCofreDisponivelDaLoja(
+                              formulario.loja_id
                             );
-                            const disponivel = fundoEscolhido
-                              ? Number(fundoEscolhido.valor) -
-                                Number(fundoEscolhido.valor_usado || 0)
-                              : 0;
                             const valorDespesa = paraNumero(formulario.valor) || 0;
                             const sugestao = Math.min(disponivel, valorDespesa);
                             alterarCampo(
@@ -7194,35 +7264,29 @@ const pontoDeEquilibrio = useMemo(() => {
                             alterarCampo("valor_pago_cofre", "");
                           }
                         }}
-                      >
-                        <option value="">Não — descontar do Saldo normal</option>
-                        {fundosRetiradas
-                          .filter(
-                            (fundo) =>
-                              fundo.status === "aberto" &&
-                              String(fundo.loja_id) === String(formulario.loja_id)
-                          )
-                          .map((fundo) => (
-                            <option key={fundo.id} value={fundo.id}>
-                              {fundo.descricao || "Cofre"} — disponível{" "}
-                              {formatarMoeda(
-                                Number(fundo.valor) - Number(fundo.valor_usado || 0)
-                              )}
-                            </option>
-                          ))}
-                      </select>
+                      />
+                      💰 Pago com dinheiro do Cofre
                     </label>
 
                     {formulario.fundo_retirada_id && (
-                      <label>
-                        Quanto vem do Cofre? (resto desconta do Saldo)
-                        <CampoValor
-                          value={formulario.valor_pago_cofre}
-                          onChange={(novoValor) =>
-                            alterarCampo("valor_pago_cofre", novoValor)
-                          }
-                        />
-                      </label>
+                      <>
+                        <small className="foto-ajuda">
+                          🔒 Cofre disponível:{" "}
+                          {formatarMoeda(
+                            totalCofreDisponivelDaLoja(formulario.loja_id)
+                          )}{" "}
+                          — desconta sozinho de lá.
+                        </small>
+                        <label>
+                          Quanto vem do Cofre? (resto desconta do Saldo)
+                          <CampoValor
+                            value={formulario.valor_pago_cofre}
+                            onChange={(novoValor) =>
+                              alterarCampo("valor_pago_cofre", novoValor)
+                            }
+                          />
+                        </label>
+                      </>
                     )}
                   </div>
                 )}
