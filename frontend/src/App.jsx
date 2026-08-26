@@ -1746,6 +1746,43 @@ function FinanceApp() {
     }
 
     carregarDados();
+
+    // BUG REAL corrigido (26/08/2026): "foi lançado essas despesas e não
+    // deu baixa do saldo" — o Saldo é calculado 100% em cima do
+    // "lancamentos" que já está na memória do navegador, atualizado só
+    // pelo canal de tempo real do Supabase. Uma aba aberta faz tempo (o
+    // dia inteiro, no caso de quem fica sempre com o sistema aberto)
+    // pode perder algum evento do canal (rede instável, aba em segundo
+    // plano, etc.) sem nenhum aviso — e sem recarregar a página inteira
+    // manualmente, o navegador nunca percebe que ficou desatualizado.
+    // Agora, toda vez que a aba volta a ficar visível, busca a lista
+    // completa de novo do backend (fonte da verdade) e substitui —
+    // corrige sozinho qualquer lançamento que o tempo real tenha
+    // perdido no meio do caminho, sem precisar o usuário saber que
+    // precisava recarregar.
+    function recarregarSeVoltouAFicarVisivel() {
+      if (document.visibilityState === "visible") {
+        buscarLancamentos()
+          .then((dados) => {
+            if (Array.isArray(dados)) setLancamentos(dados);
+          })
+          .catch((erro) =>
+            console.error("Erro ao ressincronizar lançamentos:", erro)
+          );
+      }
+    }
+
+    document.addEventListener(
+      "visibilitychange",
+      recarregarSeVoltouAFicarVisivel
+    );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        recarregarSeVoltouAFicarVisivel
+      );
+    };
   }, []);
 
   useEffect(() => {
