@@ -67,56 +67,21 @@
     <meta name="apple-mobile-web-app-title" content="FinancePro" />
     <title>FinancePro</title>
 
-    <!-- Pedido do usuário (26/08/2026): "toda vez que saio e volto
-         rápido abre uma tela preta". O celular/navegador descarrega a
-         aba de memória quando ela fica em segundo plano (comportamento
-         do sistema operacional em PWA, fora do nosso controle) — ao
-         voltar, a página recarrega do zero, e enquanto o React ainda
-         não montou, ficava um vazio escuro parado. Esse estilo (aplica
-         antes de qualquer CSS externo carregar) + o placeholder abaixo
-         garantem que, mesmo nesse instante, já apareça a marca/spinner
-         em vez de tela vazia. */ -->
+    <!-- Pedido do usuário (26/08/2026): fundo escuro aplicado antes de
+         qualquer CSS externo carregar, pra não piscar branco/claro no
+         instante entre o navegador abrir a página e o resto do app
+         montar. Removido o spinner/texto que tinha aqui (deixava a
+         espera parecer mais longa, a pedido do usuário) — só a cor de
+         fundo mesmo, igual o resto do app já usa. -->
     <style>
       html, body {
         margin: 0;
         background: #020b16;
       }
-      #carregamento-inicial {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 14px;
-        background: #020b16;
-        color: #e7edf5;
-        font-family: Inter, "Segoe UI", Arial, sans-serif;
-      }
-      #carregamento-inicial strong {
-        font-size: 22px;
-        letter-spacing: 0.02em;
-      }
-      #carregamento-inicial .spinner {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 3px solid rgba(231, 237, 245, 0.2);
-        border-top-color: #0753cc;
-        animation: girar 0.8s linear infinite;
-      }
-      @keyframes girar {
-        to { transform: rotate(360deg); }
-      }
     </style>
   </head>
   <body>
-    <div id="root">
-      <div id="carregamento-inicial">
-        <div class="spinner"></div>
-        <strong>FinancePro</strong>
-      </div>
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
