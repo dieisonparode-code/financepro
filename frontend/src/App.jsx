@@ -2323,9 +2323,20 @@ const divergenciasAberturaFechamento = useMemo(() => {
           dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
       )
       .reduce((total, item) => {
+        // Pedido do usuário (26/08/2026): "tem que descontar... cai
+        // para 68+" — receita com prazo (data_prevista_recebimento)
+        // só entra no Saldo quando FOI DE VERDADE conferida
+        // (status_conciliacao = "conciliado"), não só porque a data
+        // prevista já passou. Antes, uma vez que a data prevista
+        // chegava, contava automaticamente mesmo sem ninguém ter
+        // confirmado que o dinheiro realmente caiu na conta — isso
+        // deixava o Saldo otimista (ex: repasse semanal do iFood
+        // previsto pra hoje, mas ainda "pendente" de conferência,
+        // contava como se já tivesse caído). Receita SEM prazo (Pix/
+        // dinheiro na hora) continua contando na hora, sem exigir
+        // conciliação — só afeta quem tem prazo mesmo.
         const aindaPendente =
           item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
           item.status_conciliacao !== "conciliado";
 
         if (aindaPendente) {
@@ -2350,9 +2361,20 @@ const divergenciasAberturaFechamento = useMemo(() => {
           dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
       )
       .reduce((total, item) => {
+        // Pedido do usuário (26/08/2026): "tem que descontar... cai
+        // para 68+" — receita com prazo (data_prevista_recebimento)
+        // só entra no Saldo quando FOI DE VERDADE conferida
+        // (status_conciliacao = "conciliado"), não só porque a data
+        // prevista já passou. Antes, uma vez que a data prevista
+        // chegava, contava automaticamente mesmo sem ninguém ter
+        // confirmado que o dinheiro realmente caiu na conta — isso
+        // deixava o Saldo otimista (ex: repasse semanal do iFood
+        // previsto pra hoje, mas ainda "pendente" de conferência,
+        // contava como se já tivesse caído). Receita SEM prazo (Pix/
+        // dinheiro na hora) continua contando na hora, sem exigir
+        // conciliação — só afeta quem tem prazo mesmo.
         const aindaPendente =
           item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
           item.status_conciliacao !== "conciliado";
 
         if (aindaPendente) {
@@ -2828,9 +2850,20 @@ const pontoDeEquilibrio = useMemo(() => {
     const entradasRecebidasBruto = lancamentosFluxo
       .filter((item) => item.tipo === "receita")
       .reduce((total, item) => {
+        // Pedido do usuário (26/08/2026): "tem que descontar... cai
+        // para 68+" — receita com prazo (data_prevista_recebimento)
+        // só entra no Saldo quando FOI DE VERDADE conferida
+        // (status_conciliacao = "conciliado"), não só porque a data
+        // prevista já passou. Antes, uma vez que a data prevista
+        // chegava, contava automaticamente mesmo sem ninguém ter
+        // confirmado que o dinheiro realmente caiu na conta — isso
+        // deixava o Saldo otimista (ex: repasse semanal do iFood
+        // previsto pra hoje, mas ainda "pendente" de conferência,
+        // contava como se já tivesse caído). Receita SEM prazo (Pix/
+        // dinheiro na hora) continua contando na hora, sem exigir
+        // conciliação — só afeta quem tem prazo mesmo.
         const aindaPendente =
           item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
           item.status_conciliacao !== "conciliado";
 
         if (aindaPendente) return total;
@@ -2841,9 +2874,20 @@ const pontoDeEquilibrio = useMemo(() => {
     const entradasRecebidasLiquido = lancamentosFluxo
       .filter((item) => item.tipo === "receita")
       .reduce((total, item) => {
+        // Pedido do usuário (26/08/2026): "tem que descontar... cai
+        // para 68+" — receita com prazo (data_prevista_recebimento)
+        // só entra no Saldo quando FOI DE VERDADE conferida
+        // (status_conciliacao = "conciliado"), não só porque a data
+        // prevista já passou. Antes, uma vez que a data prevista
+        // chegava, contava automaticamente mesmo sem ninguém ter
+        // confirmado que o dinheiro realmente caiu na conta — isso
+        // deixava o Saldo otimista (ex: repasse semanal do iFood
+        // previsto pra hoje, mas ainda "pendente" de conferência,
+        // contava como se já tivesse caído). Receita SEM prazo (Pix/
+        // dinheiro na hora) continua contando na hora, sem exigir
+        // conciliação — só afeta quem tem prazo mesmo.
         const aindaPendente =
           item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
           item.status_conciliacao !== "conciliado";
 
         if (aindaPendente) return total;
