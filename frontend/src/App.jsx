@@ -1438,13 +1438,13 @@ function FinanceApp() {
   const primeiraChecadaFeitaRef = useRef(false);
   const ultimoLogVistoEmRef = useRef(null);
 
+  // Pedido do usuário (26/08/2026): "tem que ficar em tela até eu ir lá
+  // e fechar, às vezes não olho na hora e esqueço" — essas duas
+  // notificações (venda cancelada, lançamento excluído) não somem mais
+  // sozinhas; só fecham no X mesmo.
   function adicionarNotificacao(notificacao) {
     const id = `${Date.now()}-${Math.random()}`;
     setNotificacoes((anteriores) => [...anteriores, { ...notificacao, id }]);
-    // Some sozinha depois de 20s, mas continua podendo fechar na mão antes.
-    setTimeout(() => {
-      setNotificacoes((anteriores) => anteriores.filter((item) => item.id !== id));
-    }, 20000);
   }
 
   function fecharNotificacao(id) {
