@@ -996,10 +996,9 @@ function ContasPagar({
             {selecionadas.length > 0 && (
               <>
                 <label
-                  className="toque-alvo"
                   style={{ display: "flex", alignItems: "center", gap: 6 }}
                 >
-                  Data do pagamento:
+                  <span>Data do pagamento:</span>
                   <input
                     type="date"
                     value={dataPagamentoEscolhida}
@@ -1009,8 +1008,14 @@ function ContasPagar({
                   />
                 </label>
 
+                {/* Bug real corrigido (26/08/2026): ".toque-alvo" é feito
+                    pra um ícone pequeno de 44x44 (margem negativa) — num
+                    label com texto longo, a área de toque ficava
+                    desalinhada com o texto visível, fazia marcar esse
+                    checkbox sem querer (achando que tava clicando em
+                    outra coisa) e disparava o aviso de "empréstimo entre
+                    lojas" numa loja que nunca pediu empréstimo nenhum. */}
                 <label
-                  className="toque-alvo"
                   style={{ display: "flex", alignItems: "center", gap: 6 }}
                 >
                   <input
@@ -1021,7 +1026,7 @@ function ContasPagar({
                       if (!evento.target.checked) setLojaCredoraId("");
                     }}
                   />
-                  💰 Paguei com o saldo de outra loja
+                  <span>💰 Paguei com o saldo de outra loja</span>
                 </label>
 
                 {pagoComOutraLoja && (
