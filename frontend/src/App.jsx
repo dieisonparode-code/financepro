@@ -406,25 +406,20 @@ function criarFormularioInicial(tipo = "receita") {
   };
 }
 // Pedido do usuário (26/08/2026): reajuste de saldo — o valor real em
-// conta às 12h28 desse dia era R$ 74.239,00 (o sistema estava mostrando
-// R$ 81.792,81). BUG REAL corrigido no mesmo dia (2 rodadas): como o
-// corte é por DATA (não por horário), qualquer despesa lançada DEPOIS
-// das 12h28 mas ainda no dia 26/08 ficava de fora pra sempre ("data >
-// 26/08" nunca inclui o próprio 26/08) — primeiro apareceram 3 despesas
-// assim (Facebook, Tibery, João Carlos Cunha), depois mais uma (Gálatta
-// Food Service). Em vez de continuar remendando uma por uma, a correção
-// definitiva foi trocar a data de corte pra ONTEM (25/08) e recalcular o
-// valor pra "fim do dia 25/08": pegou as despesas reais já lançadas
-// ANTES das 12h28 de hoje (R$4.840,15 — essas já estavam embutidas no
-// R$74.239,00 real informado) e somou de volta (74.239,00 + 4.840,15 =
-// 79.079,15). Resultado: com a data de corte em 25/08, TODA despesa de
-// 26/08 em diante conta sozinha, sem precisar de ajuste manual de novo —
-// o saldo batia R$71.713,70 pelos dois cálculos (remendo manual e essa
-// versão), confirmando que está certo.
+// conta às 12h28 desse dia era R$ 74.239,00. BUG REAL corrigido no mesmo
+// dia: como o corte é por DATA (não por horário), despesa lançada
+// DEPOIS das 12h28 mas ainda no dia 26/08 ficava de fora pra sempre
+// ("data > 26/08" nunca inclui o próprio 26/08). Apareceram 4 despesas
+// assim ao longo do dia (Facebook R$800, Tibery prime carnes R$883,93,
+// João Carlos Cunha R$126, Gálatta Food Service R$715,37 — total
+// R$2.525,30). Corrigido diminuindo o valor inicial por esse total
+// (74.239,00 − 2.525,30 = 71.713,70), pra ficarem embutidas certinho, na
+// data de corte de hoje mesmo (sem mexer a data de corte pra ontem — a
+// pedido do usuário, mantém o jeito mais simples/direto de ajustar).
 // (Ajustes anteriores: 24/08/2026 = R$ 79.804,87; 18/08/2026 =
 // R$ 106.430,13 — mantidos aqui só de histórico, não usados mais.)
-const SALDO_INICIAL_VALOR = 79079.15;
-const SALDO_INICIAL_DATA = "2026-08-25";
+const SALDO_INICIAL_VALOR = 71713.7;
+const SALDO_INICIAL_DATA = "2026-08-26";
 // O valor acima é o saldo real da loja Uberlândia (a única em operação de
 // fato quando esse valor foi informado) — não é um caixa único somado de
 // todas as lojas. Usado pra o card Saldo não mostrar esse valor quando
