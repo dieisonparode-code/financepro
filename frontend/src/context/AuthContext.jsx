@@ -114,7 +114,19 @@ export function AuthProvider({ children }) {
       ativo = false;
       supabase.removeChannel(canal);
     };
-  }, [sessao]);
+    // BUG REAL corrigido (26/08/2026): "tela preta" toda vez que voltava
+    // pra aba, mesmo sem sair do Chrome — a causa era aqui. O Supabase
+    // revalida/atualiza a sessão sozinho quando a aba fica visível de
+    // novo (comportamento próprio da biblioteca) — cada revalidação gera
+    // um objeto "sessao" NOVO (mesmo usuário, token só atualizado). Como
+    // o efeito dependia de "sessao" inteiro, toda revalidação disparava
+    // de novo, marcando perfilCarregando=true — e o ProtectedRoute
+    // desmonta o app inteiro (mostra tela em branco/preta) enquanto isso
+    // carrega, mesmo sendo o MESMO usuário já logado. Agora só refaz a
+    // busca do perfil quando o ID do usuário muda de verdade (login,
+    // logout, troca de conta) — token sendo só atualizado não conta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessao?.user?.id]);
 
   function login(novaSessao) {
     setSessao(novaSessao);
