@@ -84,8 +84,6 @@ import {
   reabrirFechamentoCaixa,
   lerValorFechamentoCaixa,
   trocarFotoFechamentoCaixa,
-  buscarWhatsappFila,
-  removerItemWhatsappFila,
   buscarLojas,
   criarLoja,
   atualizarLoja,
@@ -143,7 +141,6 @@ import LogAuditoria from "./components/LogAuditoria";
 import VendasSaipos from "./components/VendasSaipos";
 import Conciliacao from "./components/Conciliacao";
 import CadastroFechamentoCaixa from "./components/CadastroFechamentoCaixa";
-import WhatsAppFila from "./components/WhatsAppFila";
 import NotasFiscais from "./components/NotasFiscais";
 import CadastroLojas from "./components/CadastroLojas";
 import CadastroUsuarios from "./components/CadastroUsuarios";
@@ -804,8 +801,6 @@ function FinanceApp() {
   const [notasFiscais, setNotasFiscais] = useState([]);
   const [carregandoNotasFiscais, setCarregandoNotasFiscais] = useState(true);
 
-  const [whatsappFila, setWhatsappFila] = useState([]);
-  const [carregandoWhatsappFila, setCarregandoWhatsappFila] = useState(true);
 
   // Pedido do usuário (20/08/2026): avisar sozinho no topo quando o robô
   // do WhatsApp parar de mandar sinal de vida (crash, sem internet,
@@ -1483,30 +1478,6 @@ function FinanceApp() {
     setNotasFiscais((anteriores) => anteriores.filter((item) => item.id !== id));
   }
 
-  // Fila do WhatsApp (17/08/2026) — só admin, mesma regra da rota no
-  // backend (verificarAdmin). Não busca pra quem não é admin, pra não
-  // gerar erro 403 à toa no console de todo mundo.
-  useEffect(() => {
-    if (!ehAdministrador) {
-      setCarregandoWhatsappFila(false);
-      return;
-    }
-
-    async function carregarWhatsappFila() {
-      try {
-        setCarregandoWhatsappFila(true);
-        const dados = await buscarWhatsappFila();
-        setWhatsappFila(Array.isArray(dados) ? dados : []);
-      } catch (erro) {
-        console.error("Erro ao carregar fila do WhatsApp:", erro);
-      } finally {
-        setCarregandoWhatsappFila(false);
-      }
-    }
-
-    carregarWhatsappFila();
-  }, [ehAdministrador]);
-
   // Status do robô do WhatsApp (20/08/2026) — só admin. Confere de novo a
   // cada 3 minutos pra pegar se ele cair (ou voltar) enquanto a pessoa
   // está com a tela aberta, sem precisar recarregar a página.
@@ -1721,11 +1692,6 @@ function FinanceApp() {
     buscarResumoEmprestimosEntreLojas()
       .then((dados) => setResumoEmprestimosEntreLojas(Array.isArray(dados) ? dados : []))
       .catch(() => {});
-  }
-
-  async function removerItemWhatsappFilaHandler(id) {
-    await removerItemWhatsappFila(id);
-    setWhatsappFila((anteriores) => anteriores.filter((item) => item.id !== id));
   }
 
   async function criarDespesaDoWhatsapp(dados) {
@@ -4732,16 +4698,6 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
-          {ehAdministrador && (
-            <button
-              className={pagina === "whatsapp-fila" ? "active" : ""}
-              onClick={() => setPagina("whatsapp-fila")}
-            >
-              📲 Fila WhatsApp
-              {whatsappFila.length > 0 ? ` (${whatsappFila.length})` : ""}
-            </button>
-          )}
-
           {temPermissaoFinanceira("fluxo_caixa") && (
             <button
               className={pagina === "fluxo" ? "active" : ""}
@@ -5960,19 +5916,6 @@ const pontoDeEquilibrio = useMemo(() => {
             adicionarNota={adicionarNotaFiscal}
             removerNota={removerNotaFiscal}
             buscarFoto={buscarFotoNotaFiscal}
-          />
-        )}
-
-        {pagina === "whatsapp-fila" && ehAdministrador && (
-          <WhatsAppFila
-            itens={whatsappFila}
-            carregando={carregandoWhatsappFila}
-            lojas={lojas}
-            lojaPadrao={vePermissaoTotal ? null : perfil?.loja_id || null}
-            criarFechamento={adicionarFechamentoCaixa}
-            criarDespesa={criarDespesaDoWhatsapp}
-            criarContaPagar={adicionarContaPagar}
-            removerItem={removerItemWhatsappFilaHandler}
           />
         )}
 
