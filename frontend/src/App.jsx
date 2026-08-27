@@ -448,20 +448,35 @@ function criarFormularioInicial(tipo = "receita") {
 // automaticamente bate "data > 25/08 = true" e entra na conta sozinha,
 // pra sempre, sem precisar de ajuste manual de novo.
 //
-// Valor calculado a partir do saldo REAL verificado (R$74.239,00 às
-// 12h28 de 26/08) MENOS as despesas que já tinham acontecido de
-// verdade ANTES desse horário nesse mesmo dia (R$4.230,15) — pra
-// voltar exatamente pro saldo do fim do dia 25/08, sem nenhuma
-// despesa de 26/08 embutida (a data de corte agora cuida delas todas
-// sozinha, incluindo as que ainda nem tinham sido descontadas: 5
-// Diárias Boy de R$410,00 e mais 4 despesas de R$3.235,81 lançadas à
-// tarde/noite, que o ajuste anterior tinha deixado passar).
-// 74.239,00 + 4.230,15 = 78.469,15
-// (Ajustes anteriores, todos com o MESMO problema estrutural, mantidos
-// só de histórico: 26/08/2026 = R$71.713,70 (corte 26/08); 24/08/2026
-// = R$79.804,87; 18/08/2026 = R$106.430,13.)
-const SALDO_INICIAL_VALOR = 78469.15;
-const SALDO_INICIAL_DATA = "2026-08-25";
+// REANCORAGEM 27/08/2026 (Etapa 0 do plano de confiabilidade): o
+// usuário conferiu o saldo REAL da conta Sicredi HOJE = R$73.976,15.
+// Em vez de caçar no histórico a divergência de ~R$3.658 que sobrou
+// depois da correção das vendas (commit 95a0519), zeramos: a partir
+// deste ponto conferido, toda entrada e saída move o Saldo e a gente
+// acompanha dia a dia se continua batendo. Se derivar, aí sim
+// investigamos com dado fresco (taxa errada / despesa não lançada),
+// não arqueologia.
+//
+// Data de corte = ONTEM (26/08), mesmo padrão à prova de bug de 26/08:
+// enquanto o corte for HOJE, toda despesa lançada no resto do dia
+// "27/08 > 27/08 = false" some pra sempre. Com corte em ontem, qualquer
+// lançamento de hoje ou de qualquer dia futuro entra sozinho, sem
+// ajuste manual de novo.
+//
+// Valor = saldo real de hoje (73.976,15) revertido pro fim do dia
+// 26/08, tirando o que o sistema volta a contar com corte em 26/08:
+//   73.976,15  (saldo real conferido agora)
+//   - 4.470,92 (receitas líq. de cartão/Brendi "cobrado na entrega" de
+//               25-26/08, previstas p/ 27/08 — o sistema soma essas)
+//   + 798,60   (despesas de 27/08 — o sistema desconta essas)
+//   = 70.303,83
+// Conferido rodando o cálculo real: BASE 70.303,83 @ corte 26/08 ->
+// Saldo = 73.976,15 exato.
+// (Ajustes anteriores, mantidos só de histórico: 27/08/2026 (pré-
+// reancoragem) = R$78.469,15 (corte 25/08); 26/08/2026 = R$71.713,70
+// (corte 26/08); 24/08/2026 = R$79.804,87; 18/08/2026 = R$106.430,13.)
+const SALDO_INICIAL_VALOR = 70303.83;
+const SALDO_INICIAL_DATA = "2026-08-26";
 // O valor acima é o saldo real da loja Uberlândia (a única em operação de
 // fato quando esse valor foi informado) — não é um caixa único somado de
 // todas as lojas. Usado pra o card Saldo não mostrar esse valor quando
