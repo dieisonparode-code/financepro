@@ -1533,16 +1533,21 @@ app.delete(
         );
       }
 
-      // Pedido do usuário (21/08/2026): aprovação de exclusão — mesma
-      // trava que já existia pra CRIAR despesa (aprovacao_despesas_ativa),
-      // agora também pra EXCLUIR. Quem não é admin não apaga na hora —
-      // só fica marcado como "pedido de exclusão pendente", visível pra
-      // um admin aprovar ou rejeitar. O admin sempre exclui direto (é
-      // ele mesmo quem aprovaria, não faz sentido pedir pra si mesmo).
+      // Aprovação de exclusão. Quem não é administrador NUNCA apaga na
+      // hora — o lançamento só fica marcado como "pedido de exclusão
+      // pendente"; ele continua contando no Saldo/relatórios até alguém
+      // com permissão "aprovar_despesas" (ou um admin) confirmar. Só na
+      // confirmação é que o lançamento some de verdade e o valor volta
+      // pro Saldo.
+      //
+      // Pedido do usuário (27/08/2026): isso vale SEMPRE, desacoplado da
+      // config `aprovacao_despesas_ativa` (que controla só a aprovação
+      // pra CRIAR despesa e está desligada de propósito). Antes, com essa
+      // config off, qualquer gerente (ex.: Paula) apagava direto.
       const { perfil: perfilQuemExclui } = await obterPerfilOpcional(req);
       const ehAdminExcluindo = perfilQuemExclui?.perfil === "administrador";
 
-      if (!ehAdminExcluindo && (await aprovacaoDespesasAtiva())) {
+      if (!ehAdminExcluindo) {
         const { data: pendente, error: erroPendente } = await supabase
           .from("lancamentos")
           .update({
@@ -1562,13 +1567,13 @@ app.delete(
           "solicitou exclusão",
           "lancamentos",
           id,
-          `Aguardando aprovação de um administrador.`
+          `Aguardando autorização de quem pode aprovar exclusões.`
         );
 
         return res.status(202).json({
           pendente: true,
           mensagem:
-            "Pedido de exclusão enviado — aguardando aprovação de um administrador.",
+            "Pedido de cancelamento enviado — o lançamento só é cancelado (e o valor volta pro Saldo) depois que alguém autorizado confirmar.",
           lancamento: pendente,
         });
       }
