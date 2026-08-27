@@ -120,6 +120,11 @@ import {
   aprovarExclusaoLancamento,
   rejeitarExclusaoLancamento,
 } from "./services/api";
+import {
+  somaReceitasAccrual,
+  somaReceitasRecebidas,
+  somaDespesas,
+} from "./utils/calculoFinanceiro";
 
 import CadastroCategorias from "./components/CadastroCategorias";
 import CadastroClientes from "./components/CadastroClientes";
@@ -2201,56 +2206,15 @@ const divergenciasAberturaFechamento = useMemo(() => {
 }, [registrosDinheiroInformado, lojas]);
 
   const totais = useMemo(() => {
-   const receitas = lancamentosDashboard
-      .filter((item) => item.tipo === "receita")
-      .reduce((total, item) => total + Number(item.valor || 0), 0);
-
-    // Saldo = só o dinheiro que já caiu de verdade. Uma receita com forma
-    // de pagamento a prazo (data_prevista_recebimento ainda no futuro e
-    // não conciliada) não entra aqui — ela já aparece separada no card
-    // "A Receber". Sem isso, o mesmo dinheiro contava duas vezes (uma no
-    // Saldo, outra no A Receber). Pra quem já "venceu" o prazo, conta o
-    // valor líquido esperado (depois da taxa), não o valor bruto da venda.
     const hoje = hojeLocal();
 
-    // Duas versões do que já caiu: bruta (valor cheio da venda) e líquida
-    // (depois da taxa da forma de pagamento) — a diferença entre as duas é
-    // o total de taxas, que o card de Saldo mostra separado.
-    const receitasRecebidasBruto = lancamentosDashboard
-      .filter((item) => item.tipo === "receita")
-      .reduce((total, item) => {
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
-          item.status_conciliacao !== "conciliado";
+    // Etapa 1 (Malha 1): receitas/despesas do período por regime de
+    // competência (accrual) — tudo lançado no mês/loja, independente de já
+    // ter caído. Cálculo centralizado em utils/calculoFinanceiro.js pra as
+    // telas nunca mais divergirem entre si (foi o bug de 27/08).
+    const receitas = somaReceitasAccrual(lancamentosDashboard);
 
-        if (aindaPendente) {
-          return total;
-        }
-
-        return total + Number(item.valor || 0);
-      }, 0);
-
-    const receitasRecebidas = lancamentosDashboard
-      .filter((item) => item.tipo === "receita")
-      .reduce((total, item) => {
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
-          item.status_conciliacao !== "conciliado";
-
-        if (aindaPendente) {
-          return total;
-        }
-
-        return (
-          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
-        );
-      }, 0);
-
-    const despesas = lancamentosDashboard
-      .filter((item) => item.tipo === "despesa")
-      .reduce((total, item) => total + Number(item.valor || 0), 0);
+    const despesas = somaDespesas(lancamentosDashboard);
 
     // Pedido do usuário (21/08/2026): esse indicador não é mais uma
     // variação acumulada desde uma data-base (podia dar negativo, o que
@@ -2270,26 +2234,6 @@ const divergenciasAberturaFechamento = useMemo(() => {
           item.grupo === "CMV - Insumos"
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
-
-    // Líquido do que ainda está pendente (Próximos Recebimentos) — usado
-    // pra tirar do Saldo, já que Fluxo de Caixa conta tudo (accrual) mas
-    // Saldo só deve contar o que já caiu de verdade.
-    const receitasPendentesLiquido = lancamentosDashboard
-      .filter((item) => item.tipo === "receita")
-      .reduce((total, item) => {
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
-          item.status_conciliacao !== "conciliado";
-
-        if (!aindaPendente) {
-          return total;
-        }
-
-        return (
-          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
-        );
-      }, 0);
 
     // Fluxo de Caixa (card do Dashboard) = todas as receitas do período
     // (accrual, igual o card "Receitas") menos despesas. Saldo = isso
@@ -2330,90 +2274,39 @@ const divergenciasAberturaFechamento = useMemo(() => {
       lojaDashboard === "todas" ||
       String(item.loja_id || "") === String(lojaDashboard);
 
-    const receitasRecebidasDesdeAjusteSaldo = lancamentosAprovados
-      .filter(
-        (item) =>
-          item.tipo === "receita" &&
-          lojaCombinaComSaldo(item) &&
-          dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
-      )
-      .reduce((total, item) => {
-        // Regra confirmada com o usuário (27/08/2026): o Saldo soma só o
-        // que REALMENTE já entrou. Uma venda com prazo
-        // (data_prevista_recebimento) conta no Saldo assim que esse prazo
-        // CHEGA (data prevista <= hoje) — nesse ponto o dinheiro já caiu
-        // (Pix do dia, cartão/Brendi D+1). Enquanto o prazo ainda é
-        // futuro, a venda fica SÓ em "Próximos Recebimentos", não soma
-        // aqui. Conciliação manual (status_conciliacao = "conciliado")
-        // também faz contar, pra qualquer data. Receita SEM prazo (Pix/
-        // dinheiro na hora) sempre contou na hora.
-        // (Antes, de 26 a 27/08, exigia conciliação manual pra QUALQUER
-        // venda com prazo — como nada era conciliado, nenhuma venda
-        // entrava no Saldo e ele só caía.)
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
-          item.status_conciliacao !== "conciliado";
+    // Receitas que contam no Saldo: as que JÁ CAÍRAM (regra receitaJaCaiu,
+    // centralizada) E com data efetiva depois do ponto de âncora do Saldo
+    // (antes disso já está embutido no SALDO_INICIAL_VALOR). A versão bruta
+    // (sem taxa) serve só pra mostrar "Bruto R$ X — Taxas R$ Y" no card.
+    const receitasParaSaldo = lancamentosAprovados.filter(
+      (item) =>
+        item.tipo === "receita" &&
+        lojaCombinaComSaldo(item) &&
+        dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
+    );
+    const receitasRecebidasDesdeAjusteSaldo = somaReceitasRecebidas(
+      receitasParaSaldo,
+      hoje,
+      { liquido: true }
+    );
+    const receitasRecebidasBrutoDesdeAjusteSaldo = somaReceitasRecebidas(
+      receitasParaSaldo,
+      hoje,
+      { liquido: false }
+    );
 
-        if (aindaPendente) {
-          return total;
-        }
-
-        return (
-          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
-        );
-      }, 0);
-
-    // Mesma coisa, mas em valor bruto (sem descontar taxa de cartão/iFood/
-    // etc.) — só pra mostrar "Bruto R$ X — Taxas R$ Y" embaixo do valor
-    // principal do card. Tem que usar a mesma base (desde 18/08/2026), senão
-    // esse detalhe mostra um número de outro período, sem nenhuma relação
-    // com o Saldo de cima.
-    const receitasRecebidasBrutoDesdeAjusteSaldo = lancamentosAprovados
-      .filter(
-        (item) =>
-          item.tipo === "receita" &&
-          lojaCombinaComSaldo(item) &&
-          dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
-      )
-      .reduce((total, item) => {
-        // Mesma regra do bloco líquido acima (27/08/2026): conta no Saldo
-        // quando o prazo já chegou (data prevista <= hoje) ou quando foi
-        // conciliada manualmente; prazo futuro fica só em "Próximos
-        // Recebimentos".
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.data_prevista_recebimento > hoje &&
-          item.status_conciliacao !== "conciliado";
-
-        if (aindaPendente) {
-          return total;
-        }
-
-        return total + Number(item.valor || 0);
-      }, 0);
-
-    const despesasDesdeAjusteSaldo = lancamentosAprovados
-      .filter(
+    // Despesas que descontam o Saldo desde a âncora. `descontarCofre`: a
+    // parte paga com o Cofre (fundo de retirada) não desconta de novo — o
+    // dinheiro já saiu do caixa na retirada.
+    const despesasDesdeAjusteSaldo = somaDespesas(
+      lancamentosAprovados.filter(
         (item) =>
           item.tipo === "despesa" &&
           lojaCombinaComSaldo(item) &&
           item.data > SALDO_INICIAL_DATA
-      )
-      .reduce((total, item) => {
-        // Pedido do usuário (22/08/2026): despesa paga com o Cofre
-        // (fundo de retirada) NUNCA desconta o Saldo geral na parte
-        // que veio de lá — o dinheiro já tinha saído do caixa antes
-        // (retirada) e ficou guardado. Pode ser PARCIAL: só a parte
-        // que sobrou (valor − valor_pago_cofre) desconta o Saldo,
-        // igual sempre. O backend só permite valor_pago_cofre até o
-        // que o Cofre realmente tinha disponível — então subtrair
-        // aqui é sempre seguro (nunca fica negativo).
-        const valorQueDescontaSaldo =
-          Number(item.valor || 0) - Number(item.valor_pago_cofre || 0);
-
-        return total + valorQueDescontaSaldo;
-      }, 0);
+      ),
+      { descontarCofre: true }
+    );
 
     // Pedido do usuário (20/08/2026): retirada de dinheiro pros sócios
     // também dá baixa no Saldo, igual uma despesa — só que não aparece
@@ -2637,13 +2530,10 @@ const lancamentosRelatorio = useMemo(() => {
   });
 }, [lancamentosAprovados, dataInicialRelatorio, dataFinalRelatorio]);
 const totaisRelatorio = useMemo(() => {
-  const receitas = lancamentosRelatorio
-    .filter((item) => item.tipo === "receita")
-    .reduce((total, item) => total + Number(item.valor || 0), 0);
+  // Etapa 1 (Malha 1): accrual centralizado — ver utils/calculoFinanceiro.js.
+  const receitas = somaReceitasAccrual(lancamentosRelatorio);
 
-  const despesas = lancamentosRelatorio
-    .filter((item) => item.tipo === "despesa")
-    .reduce((total, item) => total + Number(item.valor || 0), 0);
+  const despesas = somaDespesas(lancamentosRelatorio);
 
   const cmvValor = lancamentosRelatorio
     .filter(
@@ -2844,74 +2734,22 @@ const pontoDeEquilibrio = useMemo(() => {
   }, [lancamentosAprovados, dataInicialFluxo, dataFinalFluxo]);
 
   const totaisFluxo = useMemo(() => {
-    const entradas = lancamentosFluxo
-      .filter((item) => item.tipo === "receita")
-      .reduce(
-        (total, item) => total + Number(item.valor || 0),
-        0
-      );
-
-    // Mesma regra do Dashboard: só conta como "caiu de verdade" quem já
-    // não está mais pendente (prazo vencido ou conciliado), e usa o valor
-    // líquido (depois da taxa da forma de pagamento) pra quem já caiu.
     const hoje = hojeLocal();
 
-    const entradasRecebidasBruto = lancamentosFluxo
-      .filter((item) => item.tipo === "receita")
-      .reduce((total, item) => {
-        // Pedido do usuário (26/08/2026): "tem que descontar... cai
-        // para 68+" — receita com prazo (data_prevista_recebimento)
-        // só entra no Saldo quando FOI DE VERDADE conferida
-        // (status_conciliacao = "conciliado"), não só porque a data
-        // prevista já passou. Antes, uma vez que a data prevista
-        // chegava, contava automaticamente mesmo sem ninguém ter
-        // confirmado que o dinheiro realmente caiu na conta — isso
-        // deixava o Saldo otimista (ex: repasse semanal do iFood
-        // previsto pra hoje, mas ainda "pendente" de conferência,
-        // contava como se já tivesse caído). Receita SEM prazo (Pix/
-        // dinheiro na hora) continua contando na hora, sem exigir
-        // conciliação — só afeta quem tem prazo mesmo.
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.status_conciliacao !== "conciliado";
-
-        if (aindaPendente) return total;
-
-        return total + Number(item.valor || 0);
-      }, 0);
-
-    const entradasRecebidasLiquido = lancamentosFluxo
-      .filter((item) => item.tipo === "receita")
-      .reduce((total, item) => {
-        // Pedido do usuário (26/08/2026): "tem que descontar... cai
-        // para 68+" — receita com prazo (data_prevista_recebimento)
-        // só entra no Saldo quando FOI DE VERDADE conferida
-        // (status_conciliacao = "conciliado"), não só porque a data
-        // prevista já passou. Antes, uma vez que a data prevista
-        // chegava, contava automaticamente mesmo sem ninguém ter
-        // confirmado que o dinheiro realmente caiu na conta — isso
-        // deixava o Saldo otimista (ex: repasse semanal do iFood
-        // previsto pra hoje, mas ainda "pendente" de conferência,
-        // contava como se já tivesse caído). Receita SEM prazo (Pix/
-        // dinheiro na hora) continua contando na hora, sem exigir
-        // conciliação — só afeta quem tem prazo mesmo.
-        const aindaPendente =
-          item.data_prevista_recebimento &&
-          item.status_conciliacao !== "conciliado";
-
-        if (aindaPendente) return total;
-
-        return (
-          total + Number(item.valor_liquido_esperado ?? item.valor ?? 0)
-        );
-      }, 0);
-
-    const saidas = lancamentosFluxo
-      .filter((item) => item.tipo === "despesa")
-      .reduce(
-        (total, item) => total + Number(item.valor || 0),
-        0
-      );
+    // Etapa 1 (Malha 1): mesmo cálculo do Dashboard, centralizado em
+    // utils/calculoFinanceiro.js. Antes esta tela tinha ficado com a regra
+    // antiga (só contava receita a prazo se conciliada manualmente),
+    // divergindo do Dashboard — agora as duas usam receitaJaCaiu.
+    const entradas = somaReceitasAccrual(lancamentosFluxo);
+    const entradasRecebidasBruto = somaReceitasRecebidas(lancamentosFluxo, hoje, {
+      liquido: false,
+    });
+    const entradasRecebidasLiquido = somaReceitasRecebidas(
+      lancamentosFluxo,
+      hoje,
+      { liquido: true }
+    );
+    const saidas = somaDespesas(lancamentosFluxo);
 
     const totalTaxasFluxo = entradasRecebidasBruto - entradasRecebidasLiquido;
 

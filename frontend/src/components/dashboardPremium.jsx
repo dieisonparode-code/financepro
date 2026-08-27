@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./dashboardPremium.css";
 import UserMenu from "./UserMenu";
 import { buscarStatusImportacaoSaipos } from "../services/api";
+import { receitaPendente } from "../utils/calculoFinanceiro";
 
 const MESES = [
   ["2026-01", "Janeiro de 2026"],
@@ -474,11 +475,7 @@ export default function DashboardPremium({
     ).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
 
     return todosLancamentos.filter(
-      (item) =>
-        item.tipo === "receita" &&
-        item.data_prevista_recebimento &&
-        item.data_prevista_recebimento > hojeStr &&
-        item.status_conciliacao !== "conciliado"
+      (item) => item.tipo === "receita" && receitaPendente(item, hojeStr)
     );
   }, [todosLancamentos]);
 

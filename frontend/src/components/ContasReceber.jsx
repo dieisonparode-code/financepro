@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import CampoValor, { paraNumero } from "./CampoValor";
+import { receitaPendente } from "../utils/calculoFinanceiro";
 
 // BUG REAL corrigido (26/08/2026): usava o relógio/fuso do próprio
 // aparelho — se estivesse errado, salvava com a data errada sem
@@ -354,11 +355,7 @@ function ContasReceber({
   const hoje = hojeLocal();
 
   const previstos = lancamentos.filter(
-    (item) =>
-      item.tipo === "receita" &&
-      item.data_prevista_recebimento &&
-      item.data_prevista_recebimento > hoje &&
-      item.status_conciliacao !== "conciliado"
+    (item) => item.tipo === "receita" && receitaPendente(item, hoje)
   );
 
   function nomeFormaPagamento(id) {
