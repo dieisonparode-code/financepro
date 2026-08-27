@@ -2323,20 +2323,21 @@ const divergenciasAberturaFechamento = useMemo(() => {
           dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
       )
       .reduce((total, item) => {
-        // Pedido do usuário (26/08/2026): "tem que descontar... cai
-        // para 68+" — receita com prazo (data_prevista_recebimento)
-        // só entra no Saldo quando FOI DE VERDADE conferida
-        // (status_conciliacao = "conciliado"), não só porque a data
-        // prevista já passou. Antes, uma vez que a data prevista
-        // chegava, contava automaticamente mesmo sem ninguém ter
-        // confirmado que o dinheiro realmente caiu na conta — isso
-        // deixava o Saldo otimista (ex: repasse semanal do iFood
-        // previsto pra hoje, mas ainda "pendente" de conferência,
-        // contava como se já tivesse caído). Receita SEM prazo (Pix/
-        // dinheiro na hora) continua contando na hora, sem exigir
-        // conciliação — só afeta quem tem prazo mesmo.
+        // Regra confirmada com o usuário (27/08/2026): o Saldo soma só o
+        // que REALMENTE já entrou. Uma venda com prazo
+        // (data_prevista_recebimento) conta no Saldo assim que esse prazo
+        // CHEGA (data prevista <= hoje) — nesse ponto o dinheiro já caiu
+        // (Pix do dia, cartão/Brendi D+1). Enquanto o prazo ainda é
+        // futuro, a venda fica SÓ em "Próximos Recebimentos", não soma
+        // aqui. Conciliação manual (status_conciliacao = "conciliado")
+        // também faz contar, pra qualquer data. Receita SEM prazo (Pix/
+        // dinheiro na hora) sempre contou na hora.
+        // (Antes, de 26 a 27/08, exigia conciliação manual pra QUALQUER
+        // venda com prazo — como nada era conciliado, nenhuma venda
+        // entrava no Saldo e ele só caía.)
         const aindaPendente =
           item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
           item.status_conciliacao !== "conciliado";
 
         if (aindaPendente) {
@@ -2361,20 +2362,13 @@ const divergenciasAberturaFechamento = useMemo(() => {
           dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
       )
       .reduce((total, item) => {
-        // Pedido do usuário (26/08/2026): "tem que descontar... cai
-        // para 68+" — receita com prazo (data_prevista_recebimento)
-        // só entra no Saldo quando FOI DE VERDADE conferida
-        // (status_conciliacao = "conciliado"), não só porque a data
-        // prevista já passou. Antes, uma vez que a data prevista
-        // chegava, contava automaticamente mesmo sem ninguém ter
-        // confirmado que o dinheiro realmente caiu na conta — isso
-        // deixava o Saldo otimista (ex: repasse semanal do iFood
-        // previsto pra hoje, mas ainda "pendente" de conferência,
-        // contava como se já tivesse caído). Receita SEM prazo (Pix/
-        // dinheiro na hora) continua contando na hora, sem exigir
-        // conciliação — só afeta quem tem prazo mesmo.
+        // Mesma regra do bloco líquido acima (27/08/2026): conta no Saldo
+        // quando o prazo já chegou (data prevista <= hoje) ou quando foi
+        // conciliada manualmente; prazo futuro fica só em "Próximos
+        // Recebimentos".
         const aindaPendente =
           item.data_prevista_recebimento &&
+          item.data_prevista_recebimento > hoje &&
           item.status_conciliacao !== "conciliado";
 
         if (aindaPendente) {
