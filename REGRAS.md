@@ -83,14 +83,21 @@ Configurável em **Contas a Receber → Formas de Pagamento**. Valores em uso
 | Cartão de Débito (PagSeguro) | 0,99% | D+1 |
 | Cartão de Crédito (PagSeguro) | 2,50% | D+1 |
 | PIX (qualquer canal — balcão, iFood, Brendi) | 0,90% | D+0 (cai na hora) |
-| iFood (crédito/pago online) | 1,29% | semana fechada seg–dom, paga na **quarta da semana seguinte** |
+| iFood (crédito/pago online) | **12,16%** | semana fechada seg–dom, paga na **quarta da semana seguinte** |
 | Brendi (crédito online) | 3,99% | D+1 |
 | Funcionário (venda a prazo) | 0% | 1º dia útil do mês seguinte |
 
+**Taxa do iFood — como foi definida (27/08/2026):** conferido com repasse
+real. Semana 17–23/08: bruto R$ 7.115,91, caiu na conta em 26/08 (quarta)
+R$ 6.250,65. `taxa = 1 − (6.250,65 ÷ 7.115,91) = 12,16%`. Registrado no
+`log_auditoria`. A taxa efetiva do iFood **varia de semana pra semana**
+(promoção, incentivo, mix) — já deu 10,7% e 11,7% em semanas de agosto.
+**Reconferir 1×/mês** com um repasse real; ajustar pela tela Formas de
+Pagamento (tem calculadora: bruto vendido × valor que caiu → %).
+Lançamentos já importados **não** recalculam — só as importações
+seguintes usam a taxa nova.
+
 **Pendências conhecidas:**
-- **Taxa do iFood contestada**: memória tem registro de 1,29% (antecipação)
-  e de ~12,80% (comissão + antecipação). Precisa fechar comparando o
-  líquido calculado com um repasse real do portal.
 - **Brendi**: a taxa fixa de R$ 0,40/pedido + 0,5% do Pix da Brendi **não**
   está modelada (usa o balde genérico "PIX" 0,90%). Aproximação aceita.
 
