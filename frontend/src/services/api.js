@@ -452,6 +452,30 @@ export async function excluirRetiradaSocio(id) {
   });
 }
 
+// Saldo Conferido (Etapa 3) — âncora do card Saldo, agora no banco em vez
+// de constante no código. Ler é liberado pra quem vê o Saldo; gravar/apagar
+// é só admin.
+export async function buscarSaldosConferidos() {
+  return requisicao("/saldo-conferido", {
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
+export async function criarSaldoConferido(dados) {
+  return requisicao("/saldo-conferido", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify(dados),
+  });
+}
+
+export async function excluirSaldoConferido(id) {
+  return requisicao(`/saldo-conferido/${id}`, {
+    method: "DELETE",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 // Ficha Técnica (21/08/2026) — CMV real por prato. Reaproveita
 // buscarInsumos/criarInsumo/atualizarInsumo/excluirInsumo/
 // registrarMovimentacaoEstoque que já existiam pra tela Estoque — não

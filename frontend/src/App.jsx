@@ -119,6 +119,9 @@ import {
   criarFundoRetiradaCaixa,
   aprovarExclusaoLancamento,
   rejeitarExclusaoLancamento,
+  buscarSaldosConferidos,
+  criarSaldoConferido,
+  excluirSaldoConferido,
 } from "./services/api";
 import {
   somaReceitasAccrual,
@@ -131,6 +134,7 @@ import CadastroClientes from "./components/CadastroClientes";
 import ContasPagar, { diasAte } from "./components/ContasPagar";
 import DespesasRecorrentes from "./components/DespesasRecorrentes";
 import RetiradasSocios from "./components/RetiradasSocios";
+import ConferenciaSaldo from "./components/ConferenciaSaldo";
 import ExtratoCofre from "./components/ExtratoCofre";
 import EmprestimosEntreLojas from "./components/EmprestimosEntreLojas";
 import Fornecedores from "./components/Fornecedores";
@@ -824,6 +828,29 @@ function FinanceApp() {
       .catch((erro) =>
         console.error("Erro ao buscar resumo de retiradas de sócios:", erro)
       );
+  }, []);
+
+  // Etapa 3 (Malha 3): âncora do card Saldo — antes eram constantes no
+  // código (SALDO_INICIAL_*), agora é uma tabela. Buscado por QUALQUER
+  // usuário que vê o Saldo (o card depende disso); só admin cadastra.
+  // Enquanto a tabela estiver vazia, o cálculo cai no fallback das
+  // constantes — comportamento idêntico ao de antes.
+  const [saldosConferidos, setSaldosConferidos] = useState([]);
+
+  function recarregarSaldosConferidos() {
+    return buscarSaldosConferidos()
+      .then((dados) => {
+        setSaldosConferidos(Array.isArray(dados) ? dados : []);
+        return dados;
+      })
+      .catch((erro) => {
+        console.error("Erro ao buscar saldos conferidos:", erro);
+        return [];
+      });
+  }
+
+  useEffect(() => {
+    recarregarSaldosConferidos();
   }, []);
 
   // Empréstimo entre Lojas (21/08/2026) — só admin gerencia, mas o
@@ -1635,6 +1662,17 @@ function FinanceApp() {
     );
   }
 
+  // Etapa 3 (Malha 3): âncora do card Saldo — cadastro/exclusão só admin.
+  async function adicionarSaldoConferidoHandler(dados) {
+    await criarSaldoConferido(dados);
+    await recarregarSaldosConferidos();
+  }
+
+  async function removerSaldoConferidoHandler(id) {
+    await excluirSaldoConferido(id);
+    await recarregarSaldosConferidos();
+  }
+
   // Empréstimo entre Lojas (21/08/2026) — só admin gerencia.
   useEffect(() => {
     if (!ehAdministrador) {
@@ -2205,8 +2243,51 @@ const divergenciasAberturaFechamento = useMemo(() => {
   return divergencias;
 }, [registrosDinheiroInformado, lojas]);
 
+  // Etapa 3 (Malha 3): registro de saldo conferido mais recente por loja.
+  // O card Saldo usa `valor_real` como base e `data_referencia` como ponto
+  // de corte (tudo antes já está embutido nesse valor). Sem registro pra
+  // uma loja, cai no fallback das constantes SALDO_INICIAL_* (loja
+  // Uberlândia) ou zero (outras) — igual era antes da Etapa 3.
+  const saldoConferidoPorLoja = useMemo(() => {
+    const porLoja = new Map();
+
+    for (const registro of saldosConferidos) {
+      const chave = String(registro.loja_id || "");
+      const atual = porLoja.get(chave);
+      const maisNovo =
+        !atual ||
+        registro.data_referencia > atual.data_referencia ||
+        (registro.data_referencia === atual.data_referencia &&
+          Number(registro.id) > Number(atual.id));
+
+      if (maisNovo) porLoja.set(chave, registro);
+    }
+
+    return porLoja;
+  }, [saldosConferidos]);
+
   const totais = useMemo(() => {
     const hoje = hojeLocal();
+
+    // Base e data de corte do Saldo, vindas do registro conferido da loja
+    // (Etapa 3). Fallback pras constantes quando ainda não há registro.
+    const corteSaldoDaLoja = (lojaId) =>
+      saldoConferidoPorLoja.get(String(lojaId))?.data_referencia ||
+      SALDO_INICIAL_DATA;
+
+    const baseSaldoConferido = (() => {
+      if (lojaDashboard === "todas") {
+        if (saldoConferidoPorLoja.size === 0) return SALDO_INICIAL_VALOR;
+        return Array.from(saldoConferidoPorLoja.values()).reduce(
+          (total, registro) => total + Number(registro.valor_real || 0),
+          0
+        );
+      }
+
+      const registro = saldoConferidoPorLoja.get(String(lojaDashboard));
+      if (registro) return Number(registro.valor_real || 0);
+      return lojaDashboard === LOJA_INICIAL_ID ? SALDO_INICIAL_VALOR : 0;
+    })();
 
     // Etapa 1 (Malha 1): receitas/despesas do período por regime de
     // competência (accrual) — tudo lançado no mês/loja, independente de já
@@ -2275,14 +2356,15 @@ const divergenciasAberturaFechamento = useMemo(() => {
       String(item.loja_id || "") === String(lojaDashboard);
 
     // Receitas que contam no Saldo: as que JÁ CAÍRAM (regra receitaJaCaiu,
-    // centralizada) E com data efetiva depois do ponto de âncora do Saldo
-    // (antes disso já está embutido no SALDO_INICIAL_VALOR). A versão bruta
-    // (sem taxa) serve só pra mostrar "Bruto R$ X — Taxas R$ Y" no card.
+    // centralizada) E com data efetiva depois do ponto de corte do saldo
+    // conferido daquela loja (antes disso já está embutido no valor_real).
+    // A versão bruta (sem taxa) serve só pra mostrar "Bruto R$ X — Taxas
+    // R$ Y" no card.
     const receitasParaSaldo = lancamentosAprovados.filter(
       (item) =>
         item.tipo === "receita" &&
         lojaCombinaComSaldo(item) &&
-        dataEfetivaRecebimento(item) > SALDO_INICIAL_DATA
+        dataEfetivaRecebimento(item) > corteSaldoDaLoja(item.loja_id)
     );
     const receitasRecebidasDesdeAjusteSaldo = somaReceitasRecebidas(
       receitasParaSaldo,
@@ -2303,7 +2385,7 @@ const divergenciasAberturaFechamento = useMemo(() => {
         (item) =>
           item.tipo === "despesa" &&
           lojaCombinaComSaldo(item) &&
-          item.data > SALDO_INICIAL_DATA
+          item.data > corteSaldoDaLoja(item.loja_id)
       ),
       { descontarCofre: true }
     );
@@ -2315,7 +2397,9 @@ const divergenciasAberturaFechamento = useMemo(() => {
     // usuário que vê o Saldo, não só admin.
     const retiradasSociosDesdeAjusteSaldo = resumoRetiradasSocios
       .filter(
-        (item) => lojaCombinaComSaldo(item) && item.data > SALDO_INICIAL_DATA
+        (item) =>
+          lojaCombinaComSaldo(item) &&
+          item.data > corteSaldoDaLoja(item.loja_id)
       )
       .reduce((total, item) => total + Number(item.valor || 0), 0);
 
@@ -2350,13 +2434,10 @@ const divergenciasAberturaFechamento = useMemo(() => {
         return total + ajuste;
       }, 0);
 
-    // Base de R$106.430,13 só entra quando "Todas as lojas" ou a própria
-    // Uberlândia estiver selecionada — outra loja específica começa do
-    // zero (não tem esse dinheiro).
-    const baseSaldoAplicavel =
-      lojaDashboard === "todas" || lojaDashboard === LOJA_INICIAL_ID
-        ? SALDO_INICIAL_VALOR
-        : 0;
+    // Base do Saldo = valor_real do último saldo conferido da loja (Etapa
+    // 3), calculado acima em baseSaldoConferido. Fallback pras constantes
+    // quando ainda não há registro conferido.
+    const baseSaldoAplicavel = baseSaldoConferido;
 
     const saldo =
       baseSaldoAplicavel +
@@ -2406,6 +2487,8 @@ const divergenciasAberturaFechamento = useMemo(() => {
     resumoRetiradasSocios,
     resumoEmprestimosEntreLojas,
     fundoRetiradaDisponivel,
+    saldoConferidoPorLoja,
+    lojaDashboard,
   ]);
 
   // Pedido do usuário (21/08/2026): mesmo Ponto de Equilíbrio do
@@ -4768,6 +4851,15 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
+          {ehAdministrador && (
+            <button
+              className={pagina === "conferencia-saldo" ? "active" : ""}
+              onClick={() => setPagina("conferencia-saldo")}
+            >
+              🏦 Conferência de Saldo
+            </button>
+          )}
+
           {temPermissaoFechamento("vendas_saipos") && (
             <button
               className={pagina === "vendas-saipos" ? "active" : ""}
@@ -5626,6 +5718,17 @@ const pontoDeEquilibrio = useMemo(() => {
             lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
             adicionar={adicionarRetiradaSocioHandler}
             remover={removerRetiradaSocioHandler}
+          />
+        )}
+
+        {pagina === "conferencia-saldo" && ehAdministrador && (
+          <ConferenciaSaldo
+            saldos={saldosConferidos}
+            lojas={lojas}
+            lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
+            saldoCalculadoAtual={totais.saldo}
+            adicionar={adicionarSaldoConferidoHandler}
+            remover={removerSaldoConferidoHandler}
           />
         )}
 

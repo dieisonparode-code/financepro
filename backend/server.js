@@ -7310,6 +7310,115 @@ app.delete("/retiradas-socios/:id", verificarAdmin, async function (req, res) {
   }
 });
 
+// Etapa 3 (Malha 3): Saldo Conferido — tira a âncora do card Saldo de
+// dentro do código. Cada linha diz "no dia X o saldo REAL do banco da
+// loja Y era R$ Z"; o Dashboard soma pra frente a partir do registro
+// mais recente de cada loja. LER é liberado pra quem vê o Saldo (o card
+// depende disso); GRAVAR/APAGAR é só admin (reancorar é decisão do dono).
+app.get(
+  "/saldo-conferido",
+  verificarPermissao(["saldo", "fluxo_caixa", "relatorios"]),
+  async function (req, res) {
+    try {
+      const { data, error } = await supabase
+        .from("saldo_conferido")
+        .select("*")
+        .order("data_referencia", { ascending: false })
+        .order("id", { ascending: false });
+
+      if (error) throw error;
+
+      res.json(data || []);
+    } catch (erro) {
+      console.error("Erro ao buscar saldo conferido:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível buscar o saldo conferido.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
+app.post("/saldo-conferido", verificarAdmin, async function (req, res) {
+  try {
+    const lojaId = Number(req.body?.loja_id);
+    const dataReferencia = String(req.body?.data_referencia || "").slice(0, 10);
+    const valorReal = Number(req.body?.valor_real);
+    const observacao = String(req.body?.observacao || "");
+
+    if (!lojaId || !/^\d{4}-\d{2}-\d{2}$/.test(dataReferencia)) {
+      return res.status(400).json({
+        erro: "Informe a loja e a data de referência (AAAA-MM-DD).",
+      });
+    }
+
+    if (!Number.isFinite(valorReal)) {
+      return res.status(400).json({
+        erro: "Informe o valor real do saldo do banco.",
+      });
+    }
+
+    const { usuario, perfil } = await obterPerfilOpcional(req);
+
+    const { data, error } = await supabase
+      .from("saldo_conferido")
+      .insert([
+        {
+          id: Date.now(),
+          loja_id: lojaId,
+          data_referencia: dataReferencia,
+          valor_real: valorReal,
+          observacao,
+          informado_por: perfil?.nome || usuario?.email || "",
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    registrarAuditoria(
+      req,
+      "conferiu saldo",
+      "saldo_conferido",
+      data.id,
+      `Loja ${lojaId}: R$ ${valorReal.toFixed(2)} em ${dataReferencia}`
+    );
+
+    res.status(201).json(data);
+  } catch (erro) {
+    console.error("Erro ao salvar saldo conferido:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível salvar o saldo conferido.",
+      detalhes: erro.message,
+    });
+  }
+});
+
+app.delete("/saldo-conferido/:id", verificarAdmin, async function (req, res) {
+  try {
+    const { error } = await supabase
+      .from("saldo_conferido")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) throw error;
+
+    registrarAuditoria(req, "excluiu", "saldo_conferido", req.params.id, null);
+
+    res.status(204).send();
+  } catch (erro) {
+    console.error("Erro ao excluir saldo conferido:", erro.message);
+
+    res.status(500).json({
+      erro: "Não foi possível excluir o saldo conferido.",
+      detalhes: erro.message,
+    });
+  }
+});
+
 // Pedido do usuário (22/08/2026): Fundo de Retirada de Caixa — dinheiro
 // retirado do caixa sem destino específico ainda (ex: "retirada de
 // caixa -500,00"), guardado pra gasto futuro. Não desconta o Saldo na
