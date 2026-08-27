@@ -1,12 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import CampoValor, { paraNumero } from "./CampoValor";
+import {
+  somaReceitasRecebidas,
+  somaDespesas,
+} from "../utils/calculoFinanceiro";
 
-// Etapa 3 (Malha 3) do plano de confiabilidade — 27/08/2026.
+// Etapa 3 + 4 (Malhas 3 e 4) do plano de confiabilidade — 27/08/2026.
 // Tela só-admin pra reancorar o card Saldo sem mexer em código. Cada
 // registro diz "no dia X o saldo REAL do banco da loja Y era R$ Z"; o
 // Dashboard pega o mais recente de cada loja e soma os movimentos pra
-// frente. Antes disso, reancorar era editar duas constantes no App.jsx
-// e fazer deploy.
+// frente. A Etapa 4 acrescenta a DIVERGÊNCIA: quando você salva um saldo
+// novo, mostra quanto o sistema previa pra aquela data e a diferença —
+// esse gap é o sinal de despesa não lançada ou taxa errada no período
+// (o substituto da integração bancária).
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
@@ -28,11 +34,62 @@ function hojeLocal() {
   }).format(new Date());
 }
 
+const dataEfetiva = (item) => item.data_prevista_recebimento || item.data;
+
+// Reconstrói o que o Saldo mostraria numa data, partindo de um ponto
+// conferido anterior: base + receitas que caíram entre as duas datas −
+// despesas lançadas entre as duas datas. Não inclui retiradas de sócios
+// nem empréstimos entre lojas (raros; pra Uberlândia hoje = 0).
+function preverSaldoNaData(lancamentos, corteAnterior, dataAlvo, baseAnterior) {
+  const receitas = somaReceitasRecebidas(
+    lancamentos.filter(
+      (item) =>
+        item.tipo === "receita" &&
+        dataEfetiva(item) > corteAnterior &&
+        dataEfetiva(item) <= dataAlvo
+    ),
+    dataAlvo,
+    { liquido: true }
+  );
+
+  const despesas = somaDespesas(
+    lancamentos.filter(
+      (item) =>
+        item.tipo === "despesa" &&
+        item.data > corteAnterior &&
+        item.data <= dataAlvo
+    ),
+    { descontarCofre: true }
+  );
+
+  return Number((baseAnterior + receitas - despesas).toFixed(2));
+}
+
+const LIMITE_DIVERGENCIA = 200;
+
+function LinhaDivergencia({ diferenca }) {
+  if (diferenca == null) return null;
+
+  const ok = Math.abs(diferenca) < LIMITE_DIVERGENCIA;
+  const cor = ok ? "#3fae6a" : "#e0574d";
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <small style={{ color: cor }}>
+        {ok ? "✓" : "⚠️"} diferença vs. o que o sistema previa:{" "}
+        <strong>{formatarMoeda(diferenca)}</strong>
+        {!ok && " — provável despesa não lançada ou taxa errada no período"}
+      </small>
+    </div>
+  );
+}
+
 function ConferenciaSaldo({
   saldos = [],
   lojas = [],
   lojaPadrao = null,
   saldoCalculadoAtual = null,
+  lancamentos = [],
   adicionar,
   remover,
 }) {
@@ -48,6 +105,44 @@ function ConferenciaSaldo({
     setValorReal("");
     setObservacao("");
   }
+
+  // Último registro conferido da loja escolhida no formulário — serve de
+  // ponto de partida pra prever o saldo na data que está sendo digitada.
+  function ultimoRegistroDaLoja(idLoja, antesDe = null) {
+    return saldos
+      .filter(
+        (registro) =>
+          String(registro.loja_id || "") === String(idLoja || "") &&
+          (!antesDe || registro.data_referencia < antesDe)
+      )
+      .sort((a, b) =>
+        a.data_referencia === b.data_referencia
+          ? Number(a.id) - Number(b.id)
+          : a.data_referencia.localeCompare(b.data_referencia)
+      )
+      .slice(-1)[0];
+  }
+
+  // Prévia da divergência enquanto o usuário digita.
+  const previaDivergencia = useMemo(() => {
+    if (!lojaId || !valorReal || !dataReferencia) return null;
+
+    const anterior = ultimoRegistroDaLoja(lojaId, dataReferencia);
+    if (!anterior) return null;
+
+    const previsto = preverSaldoNaData(
+      lancamentos,
+      anterior.data_referencia,
+      dataReferencia,
+      Number(anterior.valor_real || 0)
+    );
+
+    return {
+      previsto,
+      diferenca: Number((paraNumero(valorReal) - previsto).toFixed(2)),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lojaId, valorReal, dataReferencia, saldos, lancamentos]);
 
   async function salvar(evento) {
     evento.preventDefault();
@@ -97,6 +192,35 @@ function ConferenciaSaldo({
       alert(erro.message || "Não foi possível excluir.");
     }
   }
+
+  // Divergência histórica: pra cada registro, o que o sistema previa
+  // (partindo do registro anterior da mesma loja).
+  const divergenciaPorRegistro = useMemo(() => {
+    const mapa = new Map();
+
+    for (const registro of saldos) {
+      const anterior = ultimoRegistroDaLoja(
+        registro.loja_id,
+        registro.data_referencia
+      );
+      if (!anterior) continue;
+
+      const previsto = preverSaldoNaData(
+        lancamentos,
+        anterior.data_referencia,
+        registro.data_referencia,
+        Number(anterior.valor_real || 0)
+      );
+
+      mapa.set(
+        registro.id,
+        Number((Number(registro.valor_real || 0) - previsto).toFixed(2))
+      );
+    }
+
+    return mapa;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saldos, lancamentos]);
 
   return (
     <section className="categorias-layout">
@@ -158,6 +282,26 @@ function ConferenciaSaldo({
               />
             </label>
           </div>
+
+          {previaDivergencia && (
+            <p
+              className="foto-ajuda"
+              style={{
+                marginTop: 4,
+                color:
+                  Math.abs(previaDivergencia.diferenca) < LIMITE_DIVERGENCIA
+                    ? "#3fae6a"
+                    : "#e0574d",
+              }}
+            >
+              O sistema previa{" "}
+              <strong>{formatarMoeda(previaDivergencia.previsto)}</strong> pra
+              essa data. Sua diferença:{" "}
+              <strong>{formatarMoeda(previaDivergencia.diferenca)}</strong>
+              {Math.abs(previaDivergencia.diferenca) >= LIMITE_DIVERGENCIA &&
+                " — vale investigar despesa não lançada ou taxa errada antes de salvar."}
+            </p>
+          )}
 
           <label>
             Observação
@@ -223,6 +367,9 @@ function ConferenciaSaldo({
                         </small>
                       </div>
                     )}
+                    <LinhaDivergencia
+                      diferenca={divergenciaPorRegistro.get(registro.id)}
+                    />
                   </div>
                 </div>
 

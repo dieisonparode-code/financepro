@@ -2466,6 +2466,45 @@ const divergenciasAberturaFechamento = useMemo(() => {
     const margemPercentual =
       receitas > 0 ? (saldo / receitas) * 100 : 0;
 
+    // Etapa 4 (Malha 4): status da conferência do Saldo — há quanto tempo
+    // ele não é confirmado contra o extrato do banco e quanto o sistema diz
+    // que andou desde então. Vira um aviso no Dashboard pra reconferir (é o
+    // substituto da integração bancária: sem feed do banco, a segurança vem
+    // de reconferir na mão de vez em quando).
+    const registrosConferidosRelevantes =
+      lojaDashboard === "todas"
+        ? Array.from(saldoConferidoPorLoja.values())
+        : [saldoConferidoPorLoja.get(String(lojaDashboard))].filter(Boolean);
+
+    const dataUltimaConferencia = registrosConferidosRelevantes.length
+      ? registrosConferidosRelevantes
+          .map((registro) => registro.data_referencia)
+          .sort()
+          .slice(-1)[0]
+      : null;
+
+    const diasDesdeConferencia = dataUltimaConferencia
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(`${hoje}T12:00:00`) -
+              new Date(`${dataUltimaConferencia}T12:00:00`)) /
+              86400000
+          )
+        )
+      : null;
+
+    const conferenciaSaldo = {
+      temRegistro: registrosConferidosRelevantes.length > 0,
+      dataUltimaConferencia,
+      diasDesdeConferencia,
+      valorConferido: baseSaldoAplicavel,
+      movimentoDesdeConferencia: Number((saldo - baseSaldoAplicavel).toFixed(2)),
+      entradasDesdeConferencia: receitasRecebidasDesdeAjusteSaldo,
+      saidasDesdeConferencia:
+        despesasDesdeAjusteSaldo + retiradasSociosDesdeAjusteSaldo,
+    };
+
     return {
       receitas,
       saldoBruto,
@@ -2479,6 +2518,7 @@ const divergenciasAberturaFechamento = useMemo(() => {
       margemPercentual,
       dinheiroEmCaixa: dinheiroEmCaixaFiltrado,
       fundoRetirada: fundoRetiradaDisponivel,
+      conferenciaSaldo,
     };
   }, [
     lancamentosDashboard,
@@ -5727,6 +5767,7 @@ const pontoDeEquilibrio = useMemo(() => {
             lojas={lojas}
             lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
             saldoCalculadoAtual={totais.saldo}
+            lancamentos={lancamentosAprovados}
             adicionar={adicionarSaldoConferidoHandler}
             remover={removerSaldoConferidoHandler}
           />

@@ -336,6 +336,7 @@ export default function DashboardPremium({
   const fundoRetirada = numero(totais.fundoRetirada);
   const cmv = numero(totais.cmvPercentual);
   const margem = numero(totais.margemPercentual);
+  const conferenciaSaldo = totais.conferenciaSaldo || null;
 
   const lancamentosDoMes = useMemo(
     () =>
@@ -962,6 +963,68 @@ export default function DashboardPremium({
         )}
       </section>
       )}
+
+      {temAcessoFinanceiro &&
+        acessoCardSaldo &&
+        !carregando &&
+        conferenciaSaldo &&
+        conferenciaSaldo.temRegistro &&
+        (() => {
+          // Etapa 4 (Malha 4): aviso de "há quanto tempo o Saldo não é
+          // conferido contra o banco". Sem feed bancário, a segurança do
+          // Saldo vem de reconferir na mão de vez em quando — este aviso
+          // cutuca pra isso e mostra o quanto o sistema diz que andou
+          // desde a última conferência (o valor a "casar" com o extrato).
+          const dias = conferenciaSaldo.diasDesdeConferencia ?? 0;
+          const nivel = dias >= 8 ? "alto" : dias >= 4 ? "medio" : "ok";
+          const cores = {
+            ok: { borda: "#1e5aa8", fundo: "#0f2036", texto: "#9fd0ff" },
+            medio: { borda: "#b7791f", fundo: "#2c210c", texto: "#ffd58a" },
+            alto: { borda: "#c0392b", fundo: "#2c1110", texto: "#ff9a90" },
+          }[nivel];
+          const dataFmt = conferenciaSaldo.dataUltimaConferencia
+            ? new Date(
+                `${conferenciaSaldo.dataUltimaConferencia}T12:00:00`
+              ).toLocaleDateString("pt-BR")
+            : "—";
+
+          return (
+            <div
+              style={{
+                margin: "0 0 18px",
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: `1px solid ${cores.borda}`,
+                background: cores.fundo,
+                color: cores.texto,
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>
+                {nivel === "ok"
+                  ? "✓ Saldo conferido"
+                  : "⚠️ Confira o Saldo com o banco"}
+              </strong>{" "}
+              — última conferência {dias === 0 ? "hoje" : `há ${dias} dia${dias > 1 ? "s" : ""}`}{" "}
+              ({dataFmt}), no valor de{" "}
+              {formatarMoeda(conferenciaSaldo.valorConferido)}.
+              <br />
+              Desde então o sistema somou{" "}
+              <strong>+{formatarMoeda(conferenciaSaldo.entradasDesdeConferencia)}</strong>{" "}
+              e descontou{" "}
+              <strong>−{formatarMoeda(conferenciaSaldo.saidasDesdeConferencia)}</strong>{" "}
+              (variação {formatarMoeda(conferenciaSaldo.movimentoDesdeConferencia)}).
+              {nivel !== "ok" && (
+                <>
+                  {" "}
+                  Abra <strong>🏦 Conferência de Saldo</strong> no menu, confira
+                  o extrato e atualize o valor real.
+                </>
+              )}
+            </div>
+          );
+        })()}
 
       {temAcessoFinanceiro && (
       <section className="fp-metricas">
