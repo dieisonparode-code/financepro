@@ -11,18 +11,17 @@ import CampoValor, { paraNumero } from "./CampoValor";
 // (tipo "caixa" puro, já salvos antes dessa correção) continuam
 // aparecendo certinho via o fallback logo abaixo, em rotuloTipo().
 const tiposFechamento = [
+  // Pedido do usuário (28/08/2026): antes havia dois botões separados
+  // ("Foto 1" e "Foto 2") — clicar duas vezes no de "Foto 1" gerava dois
+  // registros rotulados "Foto 1", confuso. Agora é UM botão só; pode tirar
+  // quantas fotos precisar e a numeração ("Foto 1", "Foto 2", "Foto 3"...)
+  // é feita automática pela ordem na lista (ver rotuloRegistro).
   {
     chave: "caixa-1",
     valor: "caixa_1",
-    rotulo: "Fechamento de Caixa — Foto 1",
+    rotulo: "Fechamento de Caixa — Foto",
     icone: "📷",
-  },
-  {
-    chave: "caixa-2",
-    valor: "caixa_2",
-    rotulo: "Fechamento de Caixa — Foto 2",
-    icone: "📷",
-    ajuda: "Se o comprovante tiver mais partes (dobrou o papel, mais de 2 fotos), tire quantas precisar — cada foto é registrada separadamente.",
+    ajuda: "Pode tirar várias fotos do comprovante (dobrou o papel, mais de uma parte) — cada uma vira um registro e a numeração é automática.",
   },
   { valor: "boy", rotulo: "Diária Boy", icone: "🏍️" },
   { valor: "cozinha", rotulo: "Diária Cozinha", icone: "👨‍🍳" },
@@ -92,6 +91,37 @@ function rotuloTipo(tipo) {
   }
 
   return tiposFechamento.find((item) => item.valor === tipo) || null;
+}
+
+// Rótulo do item NA LISTA. Pras fotos do fechamento em si (tipo "caixa",
+// "caixa_1", "caixa_2"...) numera "Foto 1", "Foto 2", "Foto 3"... pela
+// ordem de criação dentro daquele fechamento — assim não aparece "Foto 1"
+// repetida quando o operador clica no mesmo botão mais de uma vez. Os
+// outros tipos (Diária Boy, Vale, etc.) seguem o rótulo fixo de sempre.
+function rotuloRegistro(registro, listaCompleta = []) {
+  const ehFotoCaixa =
+    typeof registro.tipo === "string" && registro.tipo.startsWith("caixa");
+
+  if (ehFotoCaixa) {
+    const fotos = listaCompleta
+      .filter(
+        (item) =>
+          typeof item.tipo === "string" && item.tipo.startsWith("caixa")
+      )
+      .sort((a, b) => new Date(a.criado_em) - new Date(b.criado_em));
+
+    const posicao = fotos.findIndex((item) => item.id === registro.id);
+
+    return {
+      rotulo:
+        posicao >= 0
+          ? `Fechamento de Caixa — Foto ${posicao + 1}`
+          : "Fechamento de Caixa — Foto",
+      icone: "📷",
+    };
+  }
+
+  return rotuloTipo(registro.tipo);
 }
 
 // Bug real encontrado (12/08/2026): a foto de um fechamento aparecia
@@ -940,7 +970,10 @@ function CadastroFechamentoCaixa({
             ) : (
               <div className="categorias-lista" style={{ marginTop: 10 }}>
                 {registrosDoUltimoCaixaFechado.map((registro) => {
-                  const infoTipo = rotuloTipo(registro.tipo);
+                  const infoTipo = rotuloRegistro(
+                    registro,
+                    registrosDoUltimoCaixaFechado
+                  );
 
                   return (
                     <div className="categoria-item" key={registro.id}>
@@ -1051,7 +1084,7 @@ function CadastroFechamentoCaixa({
         ) : (
           <div className="categorias-lista">
             {registrosRecentes.map((registro) => {
-              const infoTipo = rotuloTipo(registro.tipo);
+              const infoTipo = rotuloRegistro(registro, registrosRecentes);
 
               return (
                 <div className="categoria-item" key={registro.id}>
