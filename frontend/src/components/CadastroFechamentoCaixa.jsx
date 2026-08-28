@@ -13,15 +13,16 @@ import CampoValor, { paraNumero } from "./CampoValor";
 const tiposFechamento = [
   // Pedido do usuário (28/08/2026): antes havia dois botões separados
   // ("Foto 1" e "Foto 2") — clicar duas vezes no de "Foto 1" gerava dois
-  // registros rotulados "Foto 1", confuso. Agora é UM botão só; pode tirar
-  // quantas fotos precisar e a numeração ("Foto 1", "Foto 2", "Foto 3"...)
-  // é feita automática pela ordem na lista (ver rotuloRegistro).
+  // registros rotulados "Foto 1", confuso. Agora é UM botão só, limitado a
+  // 2 fotos por fechamento (trava depois da 2ª, ver limiteFotoCaixa na
+  // renderização); a numeração "Foto 1"/"Foto 2" é automática pela ordem
+  // na lista (ver rotuloRegistro).
   {
     chave: "caixa-1",
     valor: "caixa_1",
     rotulo: "Fechamento de Caixa — Foto",
     icone: "📷",
-    ajuda: "Pode tirar várias fotos do comprovante (dobrou o papel, mais de uma parte) — cada uma vira um registro e a numeração é automática.",
+    ajuda: "Até 2 fotos do comprovante (frente/verso ou papel dobrado) — cada uma vira um registro, numeradas automaticamente.",
   },
   { valor: "boy", rotulo: "Diária Boy", icone: "🏍️" },
   { valor: "cozinha", rotulo: "Diária Cozinha", icone: "👨‍🍳" },
@@ -837,10 +838,20 @@ function CadastroFechamentoCaixa({
           {tiposFechamento.map((item) => {
             const chave = item.chave || item.valor;
 
+            // Pedido do usuário (28/08/2026): o Fechamento de Caixa em si
+            // precisa de no máximo 2 fotos — trava o botão depois da 2ª
+            // pra não gerar registro extra por engano (clique duplo /
+            // repetição). Pra trocar, é só excluir uma foto da lista.
+            const ehFotoCaixa = item.valor === "caixa_1";
+            const limiteFotoCaixa =
+              ehFotoCaixa && registrosCaixaAbertos.length >= 2;
+            const bloqueado = enviandoTipo === chave || limiteFotoCaixa;
+
             return (
             <div key={chave} className="foto-upload">
               <span className="foto-upload-title">
                 {item.icone} {item.rotulo}
+                {ehFotoCaixa && ` (${registrosCaixaAbertos.length}/2)`}
               </span>
 
               <input
@@ -848,7 +859,7 @@ function CadastroFechamentoCaixa({
                 type="file"
                 accept="image/*"
                 {...(item.semCapture ? {} : { capture: "environment" })}
-                disabled={enviandoTipo === chave}
+                disabled={bloqueado}
                 onChange={async (evento) => {
                   const arquivo = evento.target.files?.[0];
                   await capturarFoto(item.valor, arquivo, chave);
@@ -862,19 +873,28 @@ function CadastroFechamentoCaixa({
                   item.corVerde ? "foto-button foto-button-verde" : "foto-button"
                 }
                 style={
-                  enviandoTipo === chave
+                  bloqueado
                     ? { opacity: 0.6, pointerEvents: "none" }
                     : undefined
                 }
               >
                 {enviandoTipo === chave
                   ? "Salvando..."
+                  : limiteFotoCaixa
+                  ? "✅ 2 fotos já registradas"
                   : item.semCapture
                   ? `📷📎 Tirar foto ou adicionar arquivo — ${item.rotulo}`
                   : `📸 Tirar foto — ${item.rotulo}`}
               </label>
 
-              {item.ajuda && <small className="foto-ajuda">{item.ajuda}</small>}
+              {limiteFotoCaixa ? (
+                <small className="foto-ajuda">
+                  Já tem as 2 fotos do fechamento. Pra trocar, exclua uma na
+                  lista abaixo.
+                </small>
+              ) : (
+                item.ajuda && <small className="foto-ajuda">{item.ajuda}</small>
+              )}
             </div>
             );
           })}
