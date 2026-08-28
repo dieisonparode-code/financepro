@@ -217,12 +217,47 @@ function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
 // indicar o fuso (sem "Z" no final) — é UTC de verdade, mas sem o "Z" o
 // navegador tenta adivinhar o fuso sozinho e erra o horário. Força UTC no
 // valor bruto antes de converter pro fuso de Brasília.
+//
+// Pedido do usuário (28/08/2026): "13:30" no formato 24h estava sendo lido
+// como "1:30 da madrugada". Agora mostra também em palavras
+// ("1h30 da tarde") pra não ter dúvida — o valor gravado sempre foi o
+// certo, era só a leitura.
+function periodoDoDia(hora) {
+  if (hora >= 0 && hora < 5) return "da madrugada";
+  if (hora < 12) return "da manhã";
+  if (hora < 19) return "da tarde";
+  return "da noite";
+}
+
 function formatarDataHora(dataIso) {
   if (!dataIso) return "";
   const jaTemFuso = /[Zz]|[+-]\d{2}:\d{2}$/.test(dataIso);
-  return new Date(jaTemFuso ? dataIso : `${dataIso}Z`).toLocaleString("pt-BR", {
+  const data = new Date(jaTemFuso ? dataIso : `${dataIso}Z`);
+  if (Number.isNaN(data.getTime())) return "";
+
+  const completo = data.toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
   });
+
+  // Hora no fuso de Brasília, pra montar a versão em palavras.
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(data);
+  const hora = Number(partes.find((p) => p.type === "hour")?.value ?? "0");
+  const minuto = partes.find((p) => p.type === "minute")?.value ?? "00";
+
+  let horaTexto;
+  if (hora === 0) horaTexto = `meia-noite e ${Number(minuto)} min`;
+  else if (hora === 12) horaTexto = `meio-dia e ${Number(minuto)} min`;
+  else {
+    const h12 = hora > 12 ? hora - 12 : hora;
+    horaTexto = `${h12}h${minuto} ${periodoDoDia(hora)}`;
+  }
+
+  return `${completo} (${horaTexto})`;
 }
 
 function formatarMoeda(valor) {
