@@ -824,12 +824,16 @@ async function rodarBackupAutomaticoDiario() {
   }
 }
 
-// Confere a cada minuto se o backup de hoje ainda não rodou — antes só
-// tentava na janela 05:00–05:04; agora tenta o dia inteiro até conseguir
-// (mesmo padrão da importação da Saipos).
-setInterval(function () {
-  rodarBackupAutomaticoDiario();
-}, 60 * 1000);
+// DESLIGADO (27/08/2026): o backup caseiro lia TODAS as tabelas inteiras
+// de uma vez, logo depois da meia-noite. Depois que o projeto virou
+// Supabase Pro (que já faz backup diário de verdade), esse aqui virou só
+// malefício — redundante e dando um pico de leitura de disco que
+// derrubava o banco perto da meia-noite (usuário reportou "ninguém
+// acessava o sistema"). A rota manual GET /backup continua existindo pra
+// quem quiser baixar uma cópia sob demanda.
+// setInterval(function () {
+//   rodarBackupAutomaticoDiario();
+// }, 60 * 1000);
 
 const colunasListagem =
   "id, created_at, tipo, descricao, valor, data, grupo, categoria, subcategoria, fornecedor, item, quantidade, unidade, observacao, tem_foto, tem_foto_mercadoria, foto_pendente_em, latitude, longitude, precisao_metros, capturado_em, loja_id, status, forma_pagamento_id, pago_em_dinheiro, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, status_conciliacao, fundo_retirada_id, valor_pago_cofre, exclusao_solicitada_em, exclusao_solicitada_por, criado_por, quitado_em, detalhe_desconto";
