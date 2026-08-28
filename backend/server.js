@@ -8493,11 +8493,14 @@ function diaCincoDoProximoMes(dataStr) {
 }
 
 function horaBrasilia() {
-  const partes = new Intl.DateTimeFormat("en-US", {
+  const partes = new Intl.DateTimeFormat("en-GB", {
     timeZone: "America/Sao_Paulo",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    // "h23" garante meia-noite = 0 (sem esse ciclo, alguns ambientes
+    // devolvem "24" pra 00h e a comparação "hora < 5" quebraria).
+    hourCycle: "h23",
   }).formatToParts(new Date());
 
   return {
@@ -8521,6 +8524,17 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
   const dataAlvo = dataBrasilia(1);
 
   if (ultimaDataImportadaAutomaticamente === dataAlvo) {
+    return;
+  }
+
+  // Só começa às 05h (horário de Brasília). Quando "ontem" vira, à meia-
+  // noite, o dia que acabou de fechar, rodar aqui logo em seguida dava um
+  // pico de leitura que estourava o orçamento de disco do banco (Supabase)
+  // e deixava o sistema lento a madrugada/manhã inteira — mesmo motivo do
+  // backup caseiro ter sido desligado (27/08/2026). Das 05h em diante
+  // continua tentando a cada minuto até conseguir (resiliência a redeploy
+  // que caia bem na janela), controlado por "ultimaDataImportadaAutomaticamente".
+  if (horaBrasilia().hora < 5) {
     return;
   }
 
@@ -8596,12 +8610,12 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
   }
 }
 
-// Confere a cada minuto se a importação do dia anterior ainda não rodou —
-// antes só tentava na janela 05:00–05:04; se o servidor tivesse acabado
-// de reiniciar (deploy, ou "acordando" de um período parado) bem nesses 5
-// minutos, perdia a janela inteira e só tentava de novo no dia seguinte.
-// Agora tenta o dia inteiro até conseguir (ainda roda só 1x de verdade,
-// controlado por "ultimaDataImportadaAutomaticamente").
+// Confere a cada minuto se a importação do dia anterior ainda não rodou.
+// A partir das 05h (horário de Brasília) — ver a trava dentro da função —
+// tenta o dia inteiro até conseguir, então se o servidor reiniciar bem
+// na hora (deploy, "acordando" de um período parado) não perde o dia.
+// Antes das 05h não faz nada, pra não pesar no banco na virada da meia-
+// noite. Roda só 1x de verdade, controlado por "ultimaDataImportadaAutomaticamente".
 setInterval(function () {
   rodarImportacaoAutomaticaDiariaSaipos();
 }, 60 * 1000);
