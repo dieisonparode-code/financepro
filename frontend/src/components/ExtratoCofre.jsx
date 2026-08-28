@@ -19,7 +19,42 @@ function formatarData(data) {
   return new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR");
 }
 
-function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], lojaPadrao = null }) {
+// Data + horário a partir do timestamp de criação (criado_em / created_at).
+// Se não houver timestamp, cai pra só a data do movimento.
+// Bug real já visto no sistema (19/08/2026): o timestamp do banco às vezes
+// vem SEM o "Z" de fuso — é UTC de verdade, mas sem o "Z" o navegador
+// adivinha o fuso e erra a hora. Força UTC antes de converter pra Brasília,
+// mesma regra de LogAuditoria.jsx / CadastroFechamentoCaixa.jsx.
+function formatarDataHora(criadoEm, dataFallback) {
+  if (!criadoEm) return formatarData(dataFallback);
+  const ts = paraTimestamp(criadoEm);
+  if (ts == null) return formatarData(dataFallback);
+  return new Date(ts).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Mesmo cuidado de fuso do formatarDataHora, mas devolve o timestamp em ms
+// (pra comparar horários entre si). null se não der pra ler.
+function paraTimestamp(valorIso) {
+  if (!valorIso) return null;
+  const jaTemFuso = /[Zz]|[+-]\d{2}:\d{2}$/.test(valorIso);
+  const ms = new Date(jaTemFuso ? valorIso : `${valorIso}Z`).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function ExtratoCofre({
+  fundosRetiradas = [],
+  lancamentos = [],
+  fechamentosCaixa = [],
+  lojas = [],
+  lojaPadrao = null,
+}) {
   const [filtroLoja, setFiltroLoja] = useState(
     lojaPadrao ? String(lojaPadrao) : "todas"
   );
@@ -41,7 +76,8 @@ function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], loja
         id: `entrada-${fundo.id}`,
         tipo: "entrada",
         data: fundo.data,
-        criado_em: fundo.criado_em,
+        criado_em: fundo.criado_em || fundo.created_at,
+        criado_por: fundo.criado_por || "",
         valor: Number(fundo.valor || 0),
         descricao: fundo.descricao || "Retirada pro Cofre",
         loja_id: fundo.loja_id,
@@ -62,6 +98,7 @@ function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], loja
         tipo: "saida",
         data: item.data,
         criado_em: item.criado_em || item.created_at,
+        criado_por: item.criado_por || "",
         valor: Number(item.valor_pago_cofre || 0),
         descricao: item.fornecedor || item.descricao || "Despesa paga com o Cofre",
         parcial: Number(item.valor_pago_cofre || 0) < Number(item.valor || 0) - 0.01,
@@ -72,9 +109,46 @@ function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], loja
 
   const movimento = useMemo(() => {
     return [...entradas, ...saidas].sort(
-      (a, b) => new Date(b.criado_em || b.data) - new Date(a.criado_em || a.data)
+      (a, b) =>
+        (paraTimestamp(b.criado_em) ?? new Date(`${b.data}T12:00:00`).getTime()) -
+        (paraTimestamp(a.criado_em) ?? new Date(`${a.data}T12:00:00`).getTime())
     );
   }, [entradas, saidas]);
+
+  // "Referente a qual abertura de caixa" — os registros do Cofre não têm
+  // link direto com um turno, mas os registros de Fechamento de Caixa da
+  // Conciliação gravam a data oficial de abertura do turno
+  // (data_abertura_turno). Como a Retirada pro Cofre é feita junto com o
+  // fechamento, dá pra achar o turno pegando o Fechamento da MESMA loja com
+  // horário de criação mais próximo do movimento (até ~36h). Sem match
+  // confiável, mostra a data do próprio movimento.
+  const turnosPorLoja = useMemo(() => {
+    return fechamentosCaixa
+      .filter((f) => f.data_abertura_turno)
+      .map((f) => ({
+        loja_id: f.loja_id,
+        turno: f.data_abertura_turno,
+        ts: paraTimestamp(f.criado_em || f.created_at),
+      }))
+      .filter((f) => f.ts != null);
+  }, [fechamentosCaixa]);
+
+  const aberturaCaixaDe = (item) => {
+    const alvo = paraTimestamp(item.criado_em);
+    if (alvo != null) {
+      const LIMITE = 24 * 60 * 60 * 1000;
+      let melhor = null;
+      for (const t of turnosPorLoja) {
+        if (String(t.loja_id) !== String(item.loja_id)) continue;
+        const dist = Math.abs(t.ts - alvo);
+        if (dist <= LIMITE && (!melhor || dist < melhor.dist)) {
+          melhor = { turno: t.turno, dist };
+        }
+      }
+      if (melhor) return { data: melhor.turno, exato: true };
+    }
+    return { data: item.data, exato: false };
+  };
 
   const totalEntradas = entradas.reduce((soma, item) => soma + item.valor, 0);
   const totalSaidas = saidas.reduce((soma, item) => soma + item.valor, 0);
@@ -116,8 +190,14 @@ function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], loja
 
         <div className="feed-resumo">
           <span>
-            📥 Entradas {formatarMoeda(totalEntradas)} · 📤 Saídas{" "}
-            {formatarMoeda(totalSaidas)}
+            📥{" "}
+            <strong className="tipo-receita">
+              Entradas {formatarMoeda(totalEntradas)}
+            </strong>{" "}
+            · 📤{" "}
+            <strong className="tipo-despesa">
+              Saídas {formatarMoeda(totalSaidas)}
+            </strong>
           </span>
         </div>
 
@@ -127,18 +207,51 @@ function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], loja
           </div>
         ) : (
           <div className="categorias-lista">
-            {movimento.map((item) => (
-              <div className="categoria-item" key={item.id}>
+            {movimento.map((item) => {
+              const abertura = aberturaCaixaDe(item);
+              const corTipo = item.tipo === "entrada" ? "#16ca50" : "#ff4655";
+              return (
+              <div
+                className="categoria-item"
+                key={item.id}
+                style={{
+                  borderLeft: `4px solid ${corTipo}`,
+                  background:
+                    item.tipo === "entrada"
+                      ? "rgba(22, 202, 80, .09)"
+                      : "rgba(255, 70, 85, .09)",
+                }}
+              >
                 <div className="categoria-identificacao">
                   <div className="categoria-icone">
                     {item.tipo === "entrada" ? "📥" : "📤"}
                   </div>
                   <div>
-                    <strong>
-                      {item.tipo === "entrada" ? "+ " : "− "}
+                    <strong
+                      className={
+                        item.tipo === "entrada" ? "tipo-receita" : "tipo-despesa"
+                      }
+                    >
+                      {item.tipo === "entrada"
+                        ? "+ (entrada no Cofre) "
+                        : "− (saída do Cofre) "}
                       {formatarMoeda(item.valor)}
                     </strong>
-                    <div>{item.descricao} — {formatarData(item.data)}</div>
+                    <div>
+                      {item.descricao} — {formatarDataHora(item.criado_em, item.data)}
+                    </div>
+                    <div>
+                      <small style={{ color: "#9fb0c4" }}>
+                        🗓️ Abertura de caixa: {formatarData(abertura.data)}
+                        {!abertura.exato && " (dia do lançamento)"}
+                      </small>
+                    </div>
+                    <div>
+                      <small style={{ color: "#9fb0c4" }}>
+                        {item.tipo === "entrada" ? "Entrada" : "Saída"} informada por{" "}
+                        {item.criado_por || "não informado"}
+                      </small>
+                    </div>
                     {item.tipo === "saida" && item.parcial && (
                       <small style={{ color: "#9fb0c4" }}>
                         Pago parcial: {formatarMoeda(item.valor)} do Cofre +{" "}
@@ -156,7 +269,8 @@ function ExtratoCofre({ fundosRetiradas = [], lancamentos = [], lojas = [], loja
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </article>

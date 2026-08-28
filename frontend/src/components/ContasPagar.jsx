@@ -352,6 +352,13 @@ function ContasPagar({
     setObservacao(conta.observacao || "");
     setLojaId(conta.loja_id ? String(conta.loja_id) : "");
     setFoto(conta.foto || "");
+
+    // Em "Contas Pagas" o formulário de edição fica no topo da tela (ocupa
+    // o lugar do painel de busca enquanto edita) — sobe até ele pra ficar
+    // claro que abriu, senão parece que o botão "Editar" não fez nada.
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   async function salvarValorEditado(conta, valorDigitado) {
@@ -687,7 +694,7 @@ function ContasPagar({
 
   return (
     <section className="categorias-layout">
-      {modo === "pagas" ? (
+      {modo === "pagas" && !editandoId ? (
         <article className="panel categoria-form-panel">
           <div className="panel-header">
             <div>
@@ -746,6 +753,25 @@ function ContasPagar({
             <h2>{editandoId ? "Editar conta" : "Nova conta a pagar"}</h2>
           </div>
         </div>
+
+        {editandoId &&
+          contas.find((c) => c.id === editandoId)?.status === "pago" && (
+            <small
+              className="foto-ajuda"
+              style={{
+                display: "block",
+                background: "rgba(34, 197, 94, 0.12)",
+                border: "1px solid rgba(34, 197, 94, 0.35)",
+                borderRadius: 10,
+                padding: "8px 12px",
+                marginBottom: 12,
+              }}
+            >
+              ✅ Essa conta já está paga. Dá pra corrigir os dados e anexar a
+              foto do boleto/nota aqui. O valor do pagamento já lançado no
+              Saldo não muda por essa edição.
+            </small>
+          )}
 
         <form onSubmit={salvar}>
           <label>

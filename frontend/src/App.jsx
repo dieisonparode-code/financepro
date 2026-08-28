@@ -5733,6 +5733,7 @@ const pontoDeEquilibrio = useMemo(() => {
           <ExtratoCofre
             fundosRetiradas={fundosRetiradas}
             lancamentos={lancamentos}
+            fechamentosCaixa={fechamentosCaixa}
             lojas={lojas}
             lojaPadrao={lojaDashboard !== "todas" ? lojaDashboard : null}
           />
