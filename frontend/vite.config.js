@@ -49,6 +49,27 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        // Pedido do usuário (28/08/2026): no Android, o FinancePro passa a
+        // aparecer na tela de "compartilhar" do celular. Compartilhar um
+        // comprovante de pagamento (imagem) pra cá cai em
+        // /compartilhar-comprovante, o share-target-sw.js guarda o arquivo
+        // e o app abre lendo valor/fornecedor pra lançar como conta paga.
+        // (iOS não suporta Share Target — só Android com o app instalado.)
+        share_target: {
+          action: '/compartilhar-comprovante',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            files: [
+              {
+                name: 'comprovante',
+                accept: ['image/*', 'image/jpeg', 'image/png', 'image/webp'],
+              },
+            ],
+          },
+        },
       },
       workbox: {
         // Não guarda em cache as chamadas de API pro backend - o app tem
@@ -64,7 +85,11 @@ export default defineConfig({
         // só adicionando os eventos de push — não troca a estratégia de
         // cache/atualização já existente (evita reabrir os bugs de tela
         // branca já resolvidos antes com muito cuidado).
-        importScripts: ['push-sw-extra.js'],
+        //
+        // share-target-sw.js (28/08/2026): mesmo esquema — só adiciona o
+        // handler do "compartilhar comprovante" (Android). Não mexe em
+        // cache/navegação: só intercepta o POST /compartilhar-comprovante.
+        importScripts: ['push-sw-extra.js', 'share-target-sw.js'],
       },
     }),
   ],

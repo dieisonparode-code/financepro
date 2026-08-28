@@ -3251,6 +3251,90 @@ const pontoDeEquilibrio = useMemo(() => {
     }
   }
 
+  // Pedido do usuário (28/08/2026): "compartilhar para o FinancePro" no
+  // Android. Depois de pagar no app do banco, o usuário compartilha o
+  // comprovante pra cá — o Service Worker (share-target-sw.js) guarda a
+  // imagem no cache "comprovante-compartilhado" e redireciona o app pra
+  // /?comprovante=1. Aqui a gente pega essa imagem, abre o modal de Nova
+  // Despesa já com a foto anexada e roda a leitura por IA (valor +
+  // fornecedor). O usuário só confere e clica em Salvar — aí a despesa é
+  // lançada e dá baixa no Saldo, igual qualquer despesa paga.
+  //
+  // NÃO cria nada sozinho: abre o formulário preenchido pra revisão. Um
+  // valor errado lido pela IA lançado sem ninguém ver seria pior do que
+  // um passo a mais (mesma lógica do "Ler nota" que já existe).
+  const comprovanteCompartilhadoProcessadoRef = useRef(false);
+
+  useEffect(() => {
+    if (!perfil) return;
+    if (comprovanteCompartilhadoProcessadoRef.current) return;
+    if (searchParams.get("comprovante") !== "1") return;
+
+    comprovanteCompartilhadoProcessadoRef.current = true;
+
+    // Tira o ?comprovante=1 da URL já, pra um F5 não reprocessar.
+    setSearchParams(
+      (parametrosAtuais) => {
+        const proximos = new URLSearchParams(parametrosAtuais);
+        proximos.delete("comprovante");
+        return proximos;
+      },
+      { replace: true }
+    );
+
+    (async () => {
+      if (typeof caches === "undefined") return;
+
+      try {
+        const cache = await caches.open("comprovante-compartilhado");
+        const resposta = await cache.match("/__comprovante-compartilhado");
+
+        if (!resposta) {
+          alert(
+            "Não achei o comprovante compartilhado. Tente compartilhar de novo."
+          );
+          return;
+        }
+
+        const blob = await resposta.blob();
+        await cache.delete("/__comprovante-compartilhado");
+
+        if (!blob || !blob.size) {
+          alert("O comprovante compartilhado veio vazio. Tente de novo.");
+          return;
+        }
+
+        const nomeArquivo =
+          decodeURIComponent(resposta.headers.get("X-Nome-Arquivo") || "") ||
+          "comprovante.jpg";
+        const arquivo = new File([blob], nomeArquivo, {
+          type: blob.type || "image/jpeg",
+        });
+
+        const fotoComprimida = await comprimirImagem(arquivo);
+
+        // Abre o modal de Nova Despesa com os padrões (inclusive a loja do
+        // seletor do topo, se houver uma escolhida) e anexa a foto.
+        abrirModal("despesa");
+        setFormulario((anterior) => ({
+          ...anterior,
+          foto: fotoComprimida,
+          observacao: "Comprovante recebido por compartilhamento.",
+        }));
+
+        // Lê valor + fornecedor da imagem (mesma IA do "Ler nota"). Se não
+        // conseguir ler, o modal fica aberto com a foto pra preencher na mão.
+        await lerNotaAutomaticamente(fotoComprimida);
+      } catch (erro) {
+        console.error("Erro ao processar comprovante compartilhado:", erro);
+        alert(
+          "Não foi possível abrir o comprovante compartilhado. Tente anexar manualmente em Despesas."
+        );
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil]);
+
   // Pedido do usuário (25/08/2026): busca vales e Vendas a Prazo
   // Funcionário pendentes daquele nome (fornecedor já digitado no
   // formulário) — mostra pra marcar quais entram no desconto da folha.
