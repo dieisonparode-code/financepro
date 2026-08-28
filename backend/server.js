@@ -277,7 +277,32 @@ async function registrarAuditoria(req, acao, tabelaAfetada, registroId, detalhes
 // (vendas de um dia inteiro sem importar, sem ninguém saber até o saldo
 // não bater). Agora toda falha de automação também vira uma linha bem
 // marcada no log_auditoria (ação "FALHOU"), pra dar pra ver na tela.
+// Blindagem 2 (28/08/2026): uma automação que roda a cada minuto (ex.:
+// importação Saipos) e falha continuamente (ex.: SAIPOS_TOKEN sumiu do
+// Render, ou um processo antigo/duplicado sem a variável) estava gravando
+// UMA linha "FALHOU" por minuto — 1000+ por dia. Isso polui o
+// log_auditoria E ainda joga carga de escrita no banco toda hora (piora a
+// sobrecarga da meia-noite). Agora a MESMA falha (mesma automação + mesma
+// mensagem) só grava no banco no máximo 1x por hora. No console continua
+// aparecendo toda vez (não custa nada e ajuda a debugar).
+const ultimaFalhaAutomacaoLogada = new Map();
+const INTERVALO_MIN_LOG_FALHA_MS = 60 * 60 * 1000; // 1 hora
+
 async function registrarFalhaAutomacao(nomeAutomacao, mensagemErro) {
+  const detalhes = mensagemErro || "Erro desconhecido.";
+  const chave = `${nomeAutomacao}||${detalhes}`.slice(0, 300);
+  const agora = Date.now();
+  const ultimaVez = ultimaFalhaAutomacaoLogada.get(chave) || 0;
+
+  if (agora - ultimaVez < INTERVALO_MIN_LOG_FALHA_MS) {
+    // Mesma falha já registrada há menos de 1h — não grava de novo no
+    // banco, mas deixa rastro no console pra quem estiver olhando o log.
+    console.error(
+      `Automação (${nomeAutomacao}) FALHOU de novo (última já registrada há < 1h, não duplico no log_auditoria): ${detalhes}`
+    );
+    return;
+  }
+
   try {
     await supabase.from("log_auditoria").insert([
       {
@@ -286,9 +311,10 @@ async function registrarFalhaAutomacao(nomeAutomacao, mensagemErro) {
         acao: "FALHOU",
         tabela_afetada: "sistema",
         registro_id: null,
-        detalhes: mensagemErro || "Erro desconhecido.",
+        detalhes,
       },
     ]);
+    ultimaFalhaAutomacaoLogada.set(chave, agora);
   } catch (erroLog) {
     console.error(
       "Não consegui nem registrar a falha da automação:",
