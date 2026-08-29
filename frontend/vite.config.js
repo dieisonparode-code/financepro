@@ -21,7 +21,7 @@ export default defineConfig({
       // sozinho no próximo carregamento (sem precisar desinstalar/limpar
       // cache) - continua bastando um F5 normal, igual já era.
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'FinancePro',
         short_name: 'FinancePro',
