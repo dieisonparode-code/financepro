@@ -270,6 +270,13 @@ export default function Login() {
             inset 0 1px 0 rgba(255, 255, 255, 0.28);
         }
 
+        .login-brand-symbol img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
         .login-brand-symbol::after {
           content: "";
           position: absolute;
@@ -856,7 +863,9 @@ export default function Login() {
         <div className="login-container">
           <section className="login-presentation">
             <header className="login-brand">
-              <div className="login-brand-symbol">FP</div>
+              <div className="login-brand-symbol">
+                <img src="/favicon.png" alt="FinancePro" />
+              </div>
 
               <div>
                 <h2 className="login-brand-name">FinancePro</h2>

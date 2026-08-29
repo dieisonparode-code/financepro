@@ -4659,7 +4659,9 @@ const pontoDeEquilibrio = useMemo(() => {
             }
           }}
         >
-          <div className="brand-icon">FP</div>
+          <div className="brand-icon">
+            <img src="/favicon.png" alt="FinancePro" />
+          </div>
           <div>
             <strong>FinancePro</strong>
             <span>Gestão Financeira</span>

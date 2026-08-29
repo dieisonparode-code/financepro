@@ -77,11 +77,19 @@ body {
   min-width: 42px !important;
   height: 42px !important;
   border-radius: 11px !important;
+  overflow: hidden !important;
   color: #ffffff !important;
   background: linear-gradient(135deg, #1476ff, #0753cc) !important;
   box-shadow: 0 9px 24px rgba(20, 118, 255, 0.28) !important;
   font-size: 15px !important;
   font-weight: 800 !important;
+}
+
+.brand-icon img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
 }
 
 .brand strong {
