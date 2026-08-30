@@ -564,7 +564,17 @@ function CadastroFechamentoCaixa({
         anterior && anterior.foto === fotoComprimida
           ? {
               ...anterior,
-              valor: resultado?.valor != null ? String(resultado.valor) : "",
+              // O backend devolve um Number (ex: 58.01). O campo espera
+              // string no formato pt-BR ("58,01") — String(58.01) daria
+              // "58.01" e o paraNumero() abaixo leria como 5801 (ponto =
+              // milhar). Formata pra pt-BR aqui. (bug 30/08/2026)
+              valor:
+                resultado?.valor != null
+                  ? Number(resultado.valor).toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  : "",
               lendo: false,
               avisoLeitura:
                 resultado?.valor == null

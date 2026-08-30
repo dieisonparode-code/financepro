@@ -6204,6 +6204,34 @@ app.get(
   }
 );
 
+// Converte um valor em texto no formato brasileiro pra Number, de forma
+// determinística (não depende da IA "montar" o número certo). Aceita:
+// "58,01" -> 58.01 | "1.234,56" -> 1234.56 | "R$ 5.801,00" -> 5801
+// "5.801" (só milhar, sem decimais) -> 5801 | "58.01" (IA usou ponto
+// decimal) -> 58.01 | "5801" -> 5801 | number -> ele mesmo.
+// Devolve null quando não dá pra interpretar.
+function parsearValorBrasileiro(entrada) {
+  if (entrada == null) return null;
+  if (typeof entrada === "number") {
+    return Number.isFinite(entrada) ? entrada : null;
+  }
+
+  let s = String(entrada).trim().replace(/[R$\s ]/gi, "");
+  if (!s) return null;
+
+  if (s.includes(",")) {
+    // Vírgula = decimal brasileiro. Tira os pontos de milhar.
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+    // Só pontos de milhar, sem decimais ("5.801", "1.234.567").
+    s = s.replace(/\./g, "");
+  }
+  // Senão (ex.: "58.01", "5801") deixa como está — Number() resolve.
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 // Pedido do usuário (19/08/2026): comprovante do banco às vezes vem em
 // PDF (ex: Sicredi), não em foto — o robô do WhatsApp ignorava esses de
 // propósito, então essas despesas nunca entravam sozinhas. Agora aceita
@@ -6653,9 +6681,17 @@ app.post(
       // Pix — pede o TOTAL somado, não só um dos valores. Usuário sempre
       // pode corrigir antes de confirmar, então não precisa de 100% de
       // certeza aqui.
+      // Bug real (30/08/2026): o comprovante Saipos imprime valor no
+      // formato brasileiro ("58,01") e a IA devolvia o número sem a
+      // vírgula decimal — "58,01" virava 5801, "27,81" virava 2781. Só
+      // afetava a exibição na lista de Fechamento de Caixa (o valor de
+      // Contas a Receber vem da importação da Saipos, não daqui), mas
+      // assustava. Correção: a IA devolve TAMBÉM o texto literal impresso
+      // ("valor_texto") e o backend faz a conta com um parser pt-BR
+      // determinístico, em vez de confiar no número que a IA montou.
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria — pode ser um comprovante de pagamento de diária (de um entregador/boy ou de um funcionário de cozinha) ou um comprovante de venda a prazo pra funcionário. Pode ter o valor dividido em mais de uma forma (parte em dinheiro, parte em Pix, etc) — extraia o VALOR TOTAL, somando tudo se houver mais de um valor. Dê sua melhor estimativa mesmo sem 100% de certeza. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor": 123.45}. Se não conseguir ler nenhum valor, use {"valor": null}.',
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria — pode ser um comprovante de pagamento de diária (de um entregador/boy ou de um funcionário de cozinha) ou um comprovante de venda a prazo pra funcionário. Pode ter o valor dividido em mais de uma forma (parte em dinheiro, parte em Pix, etc) — extraia o VALOR TOTAL, somando tudo se houver mais de um valor (normalmente a linha "TOTAL"). Os valores estão em REAIS no formato brasileiro: a VÍRGULA é o separador decimal e o PONTO é separador de milhar. "58,01" são cinquenta e oito reais e um centavo (NÃO cinco mil oitocentos e um). "1.234,56" são mil duzentos e trinta e quatro reais e cinquenta e seis centavos. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor_texto": "58,01", "valor": 58.01}. Em "valor_texto" copie os dígitos EXATAMENTE como impressos no comprovante, com a vírgula e o ponto no lugar (ex: "1.234,56"). Em "valor" ponha o mesmo número já convertido pra decimal com PONTO (ex: 1234.56). Se não conseguir ler nenhum valor, use {"valor_texto": null, "valor": null}.',
         8192
       );
 
@@ -6672,8 +6708,14 @@ app.post(
         });
       }
 
+      // Prefere o texto literal impresso (parse determinístico pt-BR);
+      // só cai no número que a IA montou se não veio texto.
+      const valorFinal =
+        parsearValorBrasileiro(dadosLidos.valor_texto) ??
+        (dadosLidos.valor != null ? Number(dadosLidos.valor) : null);
+
       res.json({
-        valor: dadosLidos.valor != null ? Number(dadosLidos.valor) : null,
+        valor: Number.isFinite(valorFinal) ? valorFinal : null,
       });
     } catch (erro) {
       console.error("Erro ao ler foto de fechamento de caixa:", erro.message);
