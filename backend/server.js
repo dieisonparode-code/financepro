@@ -288,8 +288,79 @@ async function registrarAuditoria(req, acao, tabelaAfetada, registroId, detalhes
 const ultimaFalhaAutomacaoLogada = new Map();
 const INTERVALO_MIN_LOG_FALHA_MS = 60 * 60 * 1000; // 1 hora
 
+// Alerta push quando uma automação fica FALHANDO (pedido do usuário
+// 30/08/2026 — "sim, qualquer importação"). O histórico real: a
+// importação diária da Saipos já ficou dias sem rodar (SAIPOS_TOKEN
+// some do Render a cada redeploy) e ninguém percebeu até faltar venda
+// em Contas a Receber. registrarFalhaAutomacao é o funil de TODA falha
+// de automação, então o alerta mora aqui: se a mesma automação falhar
+// FALHAS_ATE_ALERTAR vezes seguidas (sem nenhum sucesso no meio),
+// dispara UMA notificação push; não repete antes de PUSH_REPETICAO_MS
+// pra não virar spam enquanto o problema não é resolvido. Quando a
+// automação volta a dar certo (registrarSucessoAutomacao), zera o
+// contador e manda um "voltou a funcionar".
+const FALHAS_ATE_ALERTAR = 3;
+const PUSH_REPETICAO_MS = 6 * 60 * 60 * 1000; // 6 horas
+const estadoAlertaAutomacao = new Map();
+
+// "Importação Saipos — X Calota uberlandia" e "Importação Saipos"
+// (catch externo, sem loja) contam como a MESMA automação pro alerta.
+// Só há uma loja com Saipos hoje; se um dia houver várias, a lógica de
+// sucesso/falha por loja precisa de chave por loja (ver comentário no
+// loop da importação).
+function chaveAlertaAutomacao(nomeAutomacao) {
+  return String(nomeAutomacao || "").split("—")[0].trim() || "Automação";
+}
+
+async function avaliarAlertaFalhaAutomacao(nomeAutomacao, detalhes) {
+  const chave = chaveAlertaAutomacao(nomeAutomacao);
+  const estado =
+    estadoAlertaAutomacao.get(chave) ||
+    { falhasSeguidas: 0, ultimoPushEm: 0, alertaAtivo: false };
+
+  estado.falhasSeguidas += 1;
+
+  const agora = Date.now();
+  const passouDoLimite = estado.falhasSeguidas >= FALHAS_ATE_ALERTAR;
+  const podeRepetir = agora - estado.ultimoPushEm >= PUSH_REPETICAO_MS;
+
+  if (passouDoLimite && podeRepetir) {
+    estado.ultimoPushEm = agora;
+    estado.alertaAtivo = true;
+    await enviarPushTexto(
+      "⚠️ Automação falhando",
+      `${chave} falhou ${estado.falhasSeguidas}x seguidas. ${detalhes || ""}`.trim(),
+      { url: "/?pagina=auditoria", tag: `falha-automacao-${chave}` }
+    );
+  }
+
+  estadoAlertaAutomacao.set(chave, estado);
+}
+
+async function registrarSucessoAutomacao(nomeAutomacao) {
+  const chave = chaveAlertaAutomacao(nomeAutomacao);
+  const estado = estadoAlertaAutomacao.get(chave);
+  if (!estado) return;
+
+  if (estado.alertaAtivo) {
+    await enviarPushTexto(
+      "✅ Automação normalizada",
+      `${chave} voltou a rodar sem erro.`,
+      { url: "/?pagina=auditoria", tag: `falha-automacao-${chave}` }
+    );
+  }
+
+  estadoAlertaAutomacao.delete(chave);
+}
+
 async function registrarFalhaAutomacao(nomeAutomacao, mensagemErro) {
   const detalhes = mensagemErro || "Erro desconhecido.";
+
+  // Conta a falha pro alerta push ANTES do corta-spam do log abaixo —
+  // o contador de "falhas seguidas" tem que subir a cada falha real,
+  // não 1x/hora.
+  avaliarAlertaFalhaAutomacao(nomeAutomacao, detalhes);
+
   const chave = `${nomeAutomacao}||${detalhes}`.slice(0, 300);
   const agora = Date.now();
   const ultimaVez = ultimaFalhaAutomacaoLogada.get(chave) || 0;
@@ -338,6 +409,59 @@ async function aprovacaoDespesasAtiva() {
       erro.message
     );
     return true;
+  }
+}
+
+// Envio de push "cru" (título + corpo livres), pra avisos que não são
+// lançamento — hoje: automação falhando / normalizada (ver
+// avaliarAlertaFalhaAutomacao). Mesma limpeza automática de inscrição
+// morta (404/410) do enviarPushNovoLancamento.
+async function enviarPushTexto(titulo, corpo, opcoes = {}) {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+
+  try {
+    const { data: inscricoes, error } = await supabase
+      .from("push_subscriptions")
+      .select("id, endpoint, p256dh, auth");
+
+    if (error || !inscricoes || !inscricoes.length) return;
+
+    const payload = JSON.stringify({
+      title: titulo,
+      body: corpo,
+      url: opcoes.url || "/?pagina=feed",
+      tag: opcoes.tag || "aviso",
+    });
+
+    await Promise.all(
+      inscricoes.map((inscricao) =>
+        webpush
+          .sendNotification(
+            {
+              endpoint: inscricao.endpoint,
+              keys: { p256dh: inscricao.p256dh, auth: inscricao.auth },
+            },
+            payload
+          )
+          .catch((erroEnvio) => {
+            if (
+              erroEnvio.statusCode === 404 ||
+              erroEnvio.statusCode === 410
+            ) {
+              return supabase
+                .from("push_subscriptions")
+                .delete()
+                .eq("id", inscricao.id);
+            }
+            console.error(
+              "Erro ao enviar push notification (texto):",
+              erroEnvio.message
+            );
+          })
+      )
+    );
+  } catch (erro) {
+    console.error("Erro no enviarPushTexto:", erro.message);
   }
 }
 
@@ -8550,6 +8674,12 @@ async function rodarImportacaoAutomaticaDiariaSaipos() {
             detalhes: resumoTexto,
           },
         ]);
+
+        // Deu certo: zera o contador de falhas e, se havia alerta ativo,
+        // manda "voltou a funcionar". (Chave única "Importação Saipos" —
+        // com 1 loja Saipos hoje é suficiente; com várias, trocar pra
+        // chave por loja aqui e no registrarFalhaAutomacao do catch.)
+        await registrarSucessoAutomacao("Importação Saipos");
       } catch (erroLoja) {
         houveFalha = true;
         console.error(
@@ -8766,6 +8896,7 @@ async function rodarGeracaoDespesasRecorrentes() {
     // (a função interna já é segura contra duplicar, verifica no banco
     // antes de criar).
     ultimoDiaGeradoDespesasRecorrentes = hojeStr;
+    await registrarSucessoAutomacao("Despesas Recorrentes");
   } catch (erro) {
     console.error(
       "Erro na geração automática de despesas recorrentes — vai tentar de novo no próximo minuto:",
