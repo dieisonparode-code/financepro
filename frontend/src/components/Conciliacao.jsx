@@ -11,6 +11,7 @@ import {
   buscarDinheiroInformado,
   registrarRetiradaComFoto,
   lerValorFechamentoCaixa,
+  buscarFotoFundoRetiradaCaixa,
 } from "../services/api";
 import CampoValor, { paraNumero } from "./CampoValor";
 
@@ -196,7 +197,7 @@ function agruparVendasPorFormaPagamento(vendas) {
 // Sem seletor de loja aqui de propósito — a pedido do usuário, essa tela
 // usa a loja em que a pessoa já está logada (ou a selecionada no topo,
 // pra administrador), não precisa escolher de novo.
-function Conciliacao({ lojaId }) {
+function Conciliacao({ lojaId, fundosRetiradas = [] }) {
   const [abaAtiva, setAbaAtiva] = useState("caixa");
   // BUG GRAVE corrigido (13/08/2026): resumo/resumoSaipos eram estados
   // soltos (um valor só, não por fechamento) — trocar de data sem clicar
@@ -1328,6 +1329,24 @@ function Conciliacao({ lojaId }) {
     }
   }
 
+  // A foto de uma "Retirada pro Cofre" mora numa tabela separada
+  // (fundo_retiradas_caixa), então tem endpoint próprio — mas reaproveita
+  // o mesmo modal de preview das fotos de fechamento.
+  async function verFotoFundoCofre(id) {
+    if (!id) return;
+
+    setCarregandoPreview(true);
+
+    try {
+      const resultado = await buscarFotoFundoRetiradaCaixa(id);
+      setFotoPreview(resultado?.foto || null);
+    } catch (erroFoto) {
+      alert(erroFoto.message || "Não foi possível carregar a foto.");
+    } finally {
+      setCarregandoPreview(false);
+    }
+  }
+
   // Pedido do usuário (12/08/2026): pra conferência na Conciliação, os
   // valores têm que vir CHEIOS (brutos, antes da taxa) — é isso que bate
   // com o comprovante físico (a Saipos não desconta taxa de maquininha).
@@ -1973,6 +1992,109 @@ function Conciliacao({ lojaId }) {
             )}
           </div>
         )}
+
+        {/* Pedido do usuário (30/08/2026): mostrar aqui, junto do
+            fechamento, o que saiu do caixa pro Cofre nessa mesma noite
+            (botão "🔒 Retirada pro Cofre" do Fechamento de Caixa). É só
+            leitura — a movimentação de verdade continua sendo criada e
+            editada na tela de Fechamento de Caixa / Extrato do Cofre. As
+            retiradas genéricas (conta_para_cofre === false) ficam de fora:
+            essas já aparecem no quadro "💸 Retiradas de frente de caixa". */}
+        {grupoEscolhido &&
+          (() => {
+            const chaveTurno = hojeDoRegistro(
+              grupoEscolhido.itens[0]?.criado_em
+            );
+            const retiradasCofreTurno = fundosRetiradas.filter((fundo) => {
+              if (fundo.conta_para_cofre === false) return false;
+              if (lojaId && String(fundo.loja_id) !== String(lojaId)) {
+                return false;
+              }
+              return hojeDoRegistro(fundo.criado_em) === chaveTurno;
+            });
+
+            if (retiradasCofreTurno.length === 0) return null;
+
+            const totalCofre = retiradasCofreTurno.reduce(
+              (soma, fundo) => soma + Number(fundo.valor || 0),
+              0
+            );
+
+            return (
+              <div
+                className="panel"
+                style={{
+                  marginBottom: "12px",
+                  padding: "12px 16px",
+                  border: "1px solid rgba(59, 130, 246, 0.4)",
+                  borderRadius: "10px",
+                }}
+              >
+                <strong style={{ color: "#3b82f6" }}>
+                  🔒 Retiradas pro Cofre nessa noite (
+                  {retiradasCofreTurno.length}) — total{" "}
+                  {formatarMoeda(totalCofre)}
+                </strong>
+                <div
+                  style={{
+                    marginTop: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                >
+                  {retiradasCofreTurno.map((fundo) => {
+                    const usado = Number(fundo.valor_usado || 0);
+                    return (
+                      <div
+                        key={`cofre-${fundo.id}`}
+                        style={{
+                          fontSize: "13px",
+                          display: "flex",
+                          gap: "8px",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>
+                          {formatarDataHora(fundo.criado_em)} —{" "}
+                          <strong>{formatarMoeda(fundo.valor)}</strong>
+                          {usado > 0 && (
+                            <span style={{ color: "#9fb0c4" }}>
+                              {" "}
+                              (já usado {formatarMoeda(usado)})
+                            </span>
+                          )}
+                        </span>
+                        {fundo.tem_foto && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "2px 8px", fontSize: "12px" }}
+                            disabled={carregandoPreview}
+                            onClick={() => verFotoFundoCofre(fundo.id)}
+                          >
+                            {carregandoPreview ? "..." : "👁️ Ver foto"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div
+                  style={{
+                    marginTop: "8px",
+                    fontSize: "12px",
+                    color: "#9fb0c4",
+                  }}
+                >
+                  Isso saiu do caixa em dinheiro e foi guardado no Cofre — não
+                  desconta o Saldo geral agora. Some no saldo do Cofre
+                  (Dashboard / Extrato do Cofre).
+                </div>
+              </div>
+            );
+          })()}
 
         {grupoEscolhido &&
           (() => {

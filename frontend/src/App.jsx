@@ -5690,6 +5690,7 @@ const pontoDeEquilibrio = useMemo(() => {
 
         {pagina === "conciliacao" && temPermissaoFechamento("conciliacao") && (
           <Conciliacao
+            fundosRetiradas={fundosRetiradas}
             lojaId={
               !vePermissaoTotal
                 ? perfil?.loja_id || null
