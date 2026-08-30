@@ -6091,6 +6091,14 @@ async function lerImagemComIA(
   const resposta = await anthropic.messages.create({
     model: modelo,
     max_tokens: maxTokens,
+    // O claude-sonnet-5 liga o "extended thinking" sozinho quando o
+    // parâmetro é omitido. Numa foto de comprovante densa ele gastava
+    // TODOS os max_tokens (8192) pensando e devolvia zero bloco de
+    // texto (stop_reason: "max_tokens", blocos: "thinking") — era isso
+    // que fazia a coluna "Informado" da Conciliação voltar a não
+    // aparecer. Essa tarefa é só OCR → JSON, não precisa de raciocínio:
+    // desligar o thinking devolve resposta na hora, barata e estável.
+    thinking: { type: "disabled" },
     messages: [
       {
         role: "user",
