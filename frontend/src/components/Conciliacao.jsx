@@ -526,38 +526,58 @@ function Conciliacao({ lojaId }) {
   // Pedido do usuário: um fechamento pode ter 2 fotos (Foto 1 / Foto 2),
   // que salvam como 2 registros separados no banco mas são o MESMO
   // fechamento físico — antes apareciam como 2 botões distintos, confuso.
-  // Agrupa primeiro pela proximidade de horário de ENVIO (hojeDoRegistro,
-  // corte 5h — bom pra saber QUAIS fotos são do mesmo fechamento, já que
-  // costumam ser enviadas juntas). BUG REAL corrigido (17/08/2026): esse
-  // horário de envio virou também a data usada pra buscar Saipos/
-  // PagSeguro — só que se a foto for enviada bem depois do fechamento
-  // físico (ex: só de manhã seguinte, já passado das 5h), o sistema
-  // buscava dinheiro no dia ERRADO. Agora, se algum item do grupo já tem
-  // a data de abertura real lida do papel (data_abertura_turno, via
-  // "Ler foto de novo"), essa data manda de verdade — só usa a de envio
-  // como estimativa pra quem ainda não foi lido.
+  //
+  // BUG REAL corrigido (29/08/2026): antes agrupava só por "dia do envio"
+  // (hojeDoRegistro, corte 5h). Isso juntava por engano DOIS fechamentos
+  // diferentes: um lido à tarde (ex.: turno de ontem, foto lida hoje 13h)
+  // e o fechamento REAL enviado de madrugada do dia seguinte — os dois
+  // caíam no mesmo "dia" pelo corte de 5h. Como o primeiro já estava
+  // finalizado, o grupo INTEIRO sumia da lista e o fechamento novo nunca
+  // aparecia pra conciliar. Agora: (1) separa por LOTE de envio — fotos do
+  // mesmo fechamento chegam juntas, em minutos; um intervalo grande (>4h)
+  // começa outro lote; (2) resolve a data de cada lote (data do turno lida
+  // do papel, senão o dia do envio); (3) só então junta lotes que sejam do
+  // mesmo dia de verdade. Corrige também o bug de 17/08/2026 (a data do
+  // grupo é a do turno lido do papel quando existe, não a do envio).
   const todosOsGrupos = useMemo(() => {
-    const mapa = new Map();
+    const ordenados = [...fechamentosDisponiveis].sort(
+      (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
+    );
 
-    fechamentosDisponiveis.forEach((item) => {
-      const chave = hojeDoRegistro(item.criado_em);
-      if (!mapa.has(chave)) mapa.set(chave, []);
-      mapa.get(chave).push(item);
-    });
+    const JANELA_MESMO_ENVIO_MS = 4 * 60 * 60 * 1000;
+    const lotes = [];
+    for (const item of ordenados) {
+      const loteAtual = lotes[lotes.length - 1];
+      const ultimoDoLote = loteAtual?.[loteAtual.length - 1];
+      if (
+        ultimoDoLote &&
+        new Date(item.criado_em) - new Date(ultimoDoLote.criado_em) <=
+          JANELA_MESMO_ENVIO_MS
+      ) {
+        loteAtual.push(item);
+      } else {
+        lotes.push([item]);
+      }
+    }
 
-    return Array.from(mapa.entries())
-      .map(([chaveEnvio, itens]) => {
-        const dataAberturaReal = itens.find(
-          (item) => item.data_abertura_turno
-        )?.data_abertura_turno;
+    const porData = new Map();
+    for (const itens of lotes) {
+      const dataAberturaReal = itens.find(
+        (item) => item.data_abertura_turno
+      )?.data_abertura_turno;
+      const dataChave =
+        dataAberturaReal || hojeDoRegistro(itens[0].criado_em);
+      if (!porData.has(dataChave)) porData.set(dataChave, []);
+      porData.get(dataChave).push(...itens);
+    }
 
-        return {
-          dataChave: dataAberturaReal || chaveEnvio,
-          itens: itens.sort(
-            (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
-          ),
-        };
-      })
+    return Array.from(porData.entries())
+      .map(([dataChave, itens]) => ({
+        dataChave,
+        itens: itens.sort(
+          (a, b) => new Date(a.criado_em) - new Date(b.criado_em)
+        ),
+      }))
       .sort((a, b) => (a.dataChave < b.dataChave ? 1 : -1));
   }, [fechamentosDisponiveis]);
 
