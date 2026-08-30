@@ -5013,12 +5013,53 @@ async function buscarPaginaSaiposComRetry(url, token, tentativas = 3, timeoutMs 
   throw ultimoErro;
 }
 
+// Causa raiz do problema recorrente (19/08, 28/08, 30/08/2026): o
+// SAIPOS_TOKEN só existia na tela de Environment do Render. Toda vez que
+// o serviço reinicia/redeploya (ou deixa um container antigo pendurado)
+// o token "some" de process.env e a importação diária para — sem
+// ninguém ver até faltar venda em Contas a Receber. O repo é PÚBLICO,
+// então não dá pra commitar o token nem um .env. Solução: guardar o
+// token no Supabase (tabela `segredos_app`, só a service key lê) e usar
+// process.env só como override. Se o Render perder a variável, o backend
+// cai no valor do banco e a importação continua rodando.
+const cacheSegredosApp = new Map(); // chave -> { valor, buscadoEm }
+const TTL_CACHE_SEGREDO_MS = 5 * 60 * 1000;
+
+async function lerSegredoApp(chave) {
+  const doEnv = process.env[chave];
+  if (doEnv) return doEnv;
+
+  const cacheado = cacheSegredosApp.get(chave);
+  if (cacheado && Date.now() - cacheado.buscadoEm < TTL_CACHE_SEGREDO_MS) {
+    return cacheado.valor || null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("segredos_app")
+      .select("valor")
+      .eq("chave", chave)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const valor = data?.valor || null;
+    cacheSegredosApp.set(chave, { valor, buscadoEm: Date.now() });
+    return valor;
+  } catch (erro) {
+    console.error(`Não consegui ler o segredo "${chave}" do banco:`, erro.message);
+    // Se a busca falhar mas ainda tiver um valor velho em cache, usa ele
+    // (melhor um token possivelmente expirado do que parar tudo).
+    return cacheado?.valor || null;
+  }
+}
+
 async function consultarSaipos(caminho, parametros, timeoutMs = 20000) {
-  const token = process.env.SAIPOS_TOKEN;
+  const token = await lerSegredoApp("SAIPOS_TOKEN");
 
   if (!token) {
     throw new Error(
-      "SAIPOS_TOKEN não configurado no .env. Peça o token ao suporte da Saipos (API de Dados)."
+      "SAIPOS_TOKEN não está no .env nem na tabela segredos_app do Supabase. Rode o SQL de backend/sql/segredos_app.sql e insira o token."
     );
   }
 
