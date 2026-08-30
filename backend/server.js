@@ -6582,13 +6582,22 @@ function retiradaTemMotivoEspecifico(descricao) {
   );
 }
 
-// Confere cada retirada de frente de caixa lida na foto contra as
-// despesas já lançadas (mesma loja, valor batendo, dentro de uma
-// janela de 2 dias em volta da abertura do turno — cobre o caso comum
-// de o fechamento acontecer de madrugada, já no dia seguinte). O que
-// não achar despesa correspondente, lança sozinha (categoria "Retirada
-// de Caixa" ou Fundo de Retirada, conforme o critério acima).
-async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura, req) {
+// MUDANÇA IMPORTANTE (29/08/2026 — pedido do usuário, fechar brecha de
+// fraude): até aqui essa função LANÇAVA sozinha as retiradas de frente de
+// caixa lidas da foto do fechamento (como despesa "Retirada de Caixa" ou
+// Fundo de Retirada) sempre que não achava uma despesa igual já lançada.
+// Isso era uma BRECHA real: bastava digitar uma retirada falsa no PDV da
+// Saipos (ex.: "taxa de entregador FULANO -47,00") pra o sistema descontar
+// sozinho, e aí o caixa físico "batia" (o esperado tinha baixado) — o
+// dinheiro sumia sem rastro e a conferência fechava.
+//
+// Agora essa função SÓ ANALISA — não insere NADA. Separa cada retirada
+// lida da foto entre: (a) já coberta por uma despesa/Fundo lançado, e (b)
+// SEM comprovante. Quem valida uma retirada de verdade passa a ser o
+// comprovante de acerto assinado anexado na tela de Conciliação (Parte 2),
+// e o total dos comprovantes tem que bater com a linha "Retiradas (-)" do
+// fechamento pra poder finalizar.
+async function analisarRetiradasFrenteCaixa(lojaId, retiradas, dataAbertura) {
   const dataSeguinte = diaSeguinteStr(dataAbertura);
   const diaAnterior = (() => {
     const data = new Date(`${dataAbertura}T12:00:00Z`);
@@ -6596,7 +6605,7 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura, re
     return data.toISOString().slice(0, 10);
   })();
 
-  const { data: despesasDaJanela, error: erroBusca } = await supabase
+  const { data: despesasDaJanela } = await supabase
     .from("lancamentos")
     .select("id, valor, descricao, data")
     .eq("tipo", "despesa")
@@ -6604,140 +6613,60 @@ async function conciliarRetiradasNaoLancadas(lojaId, retiradas, dataAbertura, re
     .gte("data", diaAnterior)
     .lte("data", dataSeguinte);
 
-  if (erroBusca) {
-    throw erroBusca;
-  }
-
-  // BUG REAL corrigido (23/08/2026): a checagem de "já lançado" só olhava
-  // pras despesas (lancamentos) — nunca pros Fundos de Retirada (Cofre) já
-  // criados por essa mesma função numa leitura anterior. Resultado: clicar
-  // "🔄 Ler foto de novo" no mesmo fechamento duplicava a retirada genérica
-  // dentro do Cofre a cada nova leitura (o valor ia subindo sozinho sem
-  // ninguém mexer em nada). Agora busca também os Fundos já criados nessa
-  // janela e não deixa lançar de novo o que já está lá.
-  const { data: fundosDaJanela, error: erroBuscaFundos } = await supabase
+  const { data: fundosDaJanela } = await supabase
     .from("fundo_retiradas_caixa")
     .select("id, valor, descricao, data")
     .eq("loja_id", lojaId)
     .gte("data", diaAnterior)
     .lte("data", dataSeguinte);
 
-  if (erroBuscaFundos) {
-    throw erroBuscaFundos;
-  }
-
   const TOLERANCIA = 0.01;
   const usados = new Set();
   const usadosFundo = new Set();
-  const lancadas = [];
+  const jaCobertas = [];
+  const semComprovante = [];
+  const detectadas = [];
 
   for (const retirada of retiradas) {
     const valor = Number(retirada.valor);
     if (!valor || valor <= 0) continue;
 
-    const jaLancada = (despesasDaJanela || []).find(
-      (despesa) =>
-        !usados.has(despesa.id) && Math.abs(Number(despesa.valor) - valor) < TOLERANCIA
-    );
-
-    if (jaLancada) {
-      usados.add(jaLancada.id);
-      continue;
-    }
-
-    const jaNoFundo = (fundosDaJanela || []).find(
-      (fundo) =>
-        !usadosFundo.has(fundo.id) && Math.abs(Number(fundo.valor) - valor) < TOLERANCIA
-    );
-
-    if (jaNoFundo) {
-      usadosFundo.add(jaNoFundo.id);
-      continue;
-    }
-
     const descricao = (retirada.descricao || "Retirada de frente de caixa").trim();
+    const item = { data_hora: retirada.data_hora || null, descricao, valor };
+    detectadas.push(item);
 
-    if (!retiradaTemMotivoEspecifico(descricao)) {
-      const { data: fundoCriado, error: erroFundo } = await supabase
-        .from("fundo_retiradas_caixa")
-        .insert({
-          loja_id: lojaId,
-          valor,
-          data: dataAbertura,
-          descricao: `${descricao} (${retirada.data_hora || "sem horário"}) — detectado automaticamente na leitura do fechamento de caixa.`,
-          // Mesmo critério do endpoint manual acima: só o botão dedicado
-          // "🔒 Retirada pro Cofre" conta como Cofre de verdade.
-          conta_para_cofre: false,
-        })
-        .select("*")
-        .single();
-
-      if (erroFundo) {
-        console.error("Erro ao criar fundo de retirada automático:", erroFundo.message);
-        continue;
-      }
-
-      // BUG REAL corrigido (23/08/2026): esse caminho automático nunca
-      // registrava no Log de Auditoria — impossível rastrear de onde veio
-      // um aumento no Cofre feito por aqui (usuário pediu pra rastrear uma
-      // mudança e a busca no Log não achava nada, porque nada tinha sido
-      // gravado lá).
-      registrarAuditoria(
-        req,
-        "criou",
-        "fundo_retiradas_caixa",
-        fundoCriado.id,
-        `Fundo de retirada detectado automaticamente na leitura do fechamento: ${descricao} (${valor})`
-      );
-
-      lancadas.push({ ...fundoCriado, ehFundo: true });
-      continue;
-    }
-
-    const { data: criada, error: erroCriar } = await supabase
-      .from("lancamentos")
-      .insert([
-        {
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          tipo: "despesa",
-          descricao,
-          valor,
-          data: dataAbertura,
-          grupo: "",
-          categoria: "Retirada de Caixa",
-          subcategoria: "",
-          fornecedor: "",
-          pago_em_dinheiro: true,
-          observacao: `Detectado automaticamente na leitura do fechamento de caixa (${retirada.data_hora || "sem horário"}) — não estava lançado até então.`,
-          foto: "",
-          loja_id: lojaId,
-          status: "aprovado",
-        },
-      ])
-      .select("*")
-      .single();
-
-    if (erroCriar) {
-      console.error("Erro ao lançar retirada automática:", erroCriar.message);
-      continue;
-    }
-
-    // Pedido do usuário (26/08/2026): notificação de 100% das
-    // movimentações.
-    enviarPushNovoLancamento(criada);
-
-    registrarAuditoria(
-      req,
-      "criou",
-      "lancamentos",
-      criada.id,
-      `despesa: ${descricao} (${valor}) — detectado automaticamente na leitura do fechamento de caixa`
+    const despesa = (despesasDaJanela || []).find(
+      (d) => !usados.has(d.id) && Math.abs(Number(d.valor) - valor) < TOLERANCIA
     );
+    if (despesa) {
+      usados.add(despesa.id);
+      jaCobertas.push({ ...item, lancamento_id: despesa.id });
+      continue;
+    }
 
-    lancadas.push(criada);
+    const fundo = (fundosDaJanela || []).find(
+      (f) => !usadosFundo.has(f.id) && Math.abs(Number(f.valor) - valor) < TOLERANCIA
+    );
+    if (fundo) {
+      usadosFundo.add(fundo.id);
+      jaCobertas.push({ ...item, fundo_retirada_id: fundo.id });
+      continue;
+    }
+
+    semComprovante.push(item);
   }
 
-  return lancadas;
+  const soma = (arr) =>
+    Number(arr.reduce((s, r) => s + Number(r.valor || 0), 0).toFixed(2));
+
+  return {
+    detectadas,
+    total_detectado: soma(detectadas),
+    ja_cobertas: jaCobertas,
+    total_ja_coberto: soma(jaCobertas),
+    sem_comprovante: semComprovante,
+    total_sem_comprovante: soma(semComprovante),
+  };
 }
 
 app.post(
@@ -6755,7 +6684,7 @@ app.post(
 
       const textoResposta = await lerImagemComIA(
         foto,
-        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. A seção "CONFERÊNCIA" tem 4 colunas: Forma de Pagamento / Esperado / Em caixa / Diferença — lista TODAS as formas de pagamento, uma por linha — releia a imagem com atenção e liste TODAS as linhas dessa seção, mesmo as que tiverem letra pequena, valor baixo (ex: R$0,01 a R$50,00), estiverem borradas ou a foto estiver de cabeça para baixo. É comum ter 6 a 10 linhas diferentes (Dinheiro, Crédito, Débito, Funcionários/A prazo, Pago Online, Pix, Vale, Voucher, Cortesia, variantes TEF) — NÃO PARE de listar após achar só 4 ou 5, continue procurando o resto da tabela até o fim. Pra CADA linha, leia os DOIS números: a coluna "Esperado" (quanto o sistema esperava) E a coluna "Em caixa" (quanto realmente tinha/bateu) — são números DIFERENTES, não confunda um com o outro, releia com cuidado qual coluna é qual. IMPORTANTE — normalize os nomes exatamente assim, agrupando/somando quando houver mais de uma linha do mesmo grupo (soma tanto o Esperado quanto o Em caixa de cada linha do grupo): linhas "Crédito", "Cartão de Crédito", "TEF Crédito", "TEF-Crédito" → some tudo numa categoria "Cartão de crédito". Linhas "Débito", "Cartão de Débito", "TEF Débito", "TEF-Débito" → some tudo numa categoria "Cartão de débito". QUALQUER linha com "Pix" no nome, EXCETO "Pix Conta Bancária" (Pix, Pix cnpj, Pix na máquina, Pix na maquininha, TEF-PIX, TEF - PIX, Pix na Entrega, etc) → some tudo numa categoria "PIX". Já a linha "Pix Conta Bancária" (ou "Pix Conta Corrente", "Transferência Pix" — o PIX que cai direto na conta do banco, sem passar pela maquininha) fica numa categoria PRÓPRIA chamada "Pix Conta Bancária", nunca junto da categoria "PIX" — são fontes de dinheiro diferentes (uma passa pela maquininha/PagSeguro, a outra não). Linhas "Funcionário", "Funcionários", "A prazo", "A prazo (funcionários)" → some tudo numa categoria "A prazo". QUALQUER linha com "Pago Online" no nome (Pago Online, Pago Online Aiqfome, Pago Online iFood, Pago Online via..., etc) → SOME tudo (Esperado com Esperado, Em caixa com Em caixa) numa ÚNICA categoria "Pago Online" no JSON final — é MUITO comum ter 2 ou mais linhas de "Pago Online" na mesma foto (uma por plataforma: iFood, Aiqfome, Brendi, etc), e TODAS elas têm que virar UMA SÓ linha somada, nunca vira 2 linhas "Pago Online" nem escolhe só uma delas e ignora a outra. Exemplo: se a foto tem "Pago Online 1.144,12 / 1.144,10" numa linha e "Pago Online via... 1.514,88 / 1.514,80" em outra linha, o resultado tem que ser UMA categoria "Pago Online" com esperado 2.659,00 (1.144,12+1.514,88) e em_caixa 2.658,90 (1.144,10+1.514,80) — nunca devolva só uma das duas nem devolva "Pago Online" duas vezes. Linhas "Voucher" ou "Voucher Parceiro" → some numa categoria "Voucher Parceiro". "Dinheiro", "Vale" e "Cortesia" mantenha os nomes como estão, sem combinar com nada. Não pule nenhuma forma de pagamento que aparecer no comprovante — se aparecer uma forma diferente das listadas aqui, inclua com o nome mais parecido possível dessa lista. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)", e da seção "FATURAMENTO:" o valor de "Vendas/Dinheiro" (é normalmente a primeira linha logo depois de "TOTAL FATURADO:"). Extraia TAMBÉM a DATA DE ABERTURA do caixa — geralmente aparece perto do topo do comprovante numa linha "Abertura: DD/MM/AAAA HH:MM:SS" (é uma DATA/HORÁRIO, bem diferente do valor em R$ "Abertura (+)" da seção CAIXA — não confunda os dois "Abertura" que existem no mesmo comprovante, um é quando o caixa abriu, o outro é quanto dinheiro tinha na abertura). Responda essa data no campo "data_abertura" no formato "AAAA-MM-DD". Essa data de abertura é a data OFICIAL do turno inteiro, mesmo o fechamento tendo acontecido já na madrugada do dia seguinte. Extraia TAMBÉM a linha "TOTAL" que fica no final da própria tabela CONFERÊNCIA (os dois números dela, Esperado e Em caixa) — ela é a soma de tudo que está impresso ali, serve de conferência independente. Responda com os campos "total_esperado_impresso" e "total_em_caixa_impresso" com esses dois números exatamente como estão impressos nessa linha TOTAL (não calcule você mesma, copie os números impressos). ATENÇÃO — isso é um confronto financeiro real, um valor errado é PIOR do que não ter valor nenhum: se você identificar o NOME de uma categoria mas não conseguir ler com confiança real um dos dois números (ou os dois) dessa linha (foto borrada, cortada, ilegível), ainda assim inclua essa categoria na lista, mas use null no número que não tiver certeza — NUNCA invente ou arrisque um número que você não tem certeza de ter lido corretamente. Só coloque um número quando realmente conseguir ler os dígitos na imagem. IMPORTANTE — essa foto pode ser de OUTRA página do comprovante (ex: canais de venda, entregadores, ticket médio, retiradas de caixa) que NÃO tem a tabela "CONFERÊNCIA" nenhuma: nesse caso, NÃO invente formas de pagamento nem números — responda com "categorias": [] (lista vazia). Só liste categorias se a tabela CONFERÊNCIA realmente estiver visível nessa foto. Além de tudo isso, procure também a seção "Retiradas de frente de caixa" (pode estar na mesma foto ou não existir nessa foto específica) — é uma lista de retiradas individuais, cada uma com data/hora, uma descrição (ex: "Retirada para acerto com entregador FULANO", "taxa de moto boy FULANO", "retirada de caixa", nome de fornecedor, etc) e um valor negativo. Liste TODAS as retiradas dessa seção, mesmo que a foto não tenha CONFERÊNCIA nenhuma. Pra cada uma, responda a data/hora exatamente como impressa (ex: "21/08 23:36"), a descrição, e o valor SEMPRE positivo (não copie o sinal de menos). Se essa seção não aparecer na foto, responda "retiradas_frente_caixa": []. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "esperado": 515.54, "em_caixa": 517.60}, {"nome": "Vale", "esperado": 11.28, "em_caixa": null}, ...], "abertura_caixa": 387.50, "vendas_dinheiro": 370.04, "total_esperado_impresso": 6396.44, "total_em_caixa_impresso": 6448.24, "data_abertura": "2026-08-15", "retiradas_frente_caixa": [{"data_hora": "21/08 23:36", "descricao": "Retirada para acerto com entregador FULANO", "valor": 120.00}]}. Se não achar abertura_caixa, vendas_dinheiro, os totais impressos ou a data de abertura, use null nesses campos.',
+        'Essa é a foto de um comprovante de fechamento de caixa de uma hamburgueria. A seção "CONFERÊNCIA" tem 4 colunas: Forma de Pagamento / Esperado / Em caixa / Diferença — lista TODAS as formas de pagamento, uma por linha — releia a imagem com atenção e liste TODAS as linhas dessa seção, mesmo as que tiverem letra pequena, valor baixo (ex: R$0,01 a R$50,00), estiverem borradas ou a foto estiver de cabeça para baixo. É comum ter 6 a 10 linhas diferentes (Dinheiro, Crédito, Débito, Funcionários/A prazo, Pago Online, Pix, Vale, Voucher, Cortesia, variantes TEF) — NÃO PARE de listar após achar só 4 ou 5, continue procurando o resto da tabela até o fim. Pra CADA linha, leia os DOIS números: a coluna "Esperado" (quanto o sistema esperava) E a coluna "Em caixa" (quanto realmente tinha/bateu) — são números DIFERENTES, não confunda um com o outro, releia com cuidado qual coluna é qual. IMPORTANTE — normalize os nomes exatamente assim, agrupando/somando quando houver mais de uma linha do mesmo grupo (soma tanto o Esperado quanto o Em caixa de cada linha do grupo): linhas "Crédito", "Cartão de Crédito", "TEF Crédito", "TEF-Crédito" → some tudo numa categoria "Cartão de crédito". Linhas "Débito", "Cartão de Débito", "TEF Débito", "TEF-Débito" → some tudo numa categoria "Cartão de débito". QUALQUER linha com "Pix" no nome, EXCETO "Pix Conta Bancária" (Pix, Pix cnpj, Pix na máquina, Pix na maquininha, TEF-PIX, TEF - PIX, Pix na Entrega, etc) → some tudo numa categoria "PIX". Já a linha "Pix Conta Bancária" (ou "Pix Conta Corrente", "Transferência Pix" — o PIX que cai direto na conta do banco, sem passar pela maquininha) fica numa categoria PRÓPRIA chamada "Pix Conta Bancária", nunca junto da categoria "PIX" — são fontes de dinheiro diferentes (uma passa pela maquininha/PagSeguro, a outra não). Linhas "Funcionário", "Funcionários", "A prazo", "A prazo (funcionários)" → some tudo numa categoria "A prazo". QUALQUER linha com "Pago Online" no nome (Pago Online, Pago Online Aiqfome, Pago Online iFood, Pago Online via..., etc) → SOME tudo (Esperado com Esperado, Em caixa com Em caixa) numa ÚNICA categoria "Pago Online" no JSON final — é MUITO comum ter 2 ou mais linhas de "Pago Online" na mesma foto (uma por plataforma: iFood, Aiqfome, Brendi, etc), e TODAS elas têm que virar UMA SÓ linha somada, nunca vira 2 linhas "Pago Online" nem escolhe só uma delas e ignora a outra. Exemplo: se a foto tem "Pago Online 1.144,12 / 1.144,10" numa linha e "Pago Online via... 1.514,88 / 1.514,80" em outra linha, o resultado tem que ser UMA categoria "Pago Online" com esperado 2.659,00 (1.144,12+1.514,88) e em_caixa 2.658,90 (1.144,10+1.514,80) — nunca devolva só uma das duas nem devolva "Pago Online" duas vezes. Linhas "Voucher" ou "Voucher Parceiro" → some numa categoria "Voucher Parceiro". "Dinheiro", "Vale" e "Cortesia" mantenha os nomes como estão, sem combinar com nada. Não pule nenhuma forma de pagamento que aparecer no comprovante — se aparecer uma forma diferente das listadas aqui, inclua com o nome mais parecido possível dessa lista. Além disso, extraia da seção "CAIXA:" (não da seção CONFERÊNCIA) o valor de "Abertura (+)" E o valor de "Retiradas (-)" (a linha "Retiradas" dessa mesma seção CAIXA — é o TOTAL de dinheiro que saiu do caixa no turno, responda SEMPRE positivo, sem o sinal de menos; se não existir essa linha, responda null), e da seção "FATURAMENTO:" o valor de "Vendas/Dinheiro" (é normalmente a primeira linha logo depois de "TOTAL FATURADO:"). Extraia TAMBÉM a DATA DE ABERTURA do caixa — geralmente aparece perto do topo do comprovante numa linha "Abertura: DD/MM/AAAA HH:MM:SS" (é uma DATA/HORÁRIO, bem diferente do valor em R$ "Abertura (+)" da seção CAIXA — não confunda os dois "Abertura" que existem no mesmo comprovante, um é quando o caixa abriu, o outro é quanto dinheiro tinha na abertura). Responda essa data no campo "data_abertura" no formato "AAAA-MM-DD". Essa data de abertura é a data OFICIAL do turno inteiro, mesmo o fechamento tendo acontecido já na madrugada do dia seguinte. Extraia TAMBÉM a linha "TOTAL" que fica no final da própria tabela CONFERÊNCIA (os dois números dela, Esperado e Em caixa) — ela é a soma de tudo que está impresso ali, serve de conferência independente. Responda com os campos "total_esperado_impresso" e "total_em_caixa_impresso" com esses dois números exatamente como estão impressos nessa linha TOTAL (não calcule você mesma, copie os números impressos). ATENÇÃO — isso é um confronto financeiro real, um valor errado é PIOR do que não ter valor nenhum: se você identificar o NOME de uma categoria mas não conseguir ler com confiança real um dos dois números (ou os dois) dessa linha (foto borrada, cortada, ilegível), ainda assim inclua essa categoria na lista, mas use null no número que não tiver certeza — NUNCA invente ou arrisque um número que você não tem certeza de ter lido corretamente. Só coloque um número quando realmente conseguir ler os dígitos na imagem. IMPORTANTE — essa foto pode ser de OUTRA página do comprovante (ex: canais de venda, entregadores, ticket médio, retiradas de caixa) que NÃO tem a tabela "CONFERÊNCIA" nenhuma: nesse caso, NÃO invente formas de pagamento nem números — responda com "categorias": [] (lista vazia). Só liste categorias se a tabela CONFERÊNCIA realmente estiver visível nessa foto. Além de tudo isso, procure também a seção "Retiradas de frente de caixa" (pode estar na mesma foto ou não existir nessa foto específica) — é uma lista de retiradas individuais, cada uma com data/hora, uma descrição (ex: "Retirada para acerto com entregador FULANO", "taxa de moto boy FULANO", "retirada de caixa", nome de fornecedor, etc) e um valor negativo. Liste TODAS as retiradas dessa seção, mesmo que a foto não tenha CONFERÊNCIA nenhuma. Pra cada uma, responda a data/hora exatamente como impressa (ex: "21/08 23:36"), a descrição, e o valor SEMPRE positivo (não copie o sinal de menos). Se essa seção não aparecer na foto, responda "retiradas_frente_caixa": []. Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato: {"categorias": [{"nome": "Dinheiro", "esperado": 515.54, "em_caixa": 517.60}, {"nome": "Vale", "esperado": 11.28, "em_caixa": null}, ...], "abertura_caixa": 387.50, "retiradas_caixa": 798.00, "vendas_dinheiro": 370.04, "total_esperado_impresso": 6396.44, "total_em_caixa_impresso": 6448.24, "data_abertura": "2026-08-15", "retiradas_frente_caixa": [{"data_hora": "21/08 23:36", "descricao": "Retirada para acerto com entregador FULANO", "valor": 120.00}]}. Se não achar abertura_caixa, retiradas_caixa, vendas_dinheiro, os totais impressos ou a data de abertura, use null nesses campos.',
         2048,
         // Voltado pro Sonnet (14/08/2026): Haiku era mais rápido (~1-2s
         // contra ~10-12s), mas achamos um caso real onde ele leu cada
@@ -6902,14 +6831,13 @@ app.post(
           ? dadosLidos.data_abertura
           : null;
 
-      // Pedido do usuário (22/08/2026): retirada de frente de caixa
-      // (diária de boy/cozinha, acerto com entregador, etc) tem que
-      // descontar do dinheiro esperado no caixa mesmo que ALGUÉM ESQUEÇA
-      // de lançar a despesa — a IA lê a lista de retiradas impressa no
-      // próprio comprovante, confere contra as despesas já lançadas
-      // (por valor + janela de data) e lança sozinha a que estiver
-      // faltando, pra não sobrar dinheiro "fantasma" no confronto.
-      let despesasLancadasAutomaticamente = [];
+      // 29/08/2026 (pedido do usuário — fechar brecha): NÃO lança mais
+      // nada sozinho a partir das retiradas lidas da foto. Só analisa e
+      // devolve a quebra (o que já tem despesa lançada × o que está SEM
+      // comprovante). Quem valida uma retirada é o comprovante de acerto
+      // assinado anexado na Conciliação, e o total tem que bater com a
+      // linha "Retiradas (-)" do fechamento pra poder finalizar.
+      let retiradasAnalise = null;
 
       const retiradasLidas = Array.isArray(dadosLidos.retiradas_frente_caixa)
         ? dadosLidos.retiradas_frente_caixa
@@ -6917,15 +6845,14 @@ app.post(
 
       if (lojaId && dataAberturaLida && retiradasLidas.length > 0) {
         try {
-          despesasLancadasAutomaticamente = await conciliarRetiradasNaoLancadas(
+          retiradasAnalise = await analisarRetiradasFrenteCaixa(
             Number(lojaId),
             retiradasLidas,
-            dataAberturaLida,
-            req
+            dataAberturaLida
           );
         } catch (erroRetiradas) {
           console.error(
-            "Erro ao conciliar retiradas de frente de caixa:",
+            "Erro ao analisar retiradas de frente de caixa:",
             erroRetiradas.message
           );
         }
@@ -6938,6 +6865,10 @@ app.post(
           dadosLidos.abertura_caixa != null
             ? Number(dadosLidos.abertura_caixa)
             : null,
+        retiradas_caixa:
+          dadosLidos.retiradas_caixa != null
+            ? Math.abs(Number(dadosLidos.retiradas_caixa))
+            : null,
         vendas_dinheiro:
           dadosLidos.vendas_dinheiro != null
             ? Number(dadosLidos.vendas_dinheiro)
@@ -6947,7 +6878,10 @@ app.post(
           avisoEsperado || avisoEmCaixa
             ? { esperado: avisoEsperado, em_caixa: avisoEmCaixa }
             : null,
-        despesas_lancadas_automaticamente: despesasLancadasAutomaticamente,
+        retiradas_analise: retiradasAnalise,
+        // Mantido só por compatibilidade com versões antigas do frontend —
+        // não lança mais nada automaticamente.
+        despesas_lancadas_automaticamente: [],
       });
     } catch (erro) {
       console.error("Erro ao conferir fechamento por foto:", erro.message);

@@ -1092,6 +1092,14 @@ function Conciliacao({ lojaId }) {
         avisoSomaNaoBate: resultado.aviso_soma_nao_bate || null,
         despesasLancadasAutomaticamente:
           resultado.despesas_lancadas_automaticamente || [],
+        // 29/08/2026: retiradas de frente de caixa não descontam mais nada
+        // sozinhas — só vem a análise (o que já tem despesa × o que está
+        // sem comprovante) + o total "Retiradas (-)" impresso no fechamento.
+        retiradasAnalise: resultado.retiradas_analise || null,
+        retiradasTotalImpresso:
+          resultado.retiradas_caixa != null
+            ? Number(resultado.retiradas_caixa)
+            : null,
       };
       if (!silencioso) setResultadoFoto(resultadoOk);
 
@@ -2044,23 +2052,72 @@ function Conciliacao({ lojaId }) {
           </div>
         )}
 
-        {resultadoFoto?.despesasLancadasAutomaticamente?.length > 0 && (
-          <div
-            className="empty-state"
-            style={{ color: "#16ca50", marginBottom: "10px" }}
-          >
-            💸 {resultadoFoto.despesasLancadasAutomaticamente.length} retirada(s)
-            de frente de caixa não estava(m) lançada(s) — foi lançada
-            automaticamente como despesa:
-            <ul>
-              {resultadoFoto.despesasLancadasAutomaticamente.map((despesa) => (
-                <li key={despesa.id}>
-                  {despesa.descricao} — {formatarMoeda(despesa.valor)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {resultadoFoto?.retiradasAnalise &&
+          (() => {
+            const a = resultadoFoto.retiradasAnalise;
+            const informado = resultadoFoto.retiradasTotalImpresso;
+            const comComprovante = a.total_ja_coberto || 0;
+            const semComprovante = a.total_sem_comprovante || 0;
+            // Se a foto trouxe a linha "Retiradas (-)" usa ela como o valor
+            // a bater; senão cai pra soma das retiradas listadas.
+            const alvo = informado != null ? informado : a.total_detectado || 0;
+            const falta = Number((alvo - comComprovante).toFixed(2));
+            const bate = Math.abs(falta) <= 0.01;
+
+            return (
+              <div
+                className="empty-state"
+                style={{
+                  marginBottom: "10px",
+                  border: `1px solid ${bate ? "#16ca50" : "#ff4655"}`,
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  textAlign: "left",
+                }}
+              >
+                <strong>💸 Retiradas de frente de caixa</strong>
+                <div style={{ marginTop: 6, fontSize: 13 }}>
+                  Retiradas informadas no fechamento:{" "}
+                  <strong>{formatarMoeda(alvo)}</strong>
+                  {informado == null && (
+                    <span style={{ color: "#9fb0c4" }}>
+                      {" "}
+                      (soma das retiradas listadas — não achei a linha
+                      "Retiradas (-)" na foto)
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  Com comprovante (despesa já lançada):{" "}
+                  <strong className="tipo-receita">
+                    {formatarMoeda(comComprovante)}
+                  </strong>
+                </div>
+                <div style={{ fontSize: 13 }}>
+                  {bate ? (
+                    <span className="tipo-receita">✅ Bateu.</span>
+                  ) : (
+                    <span className="tipo-despesa">
+                      ⚠️ Falta comprovante de {formatarMoeda(falta)} — anexe o
+                      acerto assinado de cada entregador/boy. Enquanto não
+                      bater, esse valor conta como dinheiro que sumiu do caixa.
+                    </span>
+                  )}
+                </div>
+                {a.sem_comprovante?.length > 0 && (
+                  <ul style={{ marginTop: 6, fontSize: 12 }}>
+                    {a.sem_comprovante.map((r, i) => (
+                      <li key={i}>
+                        {r.data_hora ? `${r.data_hora} — ` : ""}
+                        {r.descricao} — {formatarMoeda(r.valor)}{" "}
+                        <span className="tipo-despesa">(sem comprovante)</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
 
         {resultadoFoto?.avisoSomaNaoBate && (
           <div
