@@ -5042,7 +5042,13 @@ const pontoDeEquilibrio = useMemo(() => {
         );
       }
 
-      const contasAlerta = contasPagar
+      // Pedido do usuário (31/08/2026): o aviso seguia mostrando conta de
+      // TODAS as lojas mesmo com uma loja específica selecionada no
+      // Dashboard — "Diária Boy vence hoje" (de Uberlândia) aparecia
+      // olhando Rondonópolis. Agora usa contasPagarFiltradas, igual ao
+      // resto do Dashboard: loja selecionada + contas sem loja definida;
+      // em "Todas as lojas" continua mostrando tudo.
+      const contasAlerta = contasPagarFiltradas
         .filter((conta) => conta.status !== "pago")
         .map((conta) => ({
           ...conta,
