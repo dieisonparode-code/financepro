@@ -159,54 +159,6 @@ body {
   box-shadow: 0 8px 24px rgba(8, 104, 255, 0.28) !important;
 }
 
-/* Seções colapsáveis do menu (Operacional, Financeiro, etc.) —
-   pedido do usuário 30/08/2026. */
-.menu-secao {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 7px !important;
-  margin-top: 4px !important;
-}
-
-.menu-secao-titulo {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  width: 100% !important;
-  min-height: 34px !important;
-  margin: 0 !important;
-  padding: 7px 14px !important;
-  border: 0 !important;
-  border-radius: 8px !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  transform: none !important;
-  color: #7d8aa0 !important;
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.08em !important;
-  text-transform: uppercase !important;
-  text-align: left !important;
-  cursor: pointer !important;
-}
-
-.menu-secao-titulo:hover {
-  color: #b7c3d4 !important;
-  background: rgba(255, 255, 255, 0.04) !important;
-}
-
-.menu-secao-seta {
-  font-size: 10px !important;
-  opacity: 0.8 !important;
-}
-
-.menu-secao-itens {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 7px !important;
-  padding-left: 8px !important;
-}
-
 .main-content {
   display: block !important;
   width: calc(100% - 250px) !important;

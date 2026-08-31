@@ -500,30 +500,6 @@ function paraDataUtc(bruto) {
   return Number.isNaN(data.getTime()) ? null : data;
 }
 
-// Seção colapsável do menu lateral (Operacional, Financeiro, etc.).
-// Puramente visual: os botões de dentro continuam sendo os mesmos, com
-// as mesmas permissões. Não renderiza nada se não tiver nenhum filho
-// visível (ex.: usuário sem permissão pra nenhum item da seção).
-function SecaoMenu({ id, titulo, aberta, aoAlternar, children }) {
-  const temItem = React.Children.toArray(children).some(Boolean);
-  if (!temItem) return null;
-
-  return (
-    <div className="menu-secao">
-      <button
-        type="button"
-        className={`menu-secao-titulo${aberta ? " aberta" : ""}`}
-        onClick={() => aoAlternar(id)}
-        aria-expanded={aberta}
-      >
-        <span>{titulo}</span>
-        <span className="menu-secao-seta">{aberta ? "▾" : "▸"}</span>
-      </button>
-      {aberta && <div className="menu-secao-itens">{children}</div>}
-    </div>
-  );
-}
-
 function App() {
   return (
     <BrowserRouter>
@@ -610,80 +586,23 @@ function FinanceApp() {
     () => searchParams.get("pagina") || "dashboard"
   );
 
-  // Pedido do usuário (30/08/2026): o menu lateral tinha ~19 itens soltos
-  // com rolagem. Agrupado em 4 seções colapsáveis — Operacional,
-  // Financeiro, Relatórios, Configurações (essa última absorveu o antigo
-  // "⚙️ Mais"). Cada botão continua igual (mesmo texto, mesmo onClick,
-  // mesma permissão) — as seções são só um invólucro de exibição. O
-  // estado aberto/fechado de cada seção fica salvo no navegador.
-  const SECAO_DA_PAGINA = {
-    conciliacao: "operacional",
-    fechamento: "operacional",
-    "extrato-cofre": "operacional",
-    "vendas-saipos": "operacional",
-    "notas-fiscais": "operacional",
-    "contas-pagar": "financeiro",
-    "contas-receber": "financeiro",
-    "contas-pagas": "financeiro",
-    despesas: "financeiro",
-    "despesas-recorrentes": "financeiro",
-    receitas: "financeiro",
-    fluxo: "financeiro",
-    fornecedores: "financeiro",
-    "emprestimos-entre-lojas": "financeiro",
-    "retiradas-socios": "financeiro",
-    relatorios: "relatorios",
-    "conferencia-saldo": "relatorios",
-    auditoria: "relatorios",
-    categorias: "configuracoes",
-    clientes: "configuracoes",
-    estoque: "configuracoes",
-    "ficha-tecnica": "configuracoes",
-    backup: "configuracoes",
-    lojas: "configuracoes",
-    usuarios: "configuracoes",
-  };
-  const SECOES_MENU_STORAGE = "financepro_menu_secoes";
-  const [secoesMenuAbertas, setSecoesMenuAbertas] = useState(() => {
-    // Padrão: as duas seções de uso diário abertas; Relatórios (admin,
-    // uso ocasional) e Configurações (era o antigo "Mais", já vinha
-    // fechado) começam colapsadas — é o que deixa o menu curto. A seção
-    // da página aberta no momento sempre aparece, mesmo colapsada aqui.
-    const padrao = {
-      operacional: true,
-      financeiro: true,
-      relatorios: false,
-      configuracoes: false,
-    };
-    try {
-      const salvo = JSON.parse(localStorage.getItem(SECOES_MENU_STORAGE));
-      if (salvo && typeof salvo === "object") return { ...padrao, ...salvo };
-    } catch {
-      /* localStorage indisponível — usa o padrão */
-    }
-    return padrao;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        SECOES_MENU_STORAGE,
-        JSON.stringify(secoesMenuAbertas)
-      );
-    } catch {
-      /* ignora — não é crítico persistir */
-    }
-  }, [secoesMenuAbertas]);
-
-  function alternarSecaoMenu(id) {
-    setSecoesMenuAbertas((anterior) => ({ ...anterior, [id]: !anterior[id] }));
-  }
-
-  // A seção que contém a página atual fica sempre aberta (o item ativo
-  // nunca fica escondido), independente do que o usuário colapsou.
-  function secaoMenuAberta(id) {
-    return Boolean(secoesMenuAbertas[id]) || SECAO_DA_PAGINA[pagina] === id;
-  }
+  // Pedido do usuário (12/08/2026): Lojas/Usuários/Log de Auditoria/
+  // Estoque/Clientes/Categorias juntos num só botão "⚙️ Mais" (accordion),
+  // pra aba lateral não ficar gigante. Começa aberto se a página atual (ex:
+  // recarregou a tela em "usuarios") já for uma dessas, senão fica
+  // fechado.
+  const PAGINAS_MENU_MAIS = [
+    "categorias",
+    "clientes",
+    "estoque",
+    "lojas",
+    "usuarios",
+    "auditoria",
+    "backup",
+  ];
+  const [menuMaisAberto, setMenuMaisAberto] = useState(() =>
+    PAGINAS_MENU_MAIS.includes(searchParams.get("pagina") || "dashboard")
+  );
 
   // Mantém a aba atual salva na URL (?pagina=despesas), assim atualizar
   // a página (F5) não volta sozinho pro dashboard.
@@ -4762,7 +4681,8 @@ const pontoDeEquilibrio = useMemo(() => {
             entre si, separado do resto. */}
         <nav className="menu">
           {/* Pedido do usuário (25/08/2026): "Conferência do dia" (antigo
-              "Feed do Dia") fica sempre em primeiro, fora das seções. */}
+              "Feed do Dia") fica sempre em primeiro, fora da ordem
+              alfabética do resto do menu. */}
           {(temPermissaoFinanceira("despesas") ||
             temPermissaoFinanceira("receitas")) && (
             <button
@@ -4773,269 +4693,263 @@ const pontoDeEquilibrio = useMemo(() => {
             </button>
           )}
 
-          {/* Pedido do usuário (30/08/2026): menu agrupado em seções
-              colapsáveis. Cada botão é o MESMO de antes (texto, onClick,
-              permissão) — só mudou o invólucro. */}
-          <SecaoMenu
-            id="operacional"
-            titulo="Operacional"
-            aberta={secaoMenuAberta("operacional")}
-            aoAlternar={alternarSecaoMenu}
-          >
-            {temPermissaoFechamento("conciliacao") && (
-              <button
-                className={pagina === "conciliacao" ? "active" : ""}
-                onClick={() => setPagina("conciliacao")}
-              >
-                Conciliação
-              </button>
-            )}
+          {temPermissaoFechamento("conciliacao") && (
+            <button
+              className={pagina === "conciliacao" ? "active" : ""}
+              onClick={() => setPagina("conciliacao")}
+            >
+              Conciliação
+            </button>
+          )}
 
-            {temPermissao("fechamento_caixa") && (
-              <button
-                className={pagina === "fechamento" ? "active" : ""}
-                onClick={() => setPagina("fechamento")}
-              >
-                Fechamento de Caixa
-              </button>
-            )}
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "contas-pagar" ? "active" : ""}
+              onClick={() => setPagina("contas-pagar")}
+            >
+              Contas a Pagar
+            </button>
+          )}
 
-            {/* Pedido do usuário (26/08/2026): só o extrato do que foi
-                pago com dinheiro do Cofre — mesma permissão de quem mexe
-                no Fechamento de Caixa. */}
-            {temPermissao("fechamento_caixa") && (
-              <button
-                className={pagina === "extrato-cofre" ? "active" : ""}
-                onClick={() => setPagina("extrato-cofre")}
-              >
-                🔒 Extrato do Cofre
-              </button>
-            )}
+          {temPermissaoFinanceira("contas_receber") && (
+            <button
+              className={pagina === "contas-receber" ? "active" : ""}
+              onClick={() => setPagina("contas-receber")}
+            >
+              Contas a Receber
+            </button>
+          )}
 
-            {temPermissaoFechamento("vendas_saipos") && (
-              <button
-                className={pagina === "vendas-saipos" ? "active" : ""}
-                onClick={() => setPagina("vendas-saipos")}
-              >
-                Vendas (Saipos)
-              </button>
-            )}
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "contas-pagas" ? "active" : ""}
+              onClick={() => setPagina("contas-pagas")}
+            >
+              ✅ Contas Pagas
+            </button>
+          )}
 
-            {temPermissao("notas_fiscais") && (
-              <button
-                className={pagina === "notas-fiscais" ? "active" : ""}
-                onClick={() => setPagina("notas-fiscais")}
-              >
-                Nota Fiscal
-              </button>
-            )}
-          </SecaoMenu>
+          {/* Pedido do usuário (24/08/2026): removido daqui — o logo
+              "FinancePro" no topo do menu já leva pro Dashboard (ver
+              <div className="brand"> acima), ficava duplicado. Também
+              resolve o Dashboard ter "caído" pra 5ª posição na ordenação
+              alfabética. */}
 
-          <SecaoMenu
-            id="financeiro"
-            titulo="Financeiro"
-            aberta={secaoMenuAberta("financeiro")}
-            aoAlternar={alternarSecaoMenu}
-          >
-            {temPermissaoFinanceira("contas_pagar") && (
-              <button
-                className={pagina === "contas-pagar" ? "active" : ""}
-                onClick={() => setPagina("contas-pagar")}
-              >
-                Contas a Pagar
-              </button>
-            )}
+          {temPermissaoFinanceira("despesas") && (
+            <button
+              className={pagina === "despesas" ? "active" : ""}
+              onClick={() => setPagina("despesas")}
+            >
+              Despesas
+            </button>
+          )}
 
-            {temPermissaoFinanceira("contas_receber") && (
-              <button
-                className={pagina === "contas-receber" ? "active" : ""}
-                onClick={() => setPagina("contas-receber")}
-              >
-                Contas a Receber
-              </button>
-            )}
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "despesas-recorrentes" ? "active" : ""}
+              onClick={() => setPagina("despesas-recorrentes")}
+            >
+              🔁 Despesas Recorrentes
+            </button>
+          )}
 
-            {temPermissaoFinanceira("contas_pagar") && (
-              <button
-                className={pagina === "contas-pagas" ? "active" : ""}
-                onClick={() => setPagina("contas-pagas")}
-              >
-                ✅ Contas Pagas
-              </button>
-            )}
+          {ehAdministrador && (
+            <button
+              className={pagina === "emprestimos-entre-lojas" ? "active" : ""}
+              onClick={() => setPagina("emprestimos-entre-lojas")}
+            >
+              🔁 Empréstimo entre Lojas
+            </button>
+          )}
 
-            {temPermissaoFinanceira("despesas") && (
-              <button
-                className={pagina === "despesas" ? "active" : ""}
-                onClick={() => setPagina("despesas")}
-              >
-                Despesas
-              </button>
-            )}
+          {temPermissao("fechamento_caixa") && (
+            <button
+              className={pagina === "fechamento" ? "active" : ""}
+              onClick={() => setPagina("fechamento")}
+            >
+              Fechamento de Caixa
+            </button>
+          )}
 
-            {temPermissaoFinanceira("contas_pagar") && (
-              <button
-                className={pagina === "despesas-recorrentes" ? "active" : ""}
-                onClick={() => setPagina("despesas-recorrentes")}
-              >
-                🔁 Despesas Recorrentes
-              </button>
-            )}
+          {/* Pedido do usuário (26/08/2026): "fica somente o extrato
+              doque foi pago com dinheiro do cofre, entradas e saidas mas
+              so do cofre" — mesma permissão de quem mexe no Fechamento
+              de Caixa, já que é lá que o Cofre é abastecido/gasto. */}
+          {temPermissao("fechamento_caixa") && (
+            <button
+              className={pagina === "extrato-cofre" ? "active" : ""}
+              onClick={() => setPagina("extrato-cofre")}
+            >
+              🔒 Extrato do Cofre
+            </button>
+          )}
 
-            {temPermissaoFinanceira("receitas") && (
-              <button
-                className={pagina === "receitas" ? "active" : ""}
-                onClick={() => setPagina("receitas")}
-              >
-                Receitas
-              </button>
-            )}
+          {temPermissaoFinanceira("fluxo_caixa") && (
+            <button
+              className={pagina === "fluxo" ? "active" : ""}
+              onClick={() => setPagina("fluxo")}
+            >
+              Fluxo de Caixa
+            </button>
+          )}
 
-            {temPermissaoFinanceira("fluxo_caixa") && (
-              <button
-                className={pagina === "fluxo" ? "active" : ""}
-                onClick={() => setPagina("fluxo")}
-              >
-                Fluxo de Caixa
-              </button>
-            )}
+          {temPermissaoFinanceira("contas_pagar") && (
+            <button
+              className={pagina === "fornecedores" ? "active" : ""}
+              onClick={() => setPagina("fornecedores")}
+            >
+              🏭 Fornecedores
+            </button>
+          )}
 
-            {temPermissaoFinanceira("contas_pagar") && (
+          {(temPermissaoFinanceira("categorias") ||
+            temPermissao("clientes") ||
+            temPermissao("estoque") ||
+            temPermissaoFinanceira("despesas") ||
+            ehAdministrador) && (
+            <>
               <button
-                className={pagina === "fornecedores" ? "active" : ""}
-                onClick={() => setPagina("fornecedores")}
+                className={menuMaisAberto ? "active" : ""}
+                onClick={() => setMenuMaisAberto((anterior) => !anterior)}
               >
-                🏭 Fornecedores
+                ⚙️ Mais {menuMaisAberto ? "▲" : "▼"}
               </button>
-            )}
 
-            {ehAdministrador && (
-              <button
-                className={
-                  pagina === "emprestimos-entre-lojas" ? "active" : ""
-                }
-                onClick={() => setPagina("emprestimos-entre-lojas")}
-              >
-                🔁 Empréstimo entre Lojas
-              </button>
-            )}
+              {menuMaisAberto && (
+                <div style={{ paddingLeft: 16 }}>
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "backup" ? "active" : ""}
+                      onClick={() => setPagina("backup")}
+                    >
+                      💾 Backup
+                    </button>
+                  )}
 
-            {ehAdministrador && (
-              <button
-                className={pagina === "retiradas-socios" ? "active" : ""}
-                onClick={() => setPagina("retiradas-socios")}
-              >
-                💸 Retiradas de Sócios
-              </button>
-            )}
-          </SecaoMenu>
+                  {temPermissaoFinanceira("categorias") && (
+                    <button
+                      className={pagina === "categorias" ? "active" : ""}
+                      onClick={() => setPagina("categorias")}
+                    >
+                      Categorias
+                    </button>
+                  )}
 
-          {/* Pedido do usuário (20/08/2026): Relatórios tem as Retiradas
-              de Sócios dentro (informação sensível) — tela só-admin. */}
-          <SecaoMenu
-            id="relatorios"
-            titulo="Relatórios"
-            aberta={secaoMenuAberta("relatorios")}
-            aoAlternar={alternarSecaoMenu}
-          >
-            {ehAdministrador && (
-              <button
-                className={pagina === "relatorios" ? "active" : ""}
-                onClick={() => setPagina("relatorios")}
-              >
-                Relatórios
-              </button>
-            )}
+                  {temPermissao("clientes") && (
+                    <button
+                      className={pagina === "clientes" ? "active" : ""}
+                      onClick={() => setPagina("clientes")}
+                    >
+                      Clientes
+                    </button>
+                  )}
 
-            {ehAdministrador && (
-              <button
-                className={pagina === "conferencia-saldo" ? "active" : ""}
-                onClick={() => setPagina("conferencia-saldo")}
-              >
-                🏦 Conferência de Saldo
-              </button>
-            )}
+                  {temPermissao("estoque") && (
+                    <button
+                      className={pagina === "estoque" ? "active" : ""}
+                      onClick={() => setPagina("estoque")}
+                    >
+                      Estoque
+                    </button>
+                  )}
 
-            {ehAdministrador && (
-              <button
-                className={pagina === "auditoria" ? "active" : ""}
-                onClick={() => setPagina("auditoria")}
-              >
-                Log de Auditoria
-              </button>
-            )}
-          </SecaoMenu>
+                  {temPermissaoFinanceira("despesas") && (
+                    <button
+                      className={pagina === "ficha-tecnica" ? "active" : ""}
+                      onClick={() => setPagina("ficha-tecnica")}
+                    >
+                      📋 Ficha Técnica
+                    </button>
+                  )}
 
-          {/* Antigo "⚙️ Mais" — vira a seção Configurações. */}
-          <SecaoMenu
-            id="configuracoes"
-            titulo="Configurações"
-            aberta={secaoMenuAberta("configuracoes")}
-            aoAlternar={alternarSecaoMenu}
-          >
-            {temPermissaoFinanceira("categorias") && (
-              <button
-                className={pagina === "categorias" ? "active" : ""}
-                onClick={() => setPagina("categorias")}
-              >
-                Categorias
-              </button>
-            )}
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "auditoria" ? "active" : ""}
+                      onClick={() => setPagina("auditoria")}
+                    >
+                      Log de Auditoria
+                    </button>
+                  )}
 
-            {temPermissao("clientes") && (
-              <button
-                className={pagina === "clientes" ? "active" : ""}
-                onClick={() => setPagina("clientes")}
-              >
-                Clientes
-              </button>
-            )}
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "lojas" ? "active" : ""}
+                      onClick={() => setPagina("lojas")}
+                    >
+                      Lojas
+                    </button>
+                  )}
 
-            {temPermissao("estoque") && (
-              <button
-                className={pagina === "estoque" ? "active" : ""}
-                onClick={() => setPagina("estoque")}
-              >
-                Estoque
-              </button>
-            )}
+                  {ehAdministrador && (
+                    <button
+                      className={pagina === "usuarios" ? "active" : ""}
+                      onClick={() => setPagina("usuarios")}
+                    >
+                      Usuários
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
-            {temPermissaoFinanceira("despesas") && (
-              <button
-                className={pagina === "ficha-tecnica" ? "active" : ""}
-                onClick={() => setPagina("ficha-tecnica")}
-              >
-                📋 Ficha Técnica
-              </button>
-            )}
+          {temPermissao("notas_fiscais") && (
+            <button
+              className={pagina === "notas-fiscais" ? "active" : ""}
+              onClick={() => setPagina("notas-fiscais")}
+            >
+              Nota Fiscal
+            </button>
+          )}
 
-            {ehAdministrador && (
-              <button
-                className={pagina === "backup" ? "active" : ""}
-                onClick={() => setPagina("backup")}
-              >
-                💾 Backup
-              </button>
-            )}
+          {temPermissaoFinanceira("receitas") && (
+            <button
+              className={pagina === "receitas" ? "active" : ""}
+              onClick={() => setPagina("receitas")}
+            >
+              Receitas
+            </button>
+          )}
 
-            {ehAdministrador && (
-              <button
-                className={pagina === "lojas" ? "active" : ""}
-                onClick={() => setPagina("lojas")}
-              >
-                Lojas
-              </button>
-            )}
+          {/* Pedido do usuário (20/08/2026): Relatórios agora tem as
+              Retiradas de Sócios dentro (informação sensível) — a tela
+              inteira passou a ser só-admin, não é mais liberada por
+              permissão granular pra gerente/equipe. */}
+          {ehAdministrador && (
+            <button
+              className={pagina === "relatorios" ? "active" : ""}
+              onClick={() => setPagina("relatorios")}
+            >
+              Relatórios
+            </button>
+          )}
 
-            {ehAdministrador && (
-              <button
-                className={pagina === "usuarios" ? "active" : ""}
-                onClick={() => setPagina("usuarios")}
-              >
-                Usuários
-              </button>
-            )}
-          </SecaoMenu>
+          {ehAdministrador && (
+            <button
+              className={pagina === "retiradas-socios" ? "active" : ""}
+              onClick={() => setPagina("retiradas-socios")}
+            >
+              💸 Retiradas de Sócios
+            </button>
+          )}
+
+          {ehAdministrador && (
+            <button
+              className={pagina === "conferencia-saldo" ? "active" : ""}
+              onClick={() => setPagina("conferencia-saldo")}
+            >
+              🏦 Conferência de Saldo
+            </button>
+          )}
+
+          {temPermissaoFechamento("vendas_saipos") && (
+            <button
+              className={pagina === "vendas-saipos" ? "active" : ""}
+              onClick={() => setPagina("vendas-saipos")}
+            >
+              Vendas (Saipos)
+            </button>
+          )}
         </nav>
 
         {/* Pedido do usuário (24/08/2026): removido o botão de
