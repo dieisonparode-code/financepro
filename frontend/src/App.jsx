@@ -711,6 +711,10 @@ function FinanceApp() {
 
   const [modalAberto, setModalAberto] = useState(false);
   const [tipoLancamento, setTipoLancamento] = useState("receita");
+  // Pedido do usuário (30/08/2026): usuário multi-loja confirma pra qual
+  // loja está lançando antes de salvar (despesa/receita). Se disser
+  // "Não", esse flag liga um seletor de loja dentro do próprio modal.
+  const [escolherLojaNoModal, setEscolherLojaNoModal] = useState(false);
 
   // Pedido do usuário (25/08/2026): "ao lançar a folha ter a opção de
   // selecionar o funcionário e clicar em descontar vales e consumos aí
@@ -2034,6 +2038,28 @@ useEffect(() => {
   }
 }, [lojaDashboard]);
 
+// Pedido do usuário (30/08/2026): trocar de loja (seletor do topo OU os
+// quadradinhos do Dashboard) sempre pede confirmação; "Não" mantém a
+// loja atual. A sincronização automática (usuário de 1 loja só) continua
+// chamando setLojaDashboard direto, sem passar por aqui.
+function trocarLojaComConfirmacao(novaLoja) {
+  if (String(novaLoja) === String(lojaDashboard)) return;
+
+  const nomeNovaLoja =
+    novaLoja === "todas"
+      ? "Todas as lojas"
+      : lojas.find((loja) => String(loja.id) === String(novaLoja))?.nome ||
+        "essa loja";
+
+  if (
+    window.confirm(
+      `Trocar para "${nomeNovaLoja}"? Tem certeza que deseja trocar de loja?`
+    )
+  ) {
+    setLojaDashboard(novaLoja);
+  }
+}
+
 useEffect(() => {
   if (!vePermissaoTotal && perfil?.loja_id) {
     setLojaDashboard(perfil.loja_id);
@@ -2968,6 +2994,7 @@ const pontoDeEquilibrio = useMemo(() => {
     setEditandoId(null);
     editandoIdRef.current = null;
     setEhPagamentoSalario(false);
+    setEscolherLojaNoModal(false);
     setPendenciasFuncionario(null);
     setPendenciasSelecionadas([]);
 
@@ -2987,6 +3014,7 @@ const pontoDeEquilibrio = useMemo(() => {
     setTipoLancamento(lancamento.tipo);
     setEditandoId(lancamento.id);
     editandoIdRef.current = lancamento.id;
+    setEscolherLojaNoModal(false);
 
     setFormulario({
       descricao: lancamento.descricao || "",
@@ -3076,6 +3104,7 @@ const pontoDeEquilibrio = useMemo(() => {
     setPendenciasFuncionario(null);
     setPendenciasSelecionadas([]);
     setEhPagamentoSalario(false);
+    setEscolherLojaNoModal(false);
   }
 
   // Tecla Esc fecha o modal aberto (foto ou formulário de lançamento), sem
@@ -3506,6 +3535,27 @@ const pontoDeEquilibrio = useMemo(() => {
         "Selecione uma loja no seletor do topo da tela antes de salvar."
       );
       return;
+    }
+
+    // Pedido do usuário (30/08/2026): quem tem várias lojas liberadas
+    // confirma pra qual loja está lançando antes de salvar. Se clicar
+    // "Não", liga o seletor de loja dentro do modal pra corrigir e
+    // salvar de novo (aí confirma de novo, com o nome novo). Edição não
+    // pede — a loja de um lançamento existente não muda.
+    if (vePermissaoTotal && !editandoId) {
+      const nomeLojaLancamento =
+        lojas.find(
+          (loja) => String(loja.id) === String(formulario.loja_id)
+        )?.nome || "essa loja";
+
+      if (
+        !window.confirm(
+          `Confirmar lançamento para a loja "${nomeLojaLancamento}"?`
+        )
+      ) {
+        setEscolherLojaNoModal(true);
+        return;
+      }
     }
 
     const formaPagamentoSelecionada = formasPagamento.find(
@@ -5128,7 +5178,9 @@ const pontoDeEquilibrio = useMemo(() => {
             <select
               className="topbar-loja-select no-print"
               value={lojaDashboard}
-              onChange={(evento) => setLojaDashboard(evento.target.value)}
+              onChange={(evento) =>
+                trocarLojaComConfirmacao(evento.target.value)
+              }
               title="Filtrar tudo por loja"
             >
               <option value="todas">🏬 Todas as lojas</option>
@@ -5190,7 +5242,7 @@ const pontoDeEquilibrio = useMemo(() => {
       sair={sair}
       lojas={lojas}
       lojaDashboard={lojaDashboard}
-      setLojaDashboard={setLojaDashboard}
+      setLojaDashboard={trocarLojaComConfirmacao}
       ehAdministrador={ehAdministrador}
       temAcessoFinanceiro={temAcessoFinanceiroDashboard}
       acessoCardSaldo={acessoCardSaldo}
@@ -6875,6 +6927,30 @@ const pontoDeEquilibrio = useMemo(() => {
                 }
               }}
             >
+              {/* Pedido do usuário (30/08/2026): só aparece se o usuário
+                  multi-loja clicou "Não" na confirmação de loja ao
+                  salvar — deixa ele corrigir a loja aqui e salvar de
+                  novo, sem sair do modal. Em uso normal fica escondido
+                  (a loja vem do seletor do topo, como antes). */}
+              {vePermissaoTotal && !editandoId && escolherLojaNoModal && (
+                <label>
+                  Loja deste lançamento
+                  <select
+                    value={formulario.loja_id || ""}
+                    onChange={(evento) =>
+                      alterarCampo("loja_id", evento.target.value)
+                    }
+                  >
+                    <option value="">Selecione a loja...</option>
+                    {lojas.map((loja) => (
+                      <option key={loja.id} value={String(loja.id)}>
+                        {loja.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               {/* Pedido do usuário (25/08/2026): "ao lado desse botão
                   descontar tem que ter um quadrado antes dele pra
                   marcar escrito pagamento de salários" — marcando esse
