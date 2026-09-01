@@ -399,7 +399,8 @@ export async function salvarDinheiroInformado(
   emCaixa,
   abertura,
   lojaId = null,
-  fechamentoId = null
+  fechamentoId = null,
+  retiradasCaixa = null
 ) {
   return requisicao("/caixa-dinheiro-informado", {
     method: "POST",
@@ -409,6 +410,7 @@ export async function salvarDinheiroInformado(
       abertura,
       loja_id: lojaId,
       fechamento_id: fechamentoId,
+      retiradas_caixa: retiradasCaixa,
     }),
   });
 }

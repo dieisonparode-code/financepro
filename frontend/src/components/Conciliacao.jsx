@@ -197,7 +197,12 @@ function agruparVendasPorFormaPagamento(vendas) {
 // Sem seletor de loja aqui de propósito — a pedido do usuário, essa tela
 // usa a loja em que a pessoa já está logada (ou a selecionada no topo,
 // pra administrador), não precisa escolher de novo.
-function Conciliacao({ lojaId, fundosRetiradas = [] }) {
+function Conciliacao({
+  lojaId,
+  fundosRetiradas = [],
+  lancamentos = [],
+  ehAdministrador = false,
+}) {
   const [abaAtiva, setAbaAtiva] = useState("caixa");
   // BUG GRAVE corrigido (13/08/2026): resumo/resumoSaipos eram estados
   // soltos (um valor só, não por fechamento) — trocar de data sem clicar
@@ -209,6 +214,9 @@ function Conciliacao({ lojaId, fundosRetiradas = [] }) {
   // novo.
   const [resumoPorData, setResumoPorData] = useState({});
   const [resumoSaiposPorData, setResumoSaiposPorData] = useState({});
+  // Registro de caixa_dinheiro_informado do fechamento selecionado
+  // (abertura, em_caixa, retiradas_caixa) — pra conferência do dinheiro.
+  const [dinheiroDoFechamento, setDinheiroDoFechamento] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [enviandoFoto, setEnviandoFoto] = useState(false);
@@ -771,6 +779,36 @@ function Conciliacao({ lojaId, fundosRetiradas = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupoEscolhido?.dataChave]);
 
+  // Busca o registro de dinheiro (abertura / em caixa / retiradas
+  // impressas) do fechamento selecionado, pra montar a conferência do
+  // dinheiro (painel só-admin). Só leitura.
+  useEffect(() => {
+    if (!grupoEscolhido || !ehAdministrador) {
+      setDinheiroDoFechamento(null);
+      return;
+    }
+
+    let cancelado = false;
+    const idsDoGrupo = new Set(grupoEscolhido.itens.map((item) => item.id));
+
+    buscarDinheiroInformado()
+      .then((resultado) => {
+        if (cancelado) return;
+        const registro = (resultado?.registros || []).find((item) =>
+          idsDoGrupo.has(item.fechamento_id)
+        );
+        setDinheiroDoFechamento(registro || null);
+      })
+      .catch(() => {
+        if (!cancelado) setDinheiroDoFechamento(null);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupoEscolhido?.dataChave, ehAdministrador]);
+
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
   // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
   // de escolher qual Fechamento de Caixa usar, um botão busca a PagSeguro
@@ -1227,7 +1265,10 @@ function Conciliacao({ lojaId, fundosRetiradas = [] }) {
               emCaixaDinheiro,
               resultado.abertura_caixa,
               lojaId,
-              salvarEm
+              salvarEm,
+              // Guarda o total "Retiradas (-)" impresso na foto pra
+              // conferência do dinheiro (painel só-admin mais abaixo).
+              resultado.retiradas_caixa ?? null
             );
           } catch (erroDinheiro) {
             console.error(
@@ -2092,6 +2133,252 @@ function Conciliacao({ lojaId, fundosRetiradas = [] }) {
                   desconta o Saldo geral agora. Some no saldo do Cofre
                   (Dashboard / Extrato do Cofre).
                 </div>
+              </div>
+            );
+          })()}
+
+        {/* Pedido do usuário (30/08/2026): conferência do DINHEIRO físico
+            do caixa, só pra admin (o pessoal de caixa não vê). Só o
+            dinheiro porque cartão/PIX já têm o "Real em conta" da
+            PagSeguro como fonte independente — o dinheiro é o único ponto
+            que dá pra fraudar. Só leitura, não mexe em Saldo nem Cofre. */}
+        {ehAdministrador &&
+          grupoEscolhido &&
+          (() => {
+            const chaveTurno = hojeDoRegistro(
+              grupoEscolhido.itens[0]?.criado_em
+            );
+            const daLoja = (id) =>
+              !lojaId || String(id) === String(lojaId);
+
+            const reg = dinheiroDoFechamento;
+            const abertura = Number(reg?.abertura || 0);
+            const retiradasImpressas =
+              reg?.retiradas_caixa != null
+                ? Number(reg.retiradas_caixa)
+                : null;
+
+            // Contado pelo operador: o "Informado" da linha Dinheiro no
+            // confronto; se vazio, o "Em caixa" salvo da foto.
+            const informadoTexto = valoresInformados["Dinheiro"];
+            const contado =
+              informadoTexto != null && informadoTexto !== ""
+                ? paraNumero(informadoTexto)
+                : reg?.em_caixa != null
+                ? Number(reg.em_caixa)
+                : null;
+
+            // Vendas em dinheiro: Saipos (fonte independente do operador).
+            const vendasDinheiro = Number(
+              resumoSaipos?.totais_por_forma_pagamento?.["Dinheiro"] || 0
+            );
+
+            const fundosTurno = fundosRetiradas.filter(
+              (f) =>
+                daLoja(f.loja_id) &&
+                hojeDoRegistro(f.criado_em) === chaveTurno
+            );
+            const retiradasCofre = fundosTurno
+              .filter((f) => f.conta_para_cofre !== false)
+              .reduce((s, f) => s + Number(f.valor || 0), 0);
+            const retiradasGenericas = fundosTurno
+              .filter((f) => f.conta_para_cofre === false)
+              .reduce((s, f) => s + Number(f.valor || 0), 0);
+
+            const pagosEmDinheiro = (lancamentos || [])
+              .filter(
+                (l) =>
+                  l.tipo === "despesa" &&
+                  l.pago_em_dinheiro === true &&
+                  daLoja(l.loja_id) &&
+                  String(l.data || "").slice(0, 10) === chaveTurno
+              )
+              .reduce((s, l) => s + Number(l.valor || 0), 0);
+
+            const semDados =
+              reg == null && vendasDinheiro === 0 && contado == null;
+            if (semDados) return null;
+
+            const deveriaTer = Number(
+              (
+                abertura +
+                vendasDinheiro -
+                retiradasCofre -
+                retiradasGenericas -
+                pagosEmDinheiro
+              ).toFixed(2)
+            );
+
+            const temContado = contado != null;
+            const diferenca = temContado
+              ? Number((contado - deveriaTer).toFixed(2))
+              : null;
+            const TOLERANCIA = 1;
+            const dentro =
+              diferenca != null && Math.abs(diferenca) <= TOLERANCIA;
+            const corDif =
+              diferenca == null
+                ? "#9fb0c4"
+                : dentro
+                ? "#16ca50"
+                : diferenca < 0
+                ? "#ff4655"
+                : "#f59e0b";
+
+            // Cruzamento: o papel diz que saiu X do caixa; o sistema
+            // explica cofre + retiradas de frente de caixa.
+            const explicadoRetirada = Number(
+              (retiradasCofre + retiradasGenericas).toFixed(2)
+            );
+            const retiradaSemRegistro =
+              retiradasImpressas != null
+                ? Number(
+                    (retiradasImpressas - explicadoRetirada).toFixed(2)
+                  )
+                : null;
+
+            const linha = (rotulo, valor, sinal) => (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  fontSize: 13.5,
+                  padding: "3px 0",
+                }}
+              >
+                <span style={{ color: "#b9c6d7" }}>{rotulo}</span>
+                <strong style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {sinal || ""}
+                  {formatarMoeda(valor)}
+                </strong>
+              </div>
+            );
+
+            return (
+              <div
+                className="panel"
+                style={{
+                  marginBottom: 12,
+                  padding: "14px 16px",
+                  border: "1px solid rgba(59, 130, 246, 0.4)",
+                  borderRadius: 10,
+                }}
+              >
+                <strong style={{ color: "#3b82f6" }}>
+                  💵 Conferência do dinheiro do caixa
+                </strong>
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: "#9fb0c4",
+                    margin: "2px 0 10px",
+                  }}
+                >
+                  Só admin. Só dinheiro — cartão e PIX já batem sozinhos
+                  pela PagSeguro.
+                </div>
+
+                {linha("Abertura do caixa", abertura)}
+                {linha("Vendas em dinheiro (Saipos)", vendasDinheiro, "+ ")}
+                {linha("Retiradas pro Cofre", retiradasCofre, "− ")}
+                {linha(
+                  "Retiradas de frente de caixa",
+                  retiradasGenericas,
+                  "− "
+                )}
+                {linha("Pagos com dinheiro do caixa", pagosEmDinheiro, "− ")}
+
+                <div
+                  style={{
+                    borderTop: "1px solid rgba(148,163,184,0.25)",
+                    margin: "8px 0 6px",
+                  }}
+                />
+                {linha("Deveria ter em caixa", deveriaTer)}
+                {temContado
+                  ? linha("Contado pelo operador", contado)
+                  : linha("Contado pelo operador", 0, "sem valor — ")}
+
+                {temContado && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "rgba(148,163,184,0.08)",
+                      fontSize: 14,
+                    }}
+                  >
+                    <strong>Diferença</strong>
+                    <strong
+                      style={{
+                        color: corDif,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {diferenca > 0 ? "+" : ""}
+                      {formatarMoeda(diferenca)}
+                      {"  "}
+                      {dentro
+                        ? "✅ dentro da margem"
+                        : diferenca < 0
+                        ? "🔴 faltou"
+                        : "🟠 sobrou"}
+                    </strong>
+                  </div>
+                )}
+
+                {!temContado && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12.5,
+                      color: "#f59e0b",
+                    }}
+                  >
+                    ⚠️ O "Dinheiro" contado não foi informado nesse
+                    fechamento — sem isso não dá pra saber se bateu.
+                  </div>
+                )}
+
+                {retiradaSemRegistro != null &&
+                  retiradaSemRegistro > TOLERANCIA && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 12.5,
+                        color: "#ff4655",
+                      }}
+                    >
+                      ⚠️ A foto do fechamento diz que saíram{" "}
+                      {formatarMoeda(retiradasImpressas)} do caixa, mas só{" "}
+                      {formatarMoeda(explicadoRetirada)} têm registro
+                      (cofre + frente de caixa).{" "}
+                      {formatarMoeda(retiradaSemRegistro)} saíram sem
+                      lançamento
+                      {retiradasCofre === 0
+                        ? " — nenhuma Retirada pro Cofre foi registrada nessa noite."
+                        : "."}
+                    </div>
+                  )}
+
+                {retiradasImpressas == null && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 11.5,
+                      color: "#9fb0c4",
+                    }}
+                  >
+                    Pra ativar a checagem "quanto saiu do caixa × quanto
+                    foi registrado", clique em "🔄 Ler foto de novo" nesse
+                    fechamento.
+                  </div>
+                )}
               </div>
             );
           })()}

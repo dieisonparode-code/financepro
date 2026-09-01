@@ -7133,6 +7133,14 @@ app.post(
       const fechamentoId = req.body?.fechamento_id
         ? Number(req.body.fechamento_id)
         : null;
+      // Total "Retiradas (-)" impresso na foto do fechamento (sempre
+      // positivo) — usado só pra conferência do dinheiro, não entra em
+      // cálculo de Saldo. Opcional (fechamento antigo pode não ter).
+      const retiradasCaixa =
+        req.body?.retiradas_caixa != null &&
+        Number.isFinite(Number(req.body.retiradas_caixa))
+          ? Math.abs(Number(req.body.retiradas_caixa))
+          : null;
 
       if (!Number.isFinite(emCaixa) || emCaixa < 0) {
         return res.status(400).json({
@@ -7164,6 +7172,7 @@ app.post(
             abertura,
             em_caixa: emCaixa,
             fechamento_id: fechamentoId,
+            retiradas_caixa: retiradasCaixa,
           },
         ])
         .select("*")
