@@ -553,10 +553,16 @@ function Conciliacao({
         // fechamento novo (de hoje em diante) nunca aparecia na
         // Conciliação, mesmo já salvo certinho no banco. "caixa" continua
         // aceito pra não sumir com o histórico de antes da mudança.
+        // Pedido do usuário (01/09/2026): a busca "Conciliações" (por data)
+        // não achava fechamento do mês passado — o corte de 20 registros
+        // (~10 fechamentos) só cobria uns 10 dias. Subido pra 200 (~100
+        // fechamentos, 3+ meses). Os registros são leves (sem foto), então
+        // segurar 200 na memória é de boa. O dropdown "Escolha o
+        // fechamento" continua mostrando só os não-finalizados.
         const daLoja = todosDaLoja
           .filter((item) => item.tipo && item.tipo.startsWith("caixa"))
           .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em))
-          .slice(0, 20);
+          .slice(0, 200);
 
         setFechamentosDisponiveis(daLoja);
         setRetiradasCaixa(
