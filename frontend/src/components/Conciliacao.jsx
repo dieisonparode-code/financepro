@@ -1966,17 +1966,21 @@ function Conciliacao({
                       </button>
                     ))}
 
-                    {grupoEscolhido.itens.some(
-                      (item) => item.valores_informados
-                    ) && (
+                    {grupoEscolhido.itens.length > 0 && (
                       <button
                         type="button"
                         className="secondary-button"
                         onClick={relerFotoAgora}
                         disabled={carregando || enviandoFoto}
-                        title="A leitura já está salva — só use isso se quiser tentar ler a(s) foto(s) de novo."
+                        title="Lê a(s) foto(s) do fechamento pela IA de novo."
                       >
-                        {enviandoFoto ? "Lendo..." : "🔄 Ler foto de novo"}
+                        {enviandoFoto
+                          ? "Lendo..."
+                          : grupoEscolhido.itens.some(
+                              (item) => item.valores_informados
+                            )
+                          ? "🔄 Ler foto de novo"
+                          : "📷 Ler foto do fechamento"}
                       </button>
                     )}
 

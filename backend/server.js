@@ -6281,24 +6281,47 @@ async function lerImagemComIA(
 
   const anthropic = new Anthropic({ apiKey });
 
-  const resposta = await anthropic.messages.create({
-    model: modelo,
-    max_tokens: maxTokens,
-    // O claude-sonnet-5 liga o "extended thinking" sozinho quando o
-    // parâmetro é omitido. Numa foto de comprovante densa ele gastava
-    // TODOS os max_tokens (8192) pensando e devolvia zero bloco de
-    // texto (stop_reason: "max_tokens", blocos: "thinking") — era isso
-    // que fazia a coluna "Informado" da Conciliação voltar a não
-    // aparecer. Essa tarefa é só OCR → JSON, não precisa de raciocínio:
-    // desligar o thinking devolve resposta na hora, barata e estável.
-    thinking: { type: "disabled" },
-    messages: [
-      {
-        role: "user",
-        content: [blocoMidia, { type: "text", text: promptTexto }],
-      },
-    ],
-  });
+  let resposta;
+  try {
+    resposta = await anthropic.messages.create({
+      model: modelo,
+      max_tokens: maxTokens,
+      // O claude-sonnet-5 liga o "extended thinking" sozinho quando o
+      // parâmetro é omitido. Numa foto de comprovante densa ele gastava
+      // TODOS os max_tokens (8192) pensando e devolvia zero bloco de
+      // texto (stop_reason: "max_tokens", blocos: "thinking") — era isso
+      // que fazia a coluna "Informado" da Conciliação voltar a não
+      // aparecer. Essa tarefa é só OCR → JSON, não precisa de raciocínio:
+      // desligar o thinking devolve resposta na hora, barata e estável.
+      thinking: { type: "disabled" },
+      messages: [
+        {
+          role: "user",
+          content: [blocoMidia, { type: "text", text: promptTexto }],
+        },
+      ],
+    });
+  } catch (erroIa) {
+    // Mensagem em português pros erros mais comuns, em vez do JSON cru
+    // da API aparecer na tela.
+    const bruto = String(erroIa?.message || "");
+    if (/credit balance is too low|billing|purchase credits/i.test(bruto)) {
+      throw new Error(
+        "Saldo da conta Anthropic (IA de leitura de foto) acabou. Adicione crédito em console.anthropic.com → Billing e tente de novo."
+      );
+    }
+    if (erroIa?.status === 401 || /invalid x-api-key|authentication/i.test(bruto)) {
+      throw new Error(
+        "A chave da IA (ANTHROPIC_API_KEY) está inválida ou não configurada no servidor."
+      );
+    }
+    if (erroIa?.status === 429 || /rate limit/i.test(bruto)) {
+      throw new Error(
+        "A IA de leitura de foto está sobrecarregada agora (limite de uso). Tente de novo em alguns minutos."
+      );
+    }
+    throw erroIa;
+  }
 
   const texto = resposta.content
     .filter((bloco) => bloco.type === "text")
