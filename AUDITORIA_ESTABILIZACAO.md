@@ -60,7 +60,14 @@ errada → **despesas duplicadas**.
 (ou por `diaria.id`) + índice UNIQUE parcial + tratar `23505` como "já gerado,
 pula". Mesmo padrão que travou o import Saipos (`chave_importacao`).
 
-### C3 — Lançamento manual sem idempotência + trava de duplo-envio fraca
+### C3 — Lançamento manual: trava fraca + sem idempotência — ✅ CORRIGIDO (commit aaff1c6)
+`salvandoRef` (useRef) trava o handler de forma síncrona. Cada `abrirModal`
+gera um `crypto.randomUUID()` que vai no POST como `client_request_id`; o
+backend grava `chave_importacao = MANUAL:<uuid>` e, num reenvio (23505),
+devolve a linha já gravada com 200 em vez de duplicar. Sem migração
+(reusa `lancamentos.chave_importacao`). Build + lint + 19 testes ok.
+
+### C3-detalhe — original
 **Onde:** `frontend/src/App.jsx` 3469–3711 ; `backend/server.js` 1378 (POST /lancamentos)
 **O quê:**
 - `if (salvando) return` (App.jsx:3472) lê o state do React da renderização
