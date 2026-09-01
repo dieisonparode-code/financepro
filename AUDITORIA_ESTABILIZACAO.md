@@ -104,7 +104,27 @@ formato. `descricao` pode ser vazia. O backend confia 100% no cliente.
 `valor` finito e `> 0`, `data` no formato `YYYY-MM-DD`, `descricao` não vazia —
 retornar 400 com mensagem clara. (Regra 8 do comando mestre.)
 
-### A2 — PUT /lancamentos/:id sobrescreve a linha inteira
+### A2 — PUT /lancamentos/:id apagava campos que a edição não carrega — ✅ CORRIGIDO (commit pendente)
+Confirmado e PIOR que o anotado: editar um lançamento (mesmo só a
+descrição) zerava `forma_pagamento_id` + `valor_bruto` +
+`valor_liquido_esperado` + `data_prevista_recebimento` (→ receita a prazo
+perdia o prazo e sumia de Contas a Receber — raiz do problema recorrente),
+`fundo_retirada_id` + `valor_pago_cofre` (→ Saldo descontava de novo a
+parte do Cofre), `detalhe_desconto` (salário), e `foto`/`fotos_extra`/
+`foto_mercadoria` (se salvasse antes do carregamento assíncrono — raiz do
+"foto sumindo").
+Correção backend-only no `PUT /lancamentos/:id`: busca a linha existente
+com esses campos e (a) nunca apaga foto/fotos_extra/foto_mercadoria que já
+tenham conteúdo quando o incoming vem vazio; (b) sempre mantém
+`fundo_retirada_id`/`valor_pago_cofre`/`detalhe_desconto` (sem UI de
+edição); (c) mantém forma de pagamento + derivados quando
+`req.body.forma_pagamento_id` vem vazio (= "não mexeu"). Trocar a forma de
+propósito no select ainda funciona.
+Escopo deixado de fora: se um dia houver UI pra editar Cofre/forma, o
+recompute de `data_prevista_recebimento` precisa passar a usar a data do
+lançamento, não `new Date()`.
+
+### A2-detalhe — original
 **Onde:** `backend/server.js` ~1608 (`.update(lancamentoAtualizado).eq("id", id)`)
 **O quê:** precisa confirmar se `lancamentoAtualizado` preserva campos que o
 cliente não mandou (foto, `status`, `criado_por`, `chave_importacao`,

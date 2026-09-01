@@ -1624,12 +1624,71 @@ app.put("/lancamentos/:id", verificarPermissao(PERM_LANCAMENTOS), async function
 
     const { data: lancamentoExistente, error: erroBusca } = await supabase
       .from("lancamentos")
-      .select("data, foto")
+      .select(
+        "data, foto, fotos_extra, foto_mercadoria, forma_pagamento_id, valor_bruto, valor_liquido_esperado, data_prevista_recebimento, fundo_retirada_id, valor_pago_cofre, detalhe_desconto"
+      )
       .eq("id", id)
       .single();
 
     if (erroBusca) {
       throw erroBusca;
+    }
+
+    // ------------------------------------------------------------------
+    // Auditoria A2 (01/09/2026): a tela de edição NÃO carrega todos os
+    // campos do lançamento. Sem preservar aqui, editar (mesmo só a
+    // descrição) zerava: forma de pagamento e seus derivados (a receita
+    // a prazo perdia o prazo e sumia de Contas a Receber), o vínculo e o
+    // valor pago pelo Cofre (conta dobrada no Saldo), o detalhamento de
+    // salário, e a foto (se salvasse antes do carregamento assíncrono).
+    // ------------------------------------------------------------------
+
+    // Foto vazia na edição = "não mexeu" (pode ser save antes do
+    // buscarFotoLancamento terminar). Nunca apaga o que já existe.
+    if (
+      !(lancamentoAtualizado.foto || "").trim() &&
+      (lancamentoExistente.foto || "").trim()
+    ) {
+      lancamentoAtualizado.foto = lancamentoExistente.foto;
+    }
+    if (
+      (!Array.isArray(lancamentoAtualizado.fotos_extra) ||
+        lancamentoAtualizado.fotos_extra.length === 0) &&
+      Array.isArray(lancamentoExistente.fotos_extra) &&
+      lancamentoExistente.fotos_extra.length > 0
+    ) {
+      lancamentoAtualizado.fotos_extra = lancamentoExistente.fotos_extra;
+    }
+    if (
+      !(lancamentoAtualizado.foto_mercadoria || "").trim() &&
+      (lancamentoExistente.foto_mercadoria || "").trim()
+    ) {
+      lancamentoAtualizado.foto_mercadoria = lancamentoExistente.foto_mercadoria;
+    }
+
+    // Campos que a edição não tem UI pra mudar — mantém sempre o que já
+    // estava gravado.
+    lancamentoAtualizado.fundo_retirada_id =
+      lancamentoExistente.fundo_retirada_id;
+    lancamentoAtualizado.valor_pago_cofre =
+      lancamentoExistente.valor_pago_cofre;
+    lancamentoAtualizado.detalhe_desconto =
+      lancamentoExistente.detalhe_desconto;
+
+    // Forma de pagamento: o form de edição não carrega a atual, então
+    // vazio = "não mexeu" → preserva forma + derivados. Só troca se o
+    // usuário escolheu uma forma de verdade no select.
+    if (
+      !req.body.forma_pagamento_id &&
+      lancamentoExistente.forma_pagamento_id
+    ) {
+      lancamentoAtualizado.forma_pagamento_id =
+        lancamentoExistente.forma_pagamento_id;
+      lancamentoAtualizado.valor_bruto = lancamentoExistente.valor_bruto;
+      lancamentoAtualizado.valor_liquido_esperado =
+        lancamentoExistente.valor_liquido_esperado;
+      lancamentoAtualizado.data_prevista_recebimento =
+        lancamentoExistente.data_prevista_recebimento;
     }
 
     // Trocar (ou remover) uma foto que já estava anexada precisa de
