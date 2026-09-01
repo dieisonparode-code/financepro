@@ -5558,13 +5558,39 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       status: "aprovado",
     };
 
-    // REMOVIDO (01/09/2026, pedido do usuário): antes, pro consumo de
-    // funcionário ("Funcionário"), a importação colava a foto do botão
-    // "Venda a Prazo Funcionário" do turno em TODOS os consumos do dia.
-    // Como é UMA foto só pro turno inteiro, a linha "Fulano — R$ 13,50"
-    // acabava com a comanda de OUTRA pessoa (ex.: "Beltrano — R$ 27,81")
-    // anexada — só confundia, o valor nunca dependeu dela. Agora o
-    // consumo importado entra SEM foto. (O valor vem certo da Saipos.)
+    // Consumo de funcionário ("Funcionário"): tenta anexar a foto da
+    // comanda fiado CERTA — casando pelo VALOR com os registros "Venda a
+    // Prazo Funcionário" (fechamentos_caixa tipo venda_prazo) desse turno.
+    // O turno pode ter sido fotografado já depois da meia-noite, então
+    // olha o dia e o dia seguinte. Se não achar uma foto do mesmo valor,
+    // pega qualquer foto do turno (melhor ter o que olhar do que nada) —
+    // mas NUNCA a comanda de outra pessoa quando dá pra casar pelo valor.
+    // O VALOR do lançamento sempre vem da Saipos (fonte completa), não da
+    // foto (que pode ter erro de leitura por IA).
+    if (grupo.forma.nome === "Funcionário") {
+      const diaSeguinte = new Date(`${dataStr}T12:00:00`);
+      diaSeguinte.setDate(diaSeguinte.getDate() + 1);
+      const fimJanela = `${diaSeguinte.toISOString().slice(0, 10)}T14:00:00-03:00`;
+
+      const { data: fotosPrazo } = await supabase
+        .from("fechamentos_caixa")
+        .select("id, valor, foto")
+        .eq("tipo", "venda_prazo")
+        .eq("loja_id", loja.id)
+        .gte("criado_em", `${dataStr}T00:00:00-03:00`)
+        .lte("criado_em", fimJanela)
+        .not("foto", "is", null)
+        .order("criado_em", { ascending: true });
+
+      const lista = fotosPrazo || [];
+      const porValor = lista.find(
+        (f) => Math.abs(Number(f.valor) - grupo.valorBruto) < 0.02
+      );
+      const escolhida = porValor || lista[0];
+      if (escolhida?.foto) {
+        dadosLancamento.foto = escolhida.foto;
+      }
+    }
 
     // Busca pela chave_importacao (coluna dedicada + índice único) — mais
     // exata e rápida que o ilike antigo no texto do observacao. Ainda
