@@ -5598,7 +5598,7 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
     // aceita registros antigos que só têm a marca no observacao.
     const { data: existentes, error: erroBusca } = await supabase
       .from("lancamentos")
-      .select("id")
+      .select("id, foto")
       .or(
         `chave_importacao.eq.${chaveUnica},observacao.ilike.%${chaveUnica}%`
       )
@@ -5609,9 +5609,19 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
     }
 
     if (existentes && existentes[0]) {
+      // TRAVA DE FOTO (01/09/2026): a importação roda todo dia e ATUALIZA
+      // os lançamentos. Se o lançamento já tem foto, NÃO mexe nela —
+      // nunca sobrescreve nem apaga uma foto que já está lá (foi o que
+      // fez foto sumir/trocar). Só põe foto quando o registro ainda não
+      // tem nenhuma.
+      const dadosUpdate = { ...dadosLancamento };
+      if (existentes[0].foto) {
+        delete dadosUpdate.foto;
+      }
+
       const { error: erroUpdate } = await supabase
         .from("lancamentos")
-        .update(dadosLancamento)
+        .update(dadosUpdate)
         .eq("id", existentes[0].id);
 
       if (erroUpdate) {
