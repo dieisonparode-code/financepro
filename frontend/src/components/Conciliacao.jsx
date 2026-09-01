@@ -1109,13 +1109,34 @@ function Conciliacao({
       return;
     }
 
-    const grupo = gruposFinalizados.find(
-      (item) => item.dataChave === dataBuscaConciliacoes
-    );
+    // Busca tolerante: bate pela dataChave do grupo, pela data de
+    // abertura lida do papel de qualquer item, pela data do envio da
+    // foto (corte 5h), ou por 1 dia de diferença (turno que virou a
+    // meia-noite). Antes exigia a dataChave EXATA e não achava quase
+    // nada.
+    const alvo = dataBuscaConciliacoes;
+    const maisUmDia = new Date(`${alvo}T12:00:00`);
+    maisUmDia.setDate(maisUmDia.getDate() + 1);
+    const alvoMais1 = maisUmDia.toISOString().slice(0, 10);
+    const menosUmDia = new Date(`${alvo}T12:00:00`);
+    menosUmDia.setDate(menosUmDia.getDate() - 1);
+    const alvoMenos1 = menosUmDia.toISOString().slice(0, 10);
+
+    const grupo = gruposFinalizados.find((item) => {
+      if (item.dataChave === alvo) return true;
+      return item.itens.some((it) => {
+        const abertura = it.data_abertura_turno;
+        const envio = hojeDoRegistro(it.criado_em);
+        const calendario = String(it.criado_em || "").slice(0, 10);
+        return [abertura, envio, calendario].some(
+          (d) => d === alvo || d === alvoMais1 || d === alvoMenos1
+        );
+      });
+    });
 
     if (!grupo) {
       setErroBuscaConciliacoes(
-        "Nenhuma conciliação finalizada encontrada nessa data (a data que vale é a de abertura do caixa)."
+        "Nenhuma conciliação finalizada encontrada nessa data. Veja a lista abaixo e clique na que quer."
       );
       return;
     }
@@ -1789,6 +1810,46 @@ function Conciliacao({
           {erroBuscaConciliacoes && (
             <small style={{ color: "#ff4655" }}>{erroBuscaConciliacoes}</small>
           )}
+
+          {/* Lista clicável de TODAS as conciliações finalizadas — sem
+              precisar adivinhar a data. */}
+          <div style={{ flexBasis: "100%", marginTop: 8 }}>
+            <small className="foto-ajuda">
+              Conciliações finalizadas ({gruposFinalizados.length}) — clique
+              pra abrir:
+            </small>
+            {gruposFinalizados.length === 0 ? (
+              <small className="foto-ajuda"> nenhuma ainda.</small>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  marginTop: 4,
+                }}
+              >
+                {gruposFinalizados.map((grupo) => (
+                  <button
+                    key={grupo.dataChave}
+                    type="button"
+                    className="secondary-button"
+                    style={{ padding: "4px 10px", fontSize: 12 }}
+                    onClick={() => {
+                      setGrupoEscolhido(grupo);
+                      setPainelConciliacoesAberto(false);
+                      setErroBuscaConciliacoes("");
+                    }}
+                  >
+                    📅{" "}
+                    {new Date(
+                      `${grupo.dataChave}T00:00:00`
+                    ).toLocaleDateString("pt-BR")}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
