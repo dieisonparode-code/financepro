@@ -2227,10 +2227,15 @@ function Conciliacao({
                 ? "#ff4655"
                 : "#f59e0b";
 
-            // Cruzamento: o papel diz que saiu X do caixa; o sistema
-            // explica cofre + retiradas de frente de caixa.
+            // Cruzamento: a Saipos diz que saiu X do caixa; o sistema
+            // explica isso com Retirada pro Cofre + retiradas genéricas +
+            // despesas pagas em dinheiro.
             const explicadoRetirada = Number(
-              (retiradasCofre + retiradasGenericas).toFixed(2)
+              (
+                retiradasCofre +
+                retiradasGenericas +
+                pagosEmDinheiro
+              ).toFixed(2)
             );
             const retiradaSemRegistro =
               retiradasImpressas != null
@@ -2239,29 +2244,14 @@ function Conciliacao({
                   )
                 : null;
 
-            // Checagem exata do Cofre: quando a Saipos marca a retirada
-            // com "Conta: Cofre", dá pra somar exatamente quanto era pro
-            // Cofre segundo o próprio comprovante e comparar com o que
-            // foi registrado como Retirada pro Cofre no sistema.
+            // A Saipos NÃO tem conceito de "cofre" — a retirada aparece
+            // só como "retirada de frente de caixa" / "retirada de
+            // caixa". O que ela dá é: vendas em dinheiro + a lista de
+            // retiradas que saíram do caixa. O "cofre" é registro nosso.
+            // Aqui só listamos as retiradas lidas da foto, pra rastreio.
             const detalheRetiradas = Array.isArray(reg?.retiradas_detalhe)
               ? reg.retiradas_detalhe
               : null;
-            const cofrePorSaipos = detalheRetiradas
-              ? Number(
-                  detalheRetiradas
-                    .filter(
-                      (r) =>
-                        /cofre/i.test(String(r?.conta || "")) ||
-                        /cofre/i.test(String(r?.descricao || ""))
-                    )
-                    .reduce((s, r) => s + Number(r?.valor || 0), 0)
-                    .toFixed(2)
-                )
-              : null;
-            const difCofre =
-              cofrePorSaipos != null
-                ? Number((cofrePorSaipos - retiradasCofre).toFixed(2))
-                : null;
 
             const linha = (rotulo, valor, sinal) => (
               <div
@@ -2371,7 +2361,9 @@ function Conciliacao({
                   </div>
                 )}
 
-                {/* Bloco dedicado: foi pro Cofre ou não? Sempre visível. */}
+                {/* Destino do dinheiro que saiu do caixa. A Saipos não
+                    tem "cofre" — dá o total que saiu e a lista de
+                    retiradas; o cofre é registro nosso. */}
                 <div
                   style={{
                     marginTop: 10,
@@ -2382,65 +2374,26 @@ function Conciliacao({
                   }}
                 >
                   <strong style={{ color: "#3b82f6" }}>
-                    🔒 Foi pro Cofre?
+                    🔒 Destino do que saiu do caixa
                   </strong>
 
-                  {linha(
-                    "Registrado como Retirada pro Cofre",
-                    retiradasCofre
-                  )}
-
-                  {/* Checagem EXATA: a Saipos marcou "Conta: Cofre" em
-                      alguma retirada — dá pra comparar valor a valor. */}
-                  {cofrePorSaipos != null && cofrePorSaipos > 0 && (
-                    <>
-                      {linha(
-                        'Saipos marcou "Conta: Cofre"',
-                        cofrePorSaipos
-                      )}
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 12.5,
-                          color:
-                            Math.abs(difCofre) <= TOLERANCIA
-                              ? "#16ca50"
-                              : "#ff4655",
-                        }}
-                      >
-                        {Math.abs(difCofre) <= TOLERANCIA ? (
-                          <>✅ Bate: o que foi pro Cofre na Saipos foi registrado no sistema.</>
-                        ) : difCofre > 0 ? (
-                          <>
-                            🔴 A Saipos tirou {formatarMoeda(cofrePorSaipos)}{" "}
-                            pro Cofre, mas só {formatarMoeda(retiradasCofre)}{" "}
-                            foi registrado — faltou lançar{" "}
-                            {formatarMoeda(difCofre)} de entrada no Cofre.
-                          </>
-                        ) : (
-                          <>
-                            🟠 Foi registrado{" "}
-                            {formatarMoeda(retiradasCofre)} de Retirada pro
-                            Cofre, mas a Saipos só marcou{" "}
-                            {formatarMoeda(cofrePorSaipos)} — sobrou{" "}
-                            {formatarMoeda(Math.abs(difCofre))} registrado a
-                            mais.
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  {linha("Retirada pro Cofre (registrada)", retiradasCofre)}
+                  {linha("Retiradas genéricas (registradas)", retiradasGenericas)}
+                  {linha("Despesas pagas em dinheiro", pagosEmDinheiro)}
 
                   {retiradasImpressas != null ? (
                     <>
+                      <div
+                        style={{
+                          borderTop: "1px solid rgba(148,163,184,0.25)",
+                          margin: "6px 0",
+                        }}
+                      />
                       {linha(
-                        "Total que saiu do caixa (foto)",
+                        "Total que saiu do caixa (Saipos)",
                         retiradasImpressas
                       )}
-                      {linha(
-                        "Com destino (cofre + frente de caixa)",
-                        explicadoRetirada
-                      )}
+                      {linha("Explicado pelo sistema", explicadoRetirada)}
                       <div
                         style={{
                           marginTop: 6,
@@ -2454,32 +2407,17 @@ function Conciliacao({
                         {retiradaSemRegistro > TOLERANCIA ? (
                           <>
                             🔴 {formatarMoeda(retiradaSemRegistro)} saíram
-                            do caixa e não foram pro Cofre nem viraram
-                            despesa.
+                            do caixa sem nenhum registro (nem Cofre, nem
+                            despesa).
                             {retiradasCofre === 0
-                              ? " Nenhuma Retirada pro Cofre foi registrada nessa noite."
+                              ? " Nenhuma Retirada pro Cofre foi lançada nessa noite."
                               : ""}
                           </>
                         ) : (
-                          <>
-                            ✅ Tudo que saiu do caixa tem destino
-                            registrado.
-                          </>
+                          <>✅ Tudo que saiu do caixa tem registro.</>
                         )}
                       </div>
                     </>
-                  ) : retiradasCofre === 0 ? (
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: 12.5,
-                        color: "#f59e0b",
-                      }}
-                    >
-                      ⚠️ Nenhuma Retirada pro Cofre registrada nessa noite.
-                      Clique em "🔄 Ler foto de novo" pra conferir se saiu
-                      dinheiro do caixa que deveria ter ido pro Cofre.
-                    </div>
                   ) : (
                     <div
                       style={{
@@ -2489,9 +2427,52 @@ function Conciliacao({
                       }}
                     >
                       Clique em "🔄 Ler foto de novo" pra cruzar com o
-                      total que saiu do caixa segundo o fechamento.
+                      total que saiu do caixa segundo o fechamento da
+                      Saipos.
                     </div>
                   )}
+
+                  {/* Rastreio: as retiradas individuais lidas da foto. */}
+                  {Array.isArray(detalheRetiradas) &&
+                    detalheRetiradas.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: "#9fb0c4",
+                            marginBottom: 3,
+                          }}
+                        >
+                          Retiradas lidas da foto ({detalheRetiradas.length}):
+                        </div>
+                        {detalheRetiradas.map((r, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              fontSize: 12,
+                              padding: "2px 0",
+                              color: "#c7d2df",
+                            }}
+                          >
+                            <span>
+                              {r?.data_hora ? `${r.data_hora} — ` : ""}
+                              {r?.descricao || "retirada de caixa"}
+                            </span>
+                            <span
+                              style={{
+                                fontVariantNumeric: "tabular-nums",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {formatarMoeda(r?.valor || 0)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                 </div>
               </div>
             );
