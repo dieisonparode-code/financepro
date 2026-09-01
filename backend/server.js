@@ -4574,6 +4574,37 @@ app.post(
         }
 
         for (const diaria of diarias || []) {
+          // Trava histórica (01/09/2026): se essa diária JÁ virou conta a
+          // pagar ou despesa numa finalização anterior — mesmo antes da
+          // chave C2 existir, reconhecida pela marca "(registro #id)" que
+          // sempre fica na observação — NÃO gera nada de novo a partir
+          // dela. Evita duplicar contas já pagas quando um fechamento
+          // antigo é reaberto e finalizado de novo (a "janela por
+          // criado_em" sozinha não protegia o histórico).
+          const [cpJa, lancJa] = await Promise.all([
+            supabase
+              .from("contas_pagar")
+              .select("id")
+              .or(
+                `chave_origem.eq.FECHCP:${diaria.id},observacao.ilike.%(registro #${diaria.id})%`
+              )
+              .limit(1),
+            supabase
+              .from("lancamentos")
+              .select("id")
+              .or(
+                `chave_importacao.eq.FECHDIN:${diaria.id},observacao.ilike.%(registro #${diaria.id}) — parte paga%`
+              )
+              .limit(1),
+          ]);
+
+          if (cpJa.data?.[0] || lancJa.data?.[0]) {
+            console.log(
+              `Diária #${diaria.id} já foi processada numa finalização anterior — pulou (trava histórica).`
+            );
+            continue;
+          }
+
           const nomeDiaria = NOMES_DIARIA_PARA_CONTA_PAGAR[diaria.tipo];
           const valorTotal = diaria.valor != null ? Number(diaria.valor) : 0;
           // "Pago com dinheiro do caixa" é sempre 100% em dinheiro, por
@@ -4801,6 +4832,24 @@ app.post(
           const valorVale = vale.valor != null ? Number(vale.valor) : 0;
 
           if (valorVale <= 0) continue;
+
+          // Trava histórica (01/09/2026): mesmo racional da diária — se
+          // esse vale já virou despesa numa finalização anterior, não
+          // recria.
+          const { data: valeJa } = await supabase
+            .from("lancamentos")
+            .select("id")
+            .or(
+              `chave_importacao.eq.FECHVALE:${vale.id},observacao.ilike.%(registro #${vale.id}) — desconta%`
+            )
+            .limit(1);
+
+          if (valeJa?.[0]) {
+            console.log(
+              `Vale #${vale.id} já foi processado numa finalização anterior — pulou (trava histórica).`
+            );
+            continue;
+          }
 
           const dataVale = dataBrasiliaDe(vale.criado_em);
           const dataPrevistaStr = diaCincoDoProximoMes(dataVale);
