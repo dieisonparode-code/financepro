@@ -5025,13 +5025,23 @@ async function buscarPaginaSaiposComRetry(url, token, tentativas = 3, timeoutMs 
 const cacheSegredosApp = new Map(); // chave -> { valor, buscadoEm }
 const TTL_CACHE_SEGREDO_MS = 5 * 60 * 1000;
 
-async function lerSegredoApp(chave) {
+// preferirBanco: quando true, o valor da tabela segredos_app GANHA do
+// process.env. Serve pra trocar um segredo que está no .env/Render sem
+// mexer neles (ex.: chave Anthropic antiga "presa" — põe a nova no
+// banco e pronto). Sem o flag, mantém o comportamento antigo: env
+// primeiro, banco como fallback.
+async function lerSegredoApp(chave, { preferirBanco = false } = {}) {
   const doEnv = process.env[chave];
-  if (doEnv) return doEnv;
+  if (doEnv && !preferirBanco) return doEnv;
 
   const cacheado = cacheSegredosApp.get(chave);
-  if (cacheado && Date.now() - cacheado.buscadoEm < TTL_CACHE_SEGREDO_MS) {
-    return cacheado.valor || null;
+  const valorCache =
+    cacheado && Date.now() - cacheado.buscadoEm < TTL_CACHE_SEGREDO_MS
+      ? cacheado.valor || null
+      : undefined;
+
+  if (valorCache !== undefined) {
+    return valorCache || doEnv || null;
   }
 
   try {
@@ -5045,12 +5055,11 @@ async function lerSegredoApp(chave) {
 
     const valor = data?.valor || null;
     cacheSegredosApp.set(chave, { valor, buscadoEm: Date.now() });
-    return valor;
+    return valor || doEnv || null;
   } catch (erro) {
     console.error(`Não consegui ler o segredo "${chave}" do banco:`, erro.message);
-    // Se a busca falhar mas ainda tiver um valor velho em cache, usa ele
-    // (melhor um token possivelmente expirado do que parar tudo).
-    return cacheado?.valor || null;
+    // Se a busca falhar, usa o cache velho ou o env como último recurso.
+    return cacheado?.valor || doEnv || null;
   }
 }
 
@@ -6244,10 +6253,16 @@ async function lerImagemComIA(
   maxTokens = 8192,
   modelo = "claude-sonnet-5"
 ) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // preferirBanco: se tiver uma chave nova em segredos_app, ela ganha do
+  // .env/Render (pra trocar uma chave Anthropic "presa" sem mexer neles).
+  const apiKey = await lerSegredoApp("ANTHROPIC_API_KEY", {
+    preferirBanco: true,
+  });
 
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY não configurada no .env.");
+    throw new Error(
+      "ANTHROPIC_API_KEY não está no .env nem na tabela segredos_app."
+    );
   }
 
   const correspondenciaImagem = fotoDataUrl.match(
@@ -6357,10 +6372,14 @@ async function perguntarTextoComIA(
   maxTokens = 256,
   modelo = "claude-haiku-4-5-20251001"
 ) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await lerSegredoApp("ANTHROPIC_API_KEY", {
+    preferirBanco: true,
+  });
 
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY não configurada no .env.");
+    throw new Error(
+      "ANTHROPIC_API_KEY não está no .env nem na tabela segredos_app."
+    );
   }
 
   const anthropic = new Anthropic({ apiKey });
