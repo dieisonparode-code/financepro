@@ -86,7 +86,16 @@ curta, ou um `client_request_id` gerado no modal).
 
 ## ALTO
 
-### A1 — `prepararLancamento` no backend não valida nada
+### A1 — `prepararLancamento` no backend não valida nada — ✅ CORRIGIDO (commit pendente)
+Novo `validarLancamentoManual(dados)` chamado em `POST /lancamentos` e
+`PUT /lancamentos/:id` (só os caminhos manuais — NÃO no WhatsApp, que cria
+com valor 0 de propósito, nem na finalização/Saipos/conta a pagar).
+Regras: `tipo` ∈ {receita, despesa}; `valor` número finito e > 0 e ≤ 1e9;
+`data` no formato `AAAA-MM-DD` e data real. Falha → 400 com mensagem clara
+(o front mostra no alert). Não exige descrição (o formulário também não).
+Build + 19 testes ok.
+
+### A1-detalhe — original
 **Onde:** `backend/server.js` 536
 **O quê:** `valor: Number(dados.valor || 0)` → se vier `"abc"`, resultado é `NaN`
 e segue pro insert. `tipo` aceita qualquer string. `data` sem validação de

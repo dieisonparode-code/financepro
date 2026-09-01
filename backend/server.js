@@ -582,6 +582,43 @@ function prepararLancamento(dados = {}) {
   };
 }
 
+// Validação de lançamento no servidor (auditoria A1 — 01/09/2026).
+// Defesa em profundidade: o front já valida, mas dinheiro não pode
+// depender só do cliente. Usada SÓ nos endpoints manuais (POST e PUT
+// /lancamentos) — NÃO nos caminhos automáticos (WhatsApp cria com valor 0
+// de propósito quando o OCR falha, pra revisão; finalização de fechamento,
+// Saipos e conta a pagar montam o objeto com valores de fonte confiável).
+// Não exige descrição porque o formulário do front também não exige.
+// Retorna string de erro ou null.
+function validarLancamentoManual(dados) {
+  if (dados.tipo !== "receita" && dados.tipo !== "despesa") {
+    return 'Tipo de lançamento inválido — tem que ser "receita" ou "despesa".';
+  }
+
+  if (
+    typeof dados.valor !== "number" ||
+    !Number.isFinite(dados.valor) ||
+    dados.valor <= 0
+  ) {
+    return "Valor inválido — informe um número maior que zero.";
+  }
+
+  if (dados.valor > 1e9) {
+    return "Valor fora da faixa aceitável (acima de 1 bilhão). Confira antes de salvar.";
+  }
+
+  if (!dados.data || !/^\d{4}-\d{2}-\d{2}$/.test(String(dados.data))) {
+    return "Data inválida — use o formato AAAA-MM-DD.";
+  }
+
+  const dataObj = new Date(`${dados.data}T12:00:00`);
+  if (Number.isNaN(dataObj.getTime())) {
+    return "Data inválida.";
+  }
+
+  return null;
+}
+
 // Pedido do usuário (22/08/2026, reaproveitado 26/08/2026 pro Vale do
 // Fechamento de Caixa): calcula quanto de uma despesa pode realmente
 // sair do Cofre escolhido — nunca mais que o valor pedido, nunca mais
@@ -1380,6 +1417,11 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
     const { perfil } = await obterPerfilOpcional(req);
     const dadosPreparados = prepararLancamento(req.body);
 
+    const erroValidacao = validarLancamentoManual(dadosPreparados);
+    if (erroValidacao) {
+      return res.status(400).json({ erro: erroValidacao });
+    }
+
     if (
       dadosPreparados.tipo === "receita" &&
       perfil?.perfil !== "administrador"
@@ -1565,6 +1607,11 @@ app.put("/lancamentos/:id", verificarPermissao(PERM_LANCAMENTOS), async function
 
     const lancamentoAtualizado =
       prepararLancamento(req.body);
+
+    const erroValidacao = validarLancamentoManual(lancamentoAtualizado);
+    if (erroValidacao) {
+      return res.status(400).json({ erro: erroValidacao });
+    }
 
     if (
       lancamentoAtualizado.tipo === "receita" &&
