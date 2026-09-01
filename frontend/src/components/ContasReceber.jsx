@@ -354,8 +354,27 @@ function ContasReceber({
   // aqui pra sempre, mesmo já tendo caído de verdade há dias.
   const hoje = hojeLocal();
 
+  // Consumo de funcionário ("A prazo (funcionários)") — a data prevista
+  // dele é o 1º dia útil do mês seguinte. Bug (01/09/2026): quando esse
+  // dia CHEGA, ele deixa de ser "pendente" pela data e SOME da lista,
+  // mesmo sem ninguém ter descontado na folha ainda → o admin perde de
+  // vista o que tem pra descontar. Solução: consumo de funcionário
+  // continua aparecendo na lista até ter `quitado_em` (descontado de
+  // verdade) — a data não tira ele daqui. Não mexe no Saldo (isso é só a
+  // tela Contas a Receber).
+  function ehConsumoFuncionarioPendente(item) {
+    return (
+      item.tipo === "receita" &&
+      (item.fornecedor || "").toLowerCase().includes("a prazo") &&
+      !item.quitado_em &&
+      item.status_conciliacao !== "conciliado"
+    );
+  }
+
   const previstos = lancamentos.filter(
-    (item) => item.tipo === "receita" && receitaPendente(item, hoje)
+    (item) =>
+      item.tipo === "receita" &&
+      (receitaPendente(item, hoje) || ehConsumoFuncionarioPendente(item))
   );
 
   function nomeFormaPagamento(id) {
