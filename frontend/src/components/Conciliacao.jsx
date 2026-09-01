@@ -444,18 +444,58 @@ function Conciliacao({
           turnoRealDoRegistro(a) < turnoRealDoRegistro(b) ? -1 : 1
       );
 
-      if (registrosPorTurno.length < 2) {
+      // Pedido do usuário (01/09/2026): se tem um fechamento selecionado
+      // na tela, a conferência é sobre ELE — abertura desse turno × o que
+      // fechou no turno imediatamente anterior. Antes comparava sempre os
+      // dois turnos mais recentes, então conciliando o dia 31 ainda
+      // aparecia "29 → 30". Sem seleção, mantém o comportamento antigo.
+      const idsSelecionados = grupoEscolhido
+        ? new Set(grupoEscolhido.itens.map((item) => item.id))
+        : null;
+      const registroSelecionado = idsSelecionados
+        ? registrosPorTurno.find((r) => idsSelecionados.has(r.fechamento_id))
+        : null;
+
+      let ultimaAbertura;
+      let penultimoFechamento;
+
+      if (grupoEscolhido && !registroSelecionado) {
         setAvisoAberturaFechamento({
           tipo: "info",
           texto:
-            "Ainda não tem fechamentos suficientes lidos por foto pra comparar (precisa de pelo menos 2).",
+            'A abertura desse fechamento ainda não foi lida da foto — clique em "🔄 Ler foto de novo" pra conferir contra o turno anterior.',
         });
         return;
       }
 
-      const ultimaAbertura = registrosPorTurno[registrosPorTurno.length - 1];
-      const penultimoFechamento =
-        registrosPorTurno[registrosPorTurno.length - 2];
+      if (registroSelecionado) {
+        const dataSelecionada = turnoRealDoRegistro(registroSelecionado);
+        const anteriores = registrosPorTurno.filter(
+          (r) => turnoRealDoRegistro(r) < dataSelecionada
+        );
+        if (anteriores.length === 0) {
+          setAvisoAberturaFechamento({
+            tipo: "info",
+            texto:
+              "Não tem nenhum fechamento lido por foto ANTES desse pra comparar a abertura.",
+          });
+          return;
+        }
+        ultimaAbertura = registroSelecionado;
+        penultimoFechamento = anteriores[anteriores.length - 1];
+      } else {
+        if (registrosPorTurno.length < 2) {
+          setAvisoAberturaFechamento({
+            tipo: "info",
+            texto:
+              "Ainda não tem fechamentos suficientes lidos por foto pra comparar (precisa de pelo menos 2).",
+          });
+          return;
+        }
+        ultimaAbertura = registrosPorTurno[registrosPorTurno.length - 1];
+        penultimoFechamento =
+          registrosPorTurno[registrosPorTurno.length - 2];
+      }
 
       const dataPenultimo = turnoRealDoRegistro(penultimoFechamento);
       const dataUltima = turnoRealDoRegistro(ultimaAbertura);
@@ -783,6 +823,10 @@ function Conciliacao({
   // impressas) do fechamento selecionado, pra montar a conferência do
   // dinheiro (painel só-admin). Só leitura.
   useEffect(() => {
+    // Trocou de fechamento — limpa o aviso de abertura×fechamento
+    // anterior (era do fechamento de antes, confundia).
+    setAvisoAberturaFechamento(null);
+
     if (!grupoEscolhido || !ehAdministrador) {
       setDinheiroDoFechamento(null);
       return;
@@ -1966,7 +2010,9 @@ function Conciliacao({
             >
               {conferindoAbertura
                 ? "Conferindo..."
-                : "🔍 Conferir se a abertura de hoje bate com o fechamento de ontem"}
+                : grupoEscolhido
+                ? "🔍 Conferir se a abertura deste fechamento bate com o turno anterior"
+                : "🔍 Conferir se a abertura mais recente bate com o fechamento anterior"}
             </button>
 
             {grupoEscolhido && (
