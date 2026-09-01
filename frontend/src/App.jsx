@@ -785,6 +785,13 @@ function FinanceApp() {
   const [carregandoTrocaFotoId, setCarregandoTrocaFotoId] = useState(null);
   const [processandoTrocaFotoId, setProcessandoTrocaFotoId] = useState(null);
   const editandoIdRef = useRef(null);
+  // Trava C3 (01/09/2026): guarda síncrona contra duplo-submit. O
+  // `if (salvando)` sozinho lê state velho do React — dois cliques rápidos
+  // passavam os dois. O ref muda na hora. `idempotenciaLancamentoRef` é o
+  // id único desse preenchimento — vai junto no POST pra o backend recusar
+  // um reenvio do MESMO lançamento (retry de rede, submit repetido).
+  const salvandoRef = useRef(false);
+  const idempotenciaLancamentoRef = useRef(null);
 
   const [lojas, setLojas] = useState([]);
   const [carregandoLojas, setCarregandoLojas] = useState(true);
@@ -3006,6 +3013,11 @@ const pontoDeEquilibrio = useMemo(() => {
       formularioInicial.loja_id = lojaDashboard;
     }
 
+    idempotenciaLancamentoRef.current =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     setFormulario(formularioInicial);
     setModalAberto(true);
   }
@@ -3469,7 +3481,8 @@ const pontoDeEquilibrio = useMemo(() => {
   async function salvarLancamento(evento) {
     evento.preventDefault();
 
-    if (salvando) return;
+    // Trava síncrona (C3): o ref muda na hora, não espera re-render.
+    if (salvandoRef.current || salvando) return;
 
     const valorNumerico = Number(
       String(formulario.valor)
@@ -3641,6 +3654,12 @@ const pontoDeEquilibrio = useMemo(() => {
       data: formulario.data,
     };
 
+    // Só em lançamento NOVO: id único desse preenchimento, pro backend
+    // recusar um reenvio do mesmo lançamento (C3). Edição não usa.
+    if (!editandoId && idempotenciaLancamentoRef.current) {
+      dados.client_request_id = idempotenciaLancamentoRef.current;
+    }
+
     let senhaMesEncerrado;
 
     if (editandoId) {
@@ -3659,6 +3678,7 @@ const pontoDeEquilibrio = useMemo(() => {
       }
     }
 
+    salvandoRef.current = true;
     setSalvando(true);
 
     try {
@@ -3706,6 +3726,7 @@ const pontoDeEquilibrio = useMemo(() => {
           "Não foi possível salvar. Confirme se o backend está funcionando."
       );
     } finally {
+      salvandoRef.current = false;
       setSalvando(false);
     }
   }

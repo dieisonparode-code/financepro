@@ -1458,6 +1458,15 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       criado_por: perfil?.nome || req.usuarioLogado?.email || "",
     };
 
+    // Idempotência C3 (01/09/2026): o front manda um id único por
+    // preenchimento. Se o mesmo lançamento for reenviado (retry de rede,
+    // duplo submit que furou a trava do front), o índice único em
+    // chave_importacao recusa o 2º insert e devolvemos o que já foi
+    // gravado — sem duplicar valor.
+    if (req.body.client_request_id) {
+      novoLancamento.chave_importacao = `MANUAL:${req.body.client_request_id}`;
+    }
+
     const { data, error } = await supabase
       .from("lancamentos")
       .insert([novoLancamento])
@@ -1465,6 +1474,18 @@ app.post("/lancamentos", verificarPermissao(PERM_LANCAMENTOS), async function (r
       .single();
 
     if (error) {
+      if (error.code === "23505" && novoLancamento.chave_importacao) {
+        const { data: jaGravado } = await supabase
+          .from("lancamentos")
+          .select("*")
+          .eq("chave_importacao", novoLancamento.chave_importacao)
+          .maybeSingle();
+
+        if (jaGravado) {
+          return res.status(200).json(jaGravado);
+        }
+      }
+
       throw error;
     }
 
