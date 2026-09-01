@@ -2345,40 +2345,87 @@ function Conciliacao({
                   </div>
                 )}
 
-                {retiradaSemRegistro != null &&
-                  retiradaSemRegistro > TOLERANCIA && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        fontSize: 12.5,
-                        color: "#ff4655",
-                      }}
-                    >
-                      ⚠️ A foto do fechamento diz que saíram{" "}
-                      {formatarMoeda(retiradasImpressas)} do caixa, mas só{" "}
-                      {formatarMoeda(explicadoRetirada)} têm registro
-                      (cofre + frente de caixa).{" "}
-                      {formatarMoeda(retiradaSemRegistro)} saíram sem
-                      lançamento
-                      {retiradasCofre === 0
-                        ? " — nenhuma Retirada pro Cofre foi registrada nessa noite."
-                        : "."}
-                    </div>
+                {/* Bloco dedicado: foi pro Cofre ou não? Sempre visível. */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "9px 11px",
+                    borderRadius: 8,
+                    background: "rgba(59,130,246,0.08)",
+                    fontSize: 13,
+                  }}
+                >
+                  <strong style={{ color: "#3b82f6" }}>
+                    🔒 Foi pro Cofre?
+                  </strong>
+
+                  {linha(
+                    "Registrado como Retirada pro Cofre",
+                    retiradasCofre
                   )}
 
-                {retiradasImpressas == null && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: 11.5,
-                      color: "#9fb0c4",
-                    }}
-                  >
-                    Pra ativar a checagem "quanto saiu do caixa × quanto
-                    foi registrado", clique em "🔄 Ler foto de novo" nesse
-                    fechamento.
-                  </div>
-                )}
+                  {retiradasImpressas != null ? (
+                    <>
+                      {linha(
+                        "Total que saiu do caixa (foto)",
+                        retiradasImpressas
+                      )}
+                      {linha(
+                        "Com destino (cofre + frente de caixa)",
+                        explicadoRetirada
+                      )}
+                      <div
+                        style={{
+                          marginTop: 6,
+                          color:
+                            retiradaSemRegistro > TOLERANCIA
+                              ? "#ff4655"
+                              : "#16ca50",
+                          fontSize: 12.5,
+                        }}
+                      >
+                        {retiradaSemRegistro > TOLERANCIA ? (
+                          <>
+                            🔴 {formatarMoeda(retiradaSemRegistro)} saíram
+                            do caixa e não foram pro Cofre nem viraram
+                            despesa.
+                            {retiradasCofre === 0
+                              ? " Nenhuma Retirada pro Cofre foi registrada nessa noite."
+                              : ""}
+                          </>
+                        ) : (
+                          <>
+                            ✅ Tudo que saiu do caixa tem destino
+                            registrado.
+                          </>
+                        )}
+                      </div>
+                    </>
+                  ) : retiradasCofre === 0 ? (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 12.5,
+                        color: "#f59e0b",
+                      }}
+                    >
+                      ⚠️ Nenhuma Retirada pro Cofre registrada nessa noite.
+                      Clique em "🔄 Ler foto de novo" pra conferir se saiu
+                      dinheiro do caixa que deveria ter ido pro Cofre.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11.5,
+                        color: "#9fb0c4",
+                      }}
+                    >
+                      Clique em "🔄 Ler foto de novo" pra cruzar com o
+                      total que saiu do caixa segundo o fechamento.
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })()}
