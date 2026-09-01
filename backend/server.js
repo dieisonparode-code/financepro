@@ -2877,7 +2877,7 @@ app.put("/formas-pagamento/:id", verificarPermissao(PERM_CONTAS_RECEBER), async 
       .from("formas_pagamento")
       .select("prazo_dias, taxa_percentual, dia_semana_pagamento")
       .eq("id", req.params.id)
-      .single();
+      .maybeSingle();
 
     const { data, error } = await supabase
       .from("formas_pagamento")
@@ -2919,7 +2919,7 @@ app.delete("/formas-pagamento/:id", verificarPermissao(PERM_CONTAS_RECEBER), asy
       .from("formas_pagamento")
       .select("nome")
       .eq("id", req.params.id)
-      .single();
+      .maybeSingle();
 
     const { error } = await supabase
       .from("formas_pagamento")

@@ -132,13 +132,15 @@ cliente não mandou (foto, `status`, `criado_por`, `chave_importacao`,
 casa com o histórico de "foto sumindo".
 **Status:** sinalizado, ainda não verifiquei linha a linha o corpo do handler.
 
-### A3 — Uso pesado de `.single()` (87×) vs `.maybeSingle()` (6×)
-**Onde:** `backend/server.js` (vários)
-**O quê:** `.single()` estoura erro (`PGRST116`) quando a consulta traz 0 linhas.
-Em lookups que legitimamente podem não achar nada, isso vira 500 / caminho de
-exceção em vez de "não encontrado" tratado.
-**Correção proposta:** pente fino nos 87 usos, trocar para `.maybeSingle()` +
-checagem explícita de nulo onde 0 linhas é um resultado válido.
+### A3 — Uso de `.single()` — ✅ REVISADO, quase nada a fazer (commit pendente)
+Pente fino nos ~87 usos: a esmagadora maioria é `.insert()/.update() …
+.select().single()` (a linha existe, seguro) ou lookup com o erro capturado
+e guardado (`|| !data`, `data?.`) devolvendo resposta correta. Todos os
+caminhos de auth (`verificarAdmin`, `verificarPermissao`,
+`obterPerfilOpcional`) e `aprovacaoDespesasAtiva` já tratam 0 linhas.
+Únicos 2 lookups "0 linhas é válido" sem captura: `formas_pagamento` no
+update (`antes`) e no delete (`existente`) → trocados pra `.maybeSingle()`.
+Mass-conversão dos outros 85 seria churn sem ganho (viola regra 16).
 
 ---
 
