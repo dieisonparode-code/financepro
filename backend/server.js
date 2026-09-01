@@ -5582,13 +5582,14 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
         .not("foto", "is", null)
         .order("criado_em", { ascending: true });
 
-      const lista = fotosPrazo || [];
-      const porValor = lista.find(
+      // SÓ anexa se achar uma comanda do MESMO valor. Nada de "foto
+      // qualquer do turno" — isso colava um monte de comanda de outras
+      // pessoas na linha e virava bagunça. Sem match de valor → sem foto.
+      const porValor = (fotosPrazo || []).find(
         (f) => Math.abs(Number(f.valor) - grupo.valorBruto) < 0.02
       );
-      const escolhida = porValor || lista[0];
-      if (escolhida?.foto) {
-        dadosLancamento.foto = escolhida.foto;
+      if (porValor?.foto) {
+        dadosLancamento.foto = porValor.foto;
       }
     }
 
