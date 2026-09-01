@@ -5550,6 +5550,11 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       valor_liquido_esperado: valorLiquidoEsperado,
       data_prevista_recebimento: dataPrevistaRecebimento,
       observacao: `[${chaveUnica}] Importado automaticamente da Saipos — ${grupo.quantidade} venda(s) em ${dataStr}.`,
+      // Chave única desse grupo — o índice UNIQUE em lancamentos
+      // (chave_importacao) faz o Postgres recusar uma 2ª cópia mesmo se
+      // dois processos rodarem a importação ao mesmo tempo (foi o que
+      // duplicou o dia 30/08).
+      chave_importacao: chaveUnica,
       status: "aprovado",
     };
 
@@ -5578,10 +5583,15 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       }
     }
 
+    // Busca pela chave_importacao (coluna dedicada + índice único) — mais
+    // exata e rápida que o ilike antigo no texto do observacao. Ainda
+    // aceita registros antigos que só têm a marca no observacao.
     const { data: existentes, error: erroBusca } = await supabase
       .from("lancamentos")
       .select("id")
-      .ilike("observacao", `%${chaveUnica}%`)
+      .or(
+        `chave_importacao.eq.${chaveUnica},observacao.ilike.%${chaveUnica}%`
+      )
       .limit(1);
 
     if (erroBusca) {
@@ -5607,18 +5617,30 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       indiceParaId += 1;
 
       const { error: erroInsert } = await supabase.from("lancamentos").insert([
-        { id: Date.now() + indiceParaId, ...dadosLancamento },
+        {
+          id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
+          ...dadosLancamento,
+        },
       ]);
 
-      if (erroInsert) {
+      // 23505 = unique_violation: outro processo inseriu esse mesmo grupo
+      // no meio do caminho (corrida). Não é erro — trata como "já
+      // importado" e segue.
+      if (erroInsert && erroInsert.code === "23505") {
+        resultado.atualizados.push({
+          canal: grupo.rotulo,
+          valor: grupo.valorBruto,
+          quantidade: grupo.quantidade,
+        });
+      } else if (erroInsert) {
         throw erroInsert;
+      } else {
+        resultado.criados.push({
+          canal: grupo.rotulo,
+          valor: grupo.valorBruto,
+          quantidade: grupo.quantidade,
+        });
       }
-
-      resultado.criados.push({
-        canal: grupo.rotulo,
-        valor: grupo.valorBruto,
-        quantidade: grupo.quantidade,
-      });
     }
   }
 
