@@ -1266,9 +1266,11 @@ function Conciliacao({
               resultado.abertura_caixa,
               lojaId,
               salvarEm,
-              // Guarda o total "Retiradas (-)" impresso na foto pra
+              // Guarda o total "Retiradas (-)" impresso na foto e a lista
+              // de retiradas com o campo "Conta:" (ex. "Cofre") pra
               // conferência do dinheiro (painel só-admin mais abaixo).
-              resultado.retiradas_caixa ?? null
+              resultado.retiradas_caixa ?? null,
+              resultado.retiradas_frente_caixa ?? null
             );
           } catch (erroDinheiro) {
             console.error(
@@ -2237,6 +2239,30 @@ function Conciliacao({
                   )
                 : null;
 
+            // Checagem exata do Cofre: quando a Saipos marca a retirada
+            // com "Conta: Cofre", dá pra somar exatamente quanto era pro
+            // Cofre segundo o próprio comprovante e comparar com o que
+            // foi registrado como Retirada pro Cofre no sistema.
+            const detalheRetiradas = Array.isArray(reg?.retiradas_detalhe)
+              ? reg.retiradas_detalhe
+              : null;
+            const cofrePorSaipos = detalheRetiradas
+              ? Number(
+                  detalheRetiradas
+                    .filter(
+                      (r) =>
+                        /cofre/i.test(String(r?.conta || "")) ||
+                        /cofre/i.test(String(r?.descricao || ""))
+                    )
+                    .reduce((s, r) => s + Number(r?.valor || 0), 0)
+                    .toFixed(2)
+                )
+              : null;
+            const difCofre =
+              cofrePorSaipos != null
+                ? Number((cofrePorSaipos - retiradasCofre).toFixed(2))
+                : null;
+
             const linha = (rotulo, valor, sinal) => (
               <div
                 style={{
@@ -2362,6 +2388,47 @@ function Conciliacao({
                   {linha(
                     "Registrado como Retirada pro Cofre",
                     retiradasCofre
+                  )}
+
+                  {/* Checagem EXATA: a Saipos marcou "Conta: Cofre" em
+                      alguma retirada — dá pra comparar valor a valor. */}
+                  {cofrePorSaipos != null && cofrePorSaipos > 0 && (
+                    <>
+                      {linha(
+                        'Saipos marcou "Conta: Cofre"',
+                        cofrePorSaipos
+                      )}
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12.5,
+                          color:
+                            Math.abs(difCofre) <= TOLERANCIA
+                              ? "#16ca50"
+                              : "#ff4655",
+                        }}
+                      >
+                        {Math.abs(difCofre) <= TOLERANCIA ? (
+                          <>✅ Bate: o que foi pro Cofre na Saipos foi registrado no sistema.</>
+                        ) : difCofre > 0 ? (
+                          <>
+                            🔴 A Saipos tirou {formatarMoeda(cofrePorSaipos)}{" "}
+                            pro Cofre, mas só {formatarMoeda(retiradasCofre)}{" "}
+                            foi registrado — faltou lançar{" "}
+                            {formatarMoeda(difCofre)} de entrada no Cofre.
+                          </>
+                        ) : (
+                          <>
+                            🟠 Foi registrado{" "}
+                            {formatarMoeda(retiradasCofre)} de Retirada pro
+                            Cofre, mas a Saipos só marcou{" "}
+                            {formatarMoeda(cofrePorSaipos)} — sobrou{" "}
+                            {formatarMoeda(Math.abs(difCofre))} registrado a
+                            mais.
+                          </>
+                        )}
+                      </div>
+                    </>
                   )}
 
                   {retiradasImpressas != null ? (
