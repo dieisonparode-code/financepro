@@ -4592,6 +4592,13 @@ app.post(
               forma_pagamento_id: null,
               pago_em_dinheiro: true,
               status: "aprovado",
+              // Trava de duplicação C2 (01/09/2026): chave única por registro
+              // de origem. Se essa diária já virou despesa numa finalização
+              // anterior, o índice único recusa o 2º insert (23505) e o
+              // código pula — não recria. A "janela por criado_em" sozinha
+              // furava quando uma finalização era apagada/refeita ou rodava
+              // 2x junto (foi o bug dos ~R$ 1.450 de 17 e 21/08).
+              chave_importacao: `FECHDIN:${diaria.id}`,
             };
 
             const { data: despesaCriada, error: erroDespesa } = await supabase
@@ -4600,7 +4607,11 @@ app.post(
               .select("id")
               .single();
 
-            if (erroDespesa) {
+            if (erroDespesa && erroDespesa.code === "23505") {
+              console.log(
+                `Despesa em dinheiro da diária #${diaria.id} já tinha sido gerada antes — pulou (trava C2).`
+              );
+            } else if (erroDespesa) {
               console.error(
                 "Erro ao criar despesa da diária (parte em dinheiro):",
                 erroDespesa.message
@@ -4686,6 +4697,9 @@ app.post(
             // BUG REAL corrigido (17/08/2026): mesma coisa da despesa
             // acima — vinha sempre null, contas ficavam sem loja.
             loja_id: diaria.loja_id || null,
+            // Trava de duplicação C2 (01/09/2026): chave única por diária.
+            // Refinalizar não recria a mesma conta a pagar.
+            chave_origem: `FECHCP:${diaria.id}`,
           };
 
           const { data: contaCriada, error: erroConta } = await supabase
@@ -4694,7 +4708,12 @@ app.post(
             .select("id")
             .single();
 
-          if (erroConta) {
+          if (erroConta && erroConta.code === "23505") {
+            console.log(
+              `Conta a pagar da diária #${diaria.id} já tinha sido gerada antes — pulou (trava C2).`
+            );
+            continue;
+          } else if (erroConta) {
             console.error(
               "Erro ao criar conta a pagar a partir da diária:",
               erroConta.message
@@ -4827,6 +4846,10 @@ app.post(
             pago_em_dinheiro: ehDinheiroCaixa,
             fundo_retirada_id: fundoValido ? fundoValido.id : null,
             valor_pago_cofre: fundoValido ? valorPagoCofreEfetivo : 0,
+            // Trava de duplicação C2 (01/09/2026): chave única por vale.
+            // Se cair no 23505 o código dá continue ANTES de abater o Cofre
+            // — não desconta duas vezes.
+            chave_importacao: `FECHVALE:${vale.id}`,
           };
 
           const { data: despesaValeCriada, error: erroDespesaVale } =
@@ -4836,7 +4859,12 @@ app.post(
               .select("id")
               .single();
 
-          if (erroDespesaVale) {
+          if (erroDespesaVale && erroDespesaVale.code === "23505") {
+            console.log(
+              `Despesa do vale #${vale.id} já tinha sido gerada antes — pulou (trava C2).`
+            );
+            continue;
+          } else if (erroDespesaVale) {
             console.error(
               "Erro ao criar despesa do vale (baixa no saldo):",
               erroDespesaVale.message

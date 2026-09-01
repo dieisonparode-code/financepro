@@ -11,7 +11,28 @@ tratamento de datas, parsing de moeda e os fluxos de geração automática.
 
 ## CRÍTICO (mexe com dinheiro / duplicação / perda de dado)
 
-### C1 — `id: Date.now()` como chave primária de lançamentos
+### C1 — `id: Date.now()` como chave primária de lançamentos — ✅ CORRIGIDO (commit 805c784)
+Sequence do IDENTITY reposicionada (`setval` em 1788273231892) e removido o
+`id: Date.now()` dos 7 inserts em `lancamentos`. Testado: lançamento manual
+(despesa + receita) salva com id novo, aparece no topo do Feed. Restante do
+teste de regressão o usuário vai observar no uso normal.
+Pendente (mesmo padrão, outras tabelas): `retiradas_socios`,
+`saldo_conferido`, `despesas_recorrentes` — falta conferir schema.
+
+### C2 — Finalizar Fechamento de Caixa duplica despesas de diária — ✅ CORRIGIDO
+Migração: `contas_pagar.chave_origem` + índice único parcial.
+`lancamentos.chave_importacao` reaproveitado. Cada despesa/conta gerada na
+finalização leva chave única por registro de origem
+(`FECHDIN:<id>`, `FECHVALE:<id>`, `FECHCP:<id>`); no 23505 o código pula em
+vez de recriar. Mudança de comportamento conhecida: se o admin apagar uma
+conta/despesa auto-gerada, refinalizar NÃO a recria (proposital — evita
+duplicar dinheiro).
+Risco residual: uma diária já duplicada ANTES desta correção (chave null)
+pode gerar 1 cópia a mais numa única refinalização; da 2ª em diante está
+travado. Não foi feito backfill de chave no histórico (arriscado, mexe em
+valores).
+
+### C1-detalhe — `id: Date.now()` como chave primária de lançamentos
 **Onde:** `backend/server.js` linhas 1450, 2995, 4570, 4805, 6707, 7566, 7672, 9695, 9833
 **O quê:** o backend gera o `id` do lançamento com `Date.now()` (milissegundos).
 Dois inserts no mesmo milissegundo (duplo clique que fura o guard do front,
