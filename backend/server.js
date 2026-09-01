@@ -7173,7 +7173,14 @@ app.post(
   async function (req, res) {
     try {
       const emCaixa = Number(req.body?.em_caixa);
-      const abertura = Number(req.body?.abertura ?? 0);
+      // Abertura pode não vir (foto sem a linha "Abertura (+)" legível).
+      // Guarda null nesse caso — a conferência do dinheiro trata "não
+      // lida" diferente de "abertura = 0".
+      const aberturaBruta = req.body?.abertura;
+      const abertura =
+        aberturaBruta != null && Number.isFinite(Number(aberturaBruta))
+          ? Number(aberturaBruta)
+          : null;
       const lojaId = req.body?.loja_id ? Number(req.body.loja_id) : null;
       // Pedido do usuário (19/08/2026): agora essa confirmação é chamada
       // sozinha toda vez que a Conciliação lê a foto do fechamento de
@@ -7206,13 +7213,16 @@ app.post(
         });
       }
 
-      if (!Number.isFinite(abertura) || abertura < 0) {
+      if (abertura != null && (!Number.isFinite(abertura) || abertura < 0)) {
         return res.status(400).json({
-          erro: "Informe o valor de \"Abertura\" desse fechamento.",
+          erro: "Valor de \"Abertura\" inválido.",
         });
       }
 
-      const valor = emCaixa - abertura;
+      // valor = dinheiro NOVO que o fechamento trouxe (em caixa − abertura).
+      // Sem abertura lida, não dá pra calcular — guarda o em_caixa mesmo
+      // assim (a conferência do dinheiro só precisa do em_caixa + retiradas).
+      const valor = abertura != null ? emCaixa - abertura : emCaixa;
 
       if (fechamentoId) {
         await supabase

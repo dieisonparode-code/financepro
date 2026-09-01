@@ -217,6 +217,8 @@ function Conciliacao({
   // Registro de caixa_dinheiro_informado do fechamento selecionado
   // (abertura, em_caixa, retiradas_caixa) — pra conferência do dinheiro.
   const [dinheiroDoFechamento, setDinheiroDoFechamento] = useState(null);
+  // Bump depois de reler a foto — força o painel a rebuscar o registro.
+  const [nonceDinheiro, setNonceDinheiro] = useState(0);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [enviandoFoto, setEnviandoFoto] = useState(false);
@@ -851,7 +853,7 @@ function Conciliacao({
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grupoEscolhido?.dataChave, ehAdministrador]);
+  }, [grupoEscolhido?.dataChave, ehAdministrador, nonceDinheiro]);
 
   // Pedido do usuário: essa tela não é mais "tempo real" — uma vez
   // conciliado o fechamento, não tem por que ficar rodando de novo. Depois
@@ -1050,6 +1052,10 @@ function Conciliacao({
       setResultadoFoto(agregarResultadosFoto(resultados));
     }
     setEnviandoFoto(false);
+    // Releu a foto → o registro de dinheiro (abertura / em caixa /
+    // retiradas) pode ter mudado; força o painel de conferência a
+    // rebuscar em vez de mostrar o valor velho.
+    setNonceDinheiro((n) => n + 1);
   }
 
   // Marca o fechamento como conciliação finalizada — some da lista padrão
@@ -1303,11 +1309,15 @@ function Conciliacao({
         // fechamento_id garante que reler a mesma foto (correção) só
         // ATUALIZA esse valor, nunca soma duas vezes.
         const emCaixaDinheiro = resultado.valores?.["Dinheiro"];
-        if (emCaixaDinheiro != null && resultado.abertura_caixa != null) {
+        // Salva mesmo sem a Abertura (foto pode não ter a linha
+        // "Abertura (+)" legível) — a conferência do dinheiro precisa do
+        // "Em caixa" + retiradas de qualquer jeito; abertura vai como
+        // null e o painel trata "não lida".
+        if (emCaixaDinheiro != null) {
           try {
             await salvarDinheiroInformado(
               emCaixaDinheiro,
-              resultado.abertura_caixa,
+              resultado.abertura_caixa ?? null,
               lojaId,
               salvarEm,
               // Guarda o total "Retiradas (-)" impresso na foto e a lista
@@ -2204,7 +2214,12 @@ function Conciliacao({
               !lojaId || String(id) === String(lojaId);
 
             const reg = dinheiroDoFechamento;
-            const abertura = Number(reg?.abertura || 0);
+            // Abertura pode não ter sido lida da foto (linha "Abertura (+)"
+            // ilegível/ausente). Sem ela a conta não fecha — o painel
+            // avisa em vez de mostrar um "sobrou/faltou" enganoso.
+            const aberturaLida =
+              reg?.abertura != null && Number.isFinite(Number(reg.abertura));
+            const abertura = aberturaLida ? Number(reg.abertura) : 0;
             const retiradasImpressas =
               reg?.retiradas_caixa != null
                 ? Number(reg.retiradas_caixa)
@@ -2251,14 +2266,21 @@ function Conciliacao({
               reg == null && vendasDinheiro === 0 && contado == null;
             if (semDados) return null;
 
+            // Espelha a conta da seção CAIXA do próprio comprovante Saipos:
+            //   Abertura + Vendas em dinheiro − Total que saiu do caixa
+            // "Total que saiu" = a linha "Retiradas (−)" impressa (soma de
+            // tudo: sangria/cofre + acerto com entregador + etc). Se não
+            // foi lida, cai no que temos registrado (Cofre + genéricas)
+            // como aproximação. NÃO subtrai as despesas "pago em dinheiro"
+            // aqui — elas são um DESTINO das retiradas, não uma saída
+            // extra do caixa (senão conta a mesma grana duas vezes).
+            const totalSaiuCaixa =
+              retiradasImpressas != null
+                ? retiradasImpressas
+                : Number((retiradasCofre + retiradasGenericas).toFixed(2));
+
             const deveriaTer = Number(
-              (
-                abertura +
-                vendasDinheiro -
-                retiradasCofre -
-                retiradasGenericas -
-                pagosEmDinheiro
-              ).toFixed(2)
+              (abertura + vendasDinheiro - totalSaiuCaixa).toFixed(2)
             );
 
             const temContado = contado != null;
@@ -2268,6 +2290,10 @@ function Conciliacao({
             const TOLERANCIA = 1;
             const dentro =
               diferenca != null && Math.abs(diferenca) <= TOLERANCIA;
+            // Conta incompleta: sem abertura lida, ou "deveria ter" deu
+            // negativo (caixa não fica negativo — falta dado ou uma saída
+            // está errada). Nesses casos o veredito não vale.
+            const contaIncompleta = !aberturaLida || deveriaTer < 0;
             const corDif =
               diferenca == null
                 ? "#9fb0c4"
@@ -2345,15 +2371,17 @@ function Conciliacao({
                   pela PagSeguro.
                 </div>
 
-                {linha("Abertura do caixa", abertura)}
+                {aberturaLida
+                  ? linha("Abertura do caixa", abertura)
+                  : linha("Abertura do caixa", 0, "não lida da foto — ")}
                 {linha("Vendas em dinheiro (Saipos)", vendasDinheiro, "+ ")}
-                {linha("Retiradas pro Cofre", retiradasCofre, "− ")}
                 {linha(
-                  "Retiradas de frente de caixa",
-                  retiradasGenericas,
+                  retiradasImpressas != null
+                    ? "Total que saiu do caixa (Saipos)"
+                    : "Total que saiu (registrado — foto não lida)",
+                  totalSaiuCaixa,
                   "− "
                 )}
-                {linha("Pagos com dinheiro do caixa", pagosEmDinheiro, "− ")}
 
                 <div
                   style={{
@@ -2366,7 +2394,26 @@ function Conciliacao({
                   ? linha("Contado pelo operador", contado)
                   : linha("Contado pelo operador", 0, "sem valor — ")}
 
-                {temContado && (
+                {temContado && contaIncompleta && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "rgba(245, 158, 11, 0.12)",
+                      fontSize: 12.5,
+                      color: "#f59e0b",
+                    }}
+                  >
+                    ⚠️ Conta incompleta — não dá pra dizer se sobrou ou
+                    faltou.
+                    {!aberturaLida
+                      ? " A abertura do caixa não foi lida da foto (clique em 🔄 Ler foto de novo)."
+                      : " O \"deveria ter em caixa\" deu negativo — falta lançar alguma saída ou uma delas está marcada errada (ex.: despesa \"pago em dinheiro\" que não saiu deste caixa)."}
+                  </div>
+                )}
+
+                {temContado && !contaIncompleta && (
                   <div
                     style={{
                       display: "flex",
@@ -2443,18 +2490,25 @@ function Conciliacao({
                         "Total que saiu do caixa (Saipos)",
                         retiradasImpressas
                       )}
-                      {linha("Explicado pelo sistema", explicadoRetirada)}
+                      {linha(
+                        "Registrado (Cofre + retiradas + despesas $)",
+                        explicadoRetirada
+                      )}
                       <div
                         style={{
                           marginTop: 6,
                           color:
-                            retiradaSemRegistro > TOLERANCIA
+                            Math.abs(retiradaSemRegistro) <= TOLERANCIA
+                              ? "#16ca50"
+                              : retiradaSemRegistro > 0
                               ? "#ff4655"
-                              : "#16ca50",
+                              : "#f59e0b",
                           fontSize: 12.5,
                         }}
                       >
-                        {retiradaSemRegistro > TOLERANCIA ? (
+                        {Math.abs(retiradaSemRegistro) <= TOLERANCIA ? (
+                          <>✅ Tudo que saiu do caixa tem registro.</>
+                        ) : retiradaSemRegistro > 0 ? (
                           <>
                             🔴 {formatarMoeda(retiradaSemRegistro)} saíram
                             do caixa sem nenhum registro (nem Cofre, nem
@@ -2464,7 +2518,17 @@ function Conciliacao({
                               : ""}
                           </>
                         ) : (
-                          <>✅ Tudo que saiu do caixa tem registro.</>
+                          <>
+                            🟠 Você registrou{" "}
+                            {formatarMoeda(explicadoRetirada)} de saída em
+                            dinheiro, mas o caixa só tirou{" "}
+                            {formatarMoeda(retiradasImpressas)} segundo a
+                            Saipos —{" "}
+                            {formatarMoeda(Math.abs(retiradaSemRegistro))} a
+                            mais. Confira se alguma despesa "pago em
+                            dinheiro" não saiu deste caixa (ex.: saiu do
+                            Cofre ou de outro dia).
+                          </>
                         )}
                       </div>
                     </>
