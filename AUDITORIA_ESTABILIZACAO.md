@@ -178,40 +178,79 @@ escrita.
 
 ## BAIXO
 
-### B1 — `key={i}` em 2 listas do Conciliacao.jsx (2629, 2793)
-Listas de render estático, risco baixo. Trocar por chave estável.
+### B1 — `key={i}` em 2 listas do Conciliacao.jsx (2629, 2793) — ✅ REVISADO, aceitável
+Ambas são listas **só de leitura** (`detalheRetiradas`, `a.sem_comprovante`)
+de `<div>`/`<li>` de texto, sem input e sem reordenar. `key={index}` só é
+problema quando os itens têm estado e a lista reordena. Mexer na
+Conciliação (que o usuário afinou muito) pra ganho zero não compensa
+(regra 16). Deixado como está.
 
-### B2 — Arquivos de backup / código morto no repositório
-`backend/server-backup-claude.js`, `frontend/src/App-backup-claude.jsx`,
-`frontend/src/App.jsx` tem 8.367 linhas (arquivo único gigante).
-Não é bug, mas dificulta auditoria e o Vite varre `src/`.
+### B2 — Código morto — ✅ FEITO (commit pendente)
+`backend/server-backup-claude.js` e `frontend/src/App-backup-claude.jsx`
+removidos (não eram importados em lugar nenhum; recuperáveis pelo histórico
+do git). O `frontend/src/App.jsx` gigante (8.367 linhas) NÃO foi mexido —
+quebrar em módulos agora é risco alto de regressão; fica pra um momento
+dedicado, fora da estabilização.
 
-### B3 — `.gitignore` não versionado
-
----
-
-## Ainda NÃO auditado (próximas passadas)
-
-- Paridade de números entre Dashboard, Relatórios, Fluxo de Caixa e Conciliação
-  para o mesmo período (regra 22).
-- Sequência cronológica da Conciliação diária ponta a ponta (regra 4) —
-  `conferirAberturaVsFechamentoAnterior` foi ajustado antes, falta revalidar.
-- Todo `useEffect` (dependências / loop / corrida).
-- Os 87 `.single()` um a um.
-- Os ~25 `catch` sem status.
-- Corpo completo do PUT /lancamentos/:id (A2).
+### B3 — `.gitignore` não versionado — ✅ FEITO (commit pendente)
+Passou a ser versionado.
 
 ---
 
-## Ordem de trabalho proposta
+## Passadas de auditoria concluídas (01/09/2026)
 
-1. **C1** (id no banco) — precisa ver o schema primeiro; base pra tudo.
-2. **C2** (chave de idempotência na finalização de fechamento) — bug já materializado.
-3. **C3** (trava síncrona + idempotência no lançamento manual).
-4. **A1** (validação no backend).
-5. **A2** (PUT não sobrescrever).
-6. **A3 / M1–M4**.
-7. Passadas restantes da seção "não auditado".
+### Paridade de números (regra 22) — ✅ AUDITADO, OK
+Dashboard (`totais`), Relatórios (`totaisRelatorio`) e Fluxo de Caixa
+(`totaisFluxo`) partem todos de `lancamentosAprovados` (mesma base:
+visível-por-loja + `status === "aprovado"`), filtram por `item.data`
+(comparação de string, sem timezone) e somam com as MESMAS funções de
+`utils/calculoFinanceiro.js` (`somaReceitasAccrual`, `somaDespesas`,
+`somaReceitasRecebidas`). A única diferença é o intervalo de datas de cada
+tela — esperado. O Dashboard (`dashboardPremium.jsx`) não calcula KPI
+próprio: recebe `totais` como prop. CMV é calculado igual nos 2 lugares
+(`filter tipo despesa + grupo "CMV - Insumos"`). **Sem divergência.**
+Poderia centralizar o CMV também, mas não é bug.
 
-Cada correção: análise de impacto → mudança mínima → teste → checagem de
-regressão nas telas dependentes → só então seguir.
+### Sequência cronológica da Conciliação (regra 4) — ✅ AUDITADO, OK
+`conferirAberturaVsFechamentoAnterior` (commit `5ee6087`): com um
+fechamento selecionado, ancora nele — `dataSelecionada = turno real do
+registro`, `anteriores = registros com turno < dataSelecionada`, pega
+`anteriores[anteriores.length - 1]` = o turno imediatamente anterior.
+Ou seja abertura do 30/08 × `em_caixa` do 29/08 quando se olha o 30, e
+30 → 31 quando se olha o 31. Correto. Sem seleção → 2 turnos mais
+recentes. Guards pra "abertura ainda não lida" e "não tem turno anterior".
+Ressalva menor (não corrigida, risco de regressão > ganho): o sort
+`turnoRealDoRegistro(a) < turnoRealDoRegistro(b) ? -1 : 1` nunca retorna 0
+— com 2 leituras de fechamento pra MESMA noite, a ordem entre elas é
+arbitrária.
+
+### Varredura de `useEffect` — ✅ AUDITADO, OK
+30 effects em App.jsx, 6 em Conciliacao. `addEventListener` (2) e
+`setInterval` (2) todos com cleanup no return. Nenhum effect faz
+`setState` de algo nas próprias deps sem guarda de bail-out (o de
+"pré-preencher Pix Conta Bancária" tem `if (já preenchido) return
+anterior`). Warnings de `exhaustive-deps` do oxlint são todos constantes
+de módulo (`ORDEM_LOJAS_DASHBOARD`, `TABELA_SIMPLES_ANEXO_I`,
+`NOMES_MES_CURTO`, etc.) — referência estável, omitir das deps é inócuo.
+**Sem loop, sem vazamento de listener.**
+
+### `.single()` / `catch` sem status — ver A3 / M4 acima.
+
+---
+
+## Ordem de trabalho (executada)
+
+C1 → C2 → C3 → A1 → A2 → A3 → M1–M4 → paridade → sequência Conciliação →
+useEffect → B1–B3. Cada um: análise de impacto → mudança mínima → build/
+teste → regressão → commit.
+
+## Fica pra depois da estabilização (fora de escopo agora)
+- Quebrar `App.jsx` (8.367 linhas) e `server.js` (~10 mil) em módulos.
+- `retiradas_socios` / `saldo_conferido` / `despesas_recorrentes`: tirar o
+  `id: Date.now()` (mesma correção do C1, falta conferir o schema).
+- Centralizar o cálculo de CMV.
+- UI pra editar forma de pagamento / Cofre num lançamento (exige o
+  recompute de `data_prevista_recebimento` passar a usar a data do
+  lançamento, não `new Date()` — ver A2).
+- Backfill de `chave_origem`/`chave_importacao` no histórico de despesas/
+  contas geradas por fechamento (hoje protegido pela marca no texto).
