@@ -5558,30 +5558,13 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       status: "aprovado",
     };
 
-    // "Venda a Prazo Funcionário": se foi tirada a foto do fechamento de
-    // caixa desse dia/loja (Fechamento de Caixa → "Venda a Prazo
-    // Funcionário"), anexa ela automaticamente nesse lançamento — é a
-    // forma "correta" confirmada pelo usuário. Sem foto, importa só o
-    // valor mesmo assim.
-    if (grupo.forma.nome === "Funcionário") {
-      const inicioDia = `${dataStr}T00:00:00-03:00`;
-      const fimDia = `${dataStr}T23:59:59-03:00`;
-
-      const { data: fechamentoComFoto } = await supabase
-        .from("fechamentos_caixa")
-        .select("foto")
-        .eq("tipo", "venda_prazo")
-        .eq("loja_id", loja.id)
-        .gte("criado_em", inicioDia)
-        .lte("criado_em", fimDia)
-        .order("criado_em", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (fechamentoComFoto?.foto) {
-        dadosLancamento.foto = fechamentoComFoto.foto;
-      }
-    }
+    // REMOVIDO (01/09/2026, pedido do usuário): antes, pro consumo de
+    // funcionário ("Funcionário"), a importação colava a foto do botão
+    // "Venda a Prazo Funcionário" do turno em TODOS os consumos do dia.
+    // Como é UMA foto só pro turno inteiro, a linha "Fulano — R$ 13,50"
+    // acabava com a comanda de OUTRA pessoa (ex.: "Beltrano — R$ 27,81")
+    // anexada — só confundia, o valor nunca dependeu dela. Agora o
+    // consumo importado entra SEM foto. (O valor vem certo da Saipos.)
 
     // Busca pela chave_importacao (coluna dedicada + índice único) — mais
     // exata e rápida que o ilike antigo no texto do observacao. Ainda
