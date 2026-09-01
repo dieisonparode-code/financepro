@@ -3484,11 +3484,11 @@ const pontoDeEquilibrio = useMemo(() => {
     // Trava síncrona (C3): o ref muda na hora, não espera re-render.
     if (salvandoRef.current || salvando) return;
 
-    const valorNumerico = Number(
-      String(formulario.valor)
-        .replace(/\./g, "")
-        .replace(",", ".")
-    );
+    // M1 do plano de confiabilidade: uma única função de parse de moeda no
+    // sistema inteiro (`paraNumero`, de CampoValor). Antes tinha um
+    // `.replace().replace()` inline aqui, separado do `paraNumero` usado
+    // logo abaixo pro `bruto` — duas regras pro mesmo campo.
+    const valorNumerico = paraNumero(formulario.valor);
 
     if (!valorNumerico || valorNumerico <= 0) {
       alert("Informe um valor válido.");

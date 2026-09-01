@@ -31,18 +31,27 @@ function formatarData(valor) {
   return data.toLocaleDateString("pt-BR");
 }
 
-// Converte "1.234,56" ou "1234.56" ou "-45,90" num número JS de verdade.
+// Converte "1.234,56" ou "1234.56" ou "-45,90" ou "1.234" num número JS.
 // Bancos brasileiros costumam mandar valor com vírgula decimal e ponto de
 // milhar — sem isso, "1.234,56" seria lido errado como 1.234.
+// Auditoria M1 (01/09/2026): antes, um valor sem vírgula com ponto de
+// milhar ("1.234", "1.234.567") passava direto pro Number() e virava 1,234
+// / NaN. Agora, sem vírgula: se o padrão é 1-3 dígitos + grupos de 3
+// (ponto de milhar), tira os pontos; senão ("1234.56") o ponto é decimal.
 function normalizarValor(texto) {
   if (texto == null) return NaN;
   const limpo = String(texto).trim().replace(/[R$\s]/g, "");
   if (limpo === "") return NaN;
 
-  const temVirgula = limpo.includes(",");
-  const semMilhar = temVirgula ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
+  if (limpo.includes(",")) {
+    return Number(limpo.replace(/\./g, "").replace(",", "."));
+  }
 
-  return Number(semMilhar);
+  if (/^-?\d{1,3}(\.\d{3})+$/.test(limpo)) {
+    return Number(limpo.replace(/\./g, ""));
+  }
+
+  return Number(limpo);
 }
 
 // Parser de CSV bem tolerante: detecta ; ou , como separador de coluna,

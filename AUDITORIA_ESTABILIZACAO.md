@@ -146,32 +146,33 @@ Mass-conversão dos outros 85 seria churn sem ganho (viola regra 16).
 
 ## MÉDIO
 
-### M1 — Parser de moeda divergente em ConciliacaoDespesas
-**Onde:** `frontend/src/components/ConciliacaoDespesas.jsx` 37 (`normalizarValor`)
-**O quê:** usa a heurística antiga "tem vírgula?" — `"1.234"` (extrato de banco,
-milhar sem centavos) vira `1.234`. O resto do app já migrou pro `paraNumero`
-(`CampoValor.jsx`), que sempre tira os pontos primeiro. A importação/conciliação
-de extrato bancário fica exposta.
-**Correção proposta:** usar `paraNumero` (ou alinhar a regra) — a mesma função
-para todo o sistema (regra 9).
+### M1 — Parser de moeda divergente em ConciliacaoDespesas — ✅ CORRIGIDO (commit pendente)
+`normalizarValor` (parse do valor no CSV de extrato bancário) agora: com
+vírgula → vírgula decimal, pontos milhar; sem vírgula mas no padrão
+`\d{1,3}(\.\d{3})+` → tira os pontos (`"1.234"`→1234, `"1.234.567"`→
+1234567); senão (`"1234.56"`) o ponto é decimal. Mesma lógica do
+`parsearValorBrasileiro` do backend.
 
-### M2 — `paraNumero` engole entrada inválida virando 0
-**Onde:** `frontend/src/components/CampoValor.jsx` 43
-**O quê:** `Number.isNaN(numero) ? 0` — um valor digitado errado salva como
-R$ 0,00 sem aviso.
-**Correção proposta:** distinguir "vazio" (0 ok) de "inválido" (bloquear submit
-com mensagem).
+### M2 — `paraNumero` engole entrada inválida virando 0 — ✅ REVISADO, sem ação
+`Number.isNaN → 0`. Todo ponto de entrada de valor já valida `> 0`: o
+front (`if (!valorNumerico || <= 0)`) e agora o backend (A1,
+`validarLancamentoManual`). `0` é mais seguro que `NaN` num cálculo
+(regra 8). Mudar o contrato de `paraNumero` (usado em muitos lugares)
+seria risco sem ganho.
 
-### M3 — Parsing de moeda repetido inline no App.jsx
-**Onde:** `frontend/src/App.jsx` 3474 (`String(...).replace(/\./g,"").replace(",",".")`)
-**O quê:** reimplementa `paraNumero` em vez de chamar. Risco de as duas regras
-divergirem no futuro.
-**Correção proposta:** chamar `paraNumero`.
+### M3 — Parsing de moeda repetido inline no App.jsx — ✅ CORRIGIDO (commit pendente)
+`salvarLancamento` usava `String(...).replace().replace()` inline pro
+`valorNumerico` e `paraNumero(formulario.valor)` logo abaixo pro `bruto`
+— duas regras pro mesmo campo. Agora `valorNumerico = paraNumero(...)`.
 
-### M4 — ~25 de 149 blocos `catch` no backend sem status de erro
-**Onde:** `backend/server.js` (vários)
-**O quê:** 124 `res.status(500)` para 149 `catch`. Confirmar que nenhum dos ~25
-restantes está num caminho de escrita financeira devolvendo 200 "falso sucesso".
+### M4 — ~25 de 149 blocos `catch` sem status — ✅ REVISADO, sem ação
+Todos os ~25 são **funções auxiliares** (retornam default seguro: `[]`,
+`null`, `true`) ou **try/catch internos** que logam e seguem de propósito
+("não deixa falhar por causa disso"). Nenhum handler de rota engole erro
+de escrita como sucesso. Os 124 `res.status(500)` cobrem os catches
+externos dos handlers. O único que devolve 200 num erro (`~3975`, leitura
+de foto de produtos) manda `erro_leitura` no corpo e é leitura, não
+escrita.
 
 ---
 
