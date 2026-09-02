@@ -5475,15 +5475,22 @@ function montarResumoSaipos(vendas, lancamentos) {
 // Formas de pagamento que a Saipos usa em vendas de balcão (sem
 // partner_sale) e o nome correspondente cadastrado em "formas_pagamento".
 // Pix não entra aqui — é tratado separado (ver ehPagamentoPix), porque cai
-// na hora independente de ser balcão, iFood ou Brendi. O que não está aqui
-// (Dinheiro, Cortesia, Vale) não tem taxa/prazo de cartão pra calcular,
-// então fica de fora da importação automática por enquanto. "A prazo
-// (funcionários)" vira Contas a Receber automaticamente, igual qualquer
-// outra venda — cai no próximo dia útil do mês seguinte (ver forma
-// "Funcionário", pagamento_mensal_dia_util).
+// na hora independente de ser balcão, iFood ou Brendi.
+// - "Dinheiro" (02/09/2026): confirmado com o usuário que TEM que contar
+//   como receita ("afinal entra esse valor"). Cai na hora (forma
+//   "Dinheiro", taxa 0, prazo 0). Não duplica com a conferência do caixa
+//   (aquele painel lê o dinheiro da Saipos direto, não dos lançamentos) e
+//   o dinheiro físico só se move quando é mandado pro Cofre.
+// - "Vale": funcionário consumindo contra o próprio saldo — mesmo
+//   tratamento de "A prazo (funcionários)" (Contas a Receber, cai no
+//   pagamento do mês seguinte).
+// "A prazo (funcionários)" vira Contas a Receber automaticamente — cai no
+// próximo dia útil do mês seguinte (forma "Funcionário").
 const MAPA_PAGAMENTO_BALCAO_SAIPOS = {
   Crédito: "Cartão de Crédito",
   Débito: "Cartão de Débito",
+  Dinheiro: "Dinheiro",
+  Vale: "Funcionário",
   "A prazo (funcionários)": "Funcionário",
 };
 
@@ -5641,11 +5648,17 @@ async function importarVendasSaiposComoLancamentos(loja, dataStr) {
       // canal (semanal quarta pro iFood, D+1 pra Brendi), igual qualquer
       // outro "Pago Online". Por isso o teste de "pago online" tem que
       // vir ANTES do teste genérico de Pix.
-      if (canal && nomeSaiposMinusculo.includes("voucher")) {
-        registrarPulado(
-          `"${nomeSaipos}" (venda ${canal}) é desconto, não é dinheiro recebido — não é importado`
-        );
-        return;
+      if (nomeSaiposMinusculo.includes("voucher")) {
+        // "Voucher Parceiro Desconto": confirmado com o usuário
+        // (02/09/2026) — é subsidiado pelo parceiro e REPASSADO. É sempre
+        // iFood, e o repasse cai toda quarta-feira. Então entra como
+        // receita no grupo do iFood (taxa e prazo da forma "iFood":
+        // repasse semanal na quarta). Antes era descartado, o que
+        // subestimava a venda do dia.
+        chave = "canal:iFood";
+        rotulo = "iFood";
+        canalSlug = "ifood";
+        nomeParaCadastro = "iFood";
       } else if (canal && nomeSaiposMinusculo.includes("pago online")) {
         chave = `canal:${canal}`;
         rotulo = canal;
