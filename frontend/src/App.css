@@ -843,6 +843,77 @@ td {
   font-weight: 700;
 }
 
+/* Fechamento de Caixa (02/09/2026): botões em grade de 2 colunas em vez
+   de empilhados full-width — corta a altura da tela pela metade. O botão
+   Finalizar fica FORA da grade (full-width, embaixo). */
+.fechamento-grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fechamento-grade .foto-upload {
+  gap: 0;
+}
+
+.fechamento-grade .foto-button {
+  width: 100%;
+}
+
+@media (max-width: 560px) {
+  .fechamento-grade {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Ajuda recolhida — some da vista até o operador querer ler. */
+.fechamento-ajuda {
+  margin-bottom: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: rgba(148, 163, 184, 0.05);
+}
+
+.fechamento-ajuda summary {
+  cursor: pointer;
+  color: #93a4bd;
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.fechamento-ajuda summary::-webkit-details-marker {
+  display: none;
+}
+
+.fechamento-ajuda summary::before {
+  content: "▸ ";
+}
+
+.fechamento-ajuda[open] summary::before {
+  content: "▾ ";
+}
+
+.fechamento-ajuda ul {
+  margin: 10px 0 2px;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+
+.fechamento-ajuda li {
+  font-size: 12.5px;
+  color: #93a4bd;
+  line-height: 1.45;
+}
+
+.fechamento-ajuda li strong {
+  color: #cbd5e1;
+}
+
 /* Pedido do usuário (24/08/2026): tamanho VOLTOU pro original de antes
    (min-height 42px, padding 9px 16px, font-size 14px, width
    fit-content — era o que já estava rendendo antes de eu mexer hoje) —

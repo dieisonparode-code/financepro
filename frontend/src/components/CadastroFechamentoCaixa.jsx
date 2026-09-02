@@ -880,69 +880,86 @@ function CadastroFechamentoCaixa({
         </div>
 
         <div className="fechamento-botoes">
-          {tiposFechamento.map((item) => {
-            const chave = item.chave || item.valor;
+          {/* Ajuda recolhida (02/09/2026): antes cada botão tinha um
+              parágrafo fixo embaixo — virava uma parede de texto. Agora
+              tudo mora aqui, aberto só quando o operador quer. */}
+          <details className="fechamento-ajuda">
+            <summary>ⓘ O que faz cada botão</summary>
+            <ul>
+              {tiposFechamento
+                .filter((item) => item.ajuda)
+                .map((item) => (
+                  <li key={item.chave || item.valor}>
+                    <strong>
+                      {item.icone} {item.rotulo}
+                    </strong>{" "}
+                    — {item.ajuda}
+                  </li>
+                ))}
+              <li>
+                <strong>🔴 Finalizar Fechamento de Caixa</strong> — clique só
+                quando terminar de registrar tudo desse fechamento; depois
+                disso os registros somem da lista abaixo (continuam salvos em
+                Relatórios → Caixa).
+              </li>
+            </ul>
+          </details>
 
-            // Pedido do usuário (28/08/2026): o Fechamento de Caixa em si
-            // precisa de no máximo 2 fotos — trava o botão depois da 2ª
-            // pra não gerar registro extra por engano (clique duplo /
-            // repetição). Pra trocar, é só excluir uma foto da lista.
-            const ehFotoCaixa = item.valor === "caixa_1";
-            const limiteFotoCaixa =
-              ehFotoCaixa && registrosCaixaAbertos.length >= 2;
-            const bloqueado = enviandoTipo === chave || limiteFotoCaixa;
+          <div className="fechamento-grade">
+            {tiposFechamento.map((item) => {
+              const chave = item.chave || item.valor;
 
-            return (
-            <div key={chave} className="foto-upload">
-              <span className="foto-upload-title">
-                {item.icone} {item.rotulo}
-                {ehFotoCaixa && ` (${registrosCaixaAbertos.length}/2)`}
-              </span>
+              // Pedido do usuário (28/08/2026): o Fechamento de Caixa em si
+              // precisa de no máximo 2 fotos — trava o botão depois da 2ª
+              // pra não gerar registro extra por engano (clique duplo /
+              // repetição). Pra trocar, é só excluir uma foto da lista.
+              const ehFotoCaixa = item.valor === "caixa_1";
+              const limiteFotoCaixa =
+                ehFotoCaixa && registrosCaixaAbertos.length >= 2;
+              const bloqueado = enviandoTipo === chave || limiteFotoCaixa;
 
-              <input
-                id={`foto-fechamento-${chave}`}
-                type="file"
-                accept="image/*"
-                {...(item.semCapture ? {} : { capture: "environment" })}
-                disabled={bloqueado}
-                onChange={async (evento) => {
-                  const arquivo = evento.target.files?.[0];
-                  await capturarFoto(item.valor, arquivo, chave);
-                  evento.target.value = "";
-                }}
-              />
+              return (
+                <div key={chave} className="foto-upload">
+                  <input
+                    id={`foto-fechamento-${chave}`}
+                    type="file"
+                    accept="image/*"
+                    {...(item.semCapture ? {} : { capture: "environment" })}
+                    disabled={bloqueado}
+                    onChange={async (evento) => {
+                      const arquivo = evento.target.files?.[0];
+                      await capturarFoto(item.valor, arquivo, chave);
+                      evento.target.value = "";
+                    }}
+                  />
 
-              <label
-                htmlFor={`foto-fechamento-${chave}`}
-                className={
-                  item.corVerde ? "foto-button foto-button-verde" : "foto-button"
-                }
-                style={
-                  bloqueado
-                    ? { opacity: 0.6, pointerEvents: "none" }
-                    : undefined
-                }
-              >
-                {enviandoTipo === chave
-                  ? "Salvando..."
-                  : limiteFotoCaixa
-                  ? "✅ 2 fotos já registradas"
-                  : item.semCapture
-                  ? `📷📎 Tirar foto ou adicionar arquivo — ${item.rotulo}`
-                  : `📸 Tirar foto — ${item.rotulo}`}
-              </label>
-
-              {limiteFotoCaixa ? (
-                <small className="foto-ajuda">
-                  Já tem as 2 fotos do fechamento. Pra trocar, exclua uma na
-                  lista abaixo.
-                </small>
-              ) : (
-                item.ajuda && <small className="foto-ajuda">{item.ajuda}</small>
-              )}
-            </div>
-            );
-          })}
+                  <label
+                    htmlFor={`foto-fechamento-${chave}`}
+                    className={
+                      item.corVerde
+                        ? "foto-button foto-button-verde"
+                        : "foto-button"
+                    }
+                    style={
+                      bloqueado
+                        ? { opacity: 0.6, pointerEvents: "none" }
+                        : undefined
+                    }
+                  >
+                    {enviandoTipo === chave
+                      ? "Salvando..."
+                      : limiteFotoCaixa
+                      ? "✅ 2 fotos registradas"
+                      : `${item.icone} ${item.rotulo}${
+                          ehFotoCaixa
+                            ? ` (${registrosCaixaAbertos.length}/2)`
+                            : ""
+                        }`}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
 
           <div className="foto-upload">
             <button
