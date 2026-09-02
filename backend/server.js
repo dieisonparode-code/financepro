@@ -5177,7 +5177,7 @@ const SAIPOS_DATA_API_BASE = "https://data.saipos.io/v1";
 // responder. Em vez de desistir na primeira falha (o que deixava a tela
 // "Vendas (Saipos)" travada em "Selecione a loja e a data" sem avisar o
 // motivo), tenta de novo algumas vezes antes de reportar erro pro usuário.
-async function buscarPaginaSaiposComRetry(url, token, tentativas = 3, timeoutMs = 20000) {
+async function buscarPaginaSaiposComRetry(url, token, tentativas = 4, timeoutMs = 20000) {
   let ultimoErro;
 
   for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
@@ -5196,7 +5196,24 @@ async function buscarPaginaSaiposComRetry(url, token, tentativas = 3, timeoutMs 
         throw erro;
       }
 
-      return await resposta.json();
+      const dados = await resposta.json();
+
+      // A Saipos, quando o pool dela está lotado, às vezes devolve 200 com
+      // um corpo que NÃO é lista (null, {} ou um objeto de erro deles).
+      // Antes isso estourava "pagina is not iterable" lá no
+      // `registros.push(...pagina)`. Agora trata como falha transitória e
+      // faz retry.
+      if (!Array.isArray(dados)) {
+        const erro = new Error(
+          `Saipos devolveu resposta inesperada (não é uma lista): ${JSON.stringify(
+            dados
+          ).slice(0, 200)}`
+        );
+        erro.status = 502;
+        throw erro;
+      }
+
+      return dados;
     } catch (erro) {
       ultimoErro = erro;
 
@@ -5213,7 +5230,7 @@ async function buscarPaginaSaiposComRetry(url, token, tentativas = 3, timeoutMs 
         `Saipos falhou (tentativa ${tentativa}/${tentativas}), tentando de novo: ${erro.message}`
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 1000 * tentativa));
+      await new Promise((resolve) => setTimeout(resolve, 1500 * tentativa));
     }
   }
 
@@ -5283,25 +5300,51 @@ async function consultarSaipos(caminho, parametros, timeoutMs = 20000) {
   const limite = 300;
   let posicao = 0;
 
-  while (true) {
-    const url = new URL(`${SAIPOS_DATA_API_BASE}${caminho}`);
+  try {
+    while (true) {
+      const url = new URL(`${SAIPOS_DATA_API_BASE}${caminho}`);
 
-    Object.entries(parametros).forEach(([chave, valor]) => {
-      url.searchParams.set(chave, valor);
-    });
+      Object.entries(parametros).forEach(([chave, valor]) => {
+        url.searchParams.set(chave, valor);
+      });
 
-    url.searchParams.set("p_limit", limite);
-    url.searchParams.set("p_offset", posicao);
+      url.searchParams.set("p_limit", limite);
+      url.searchParams.set("p_offset", posicao);
 
-    const pagina = await buscarPaginaSaiposComRetry(url, token, 3, timeoutMs);
+      const pagina = await buscarPaginaSaiposComRetry(url, token, 4, timeoutMs);
 
-    registros.push(...pagina);
+      if (!Array.isArray(pagina)) break; // cinto e suspensório
 
-    if (pagina.length < limite) {
-      break;
+      registros.push(...pagina);
+
+      if (pagina.length < limite) {
+        break;
+      }
+
+      posicao += limite;
+    }
+  } catch (erro) {
+    // Sobrecarga da Saipos (o pool de conexão deles estoura direto —
+    // 504 PGRST003 "Timed out acquiring connection", timeout, ou corpo
+    // que não é lista). Vira uma mensagem clara em vez de vazar o JSON
+    // cru deles pra tela. Todo consumidor (painel em tempo real,
+    // importação, conferência) recebe essa mesma mensagem.
+    const msg = String(erro?.message || "");
+    const ehSobrecargaSaipos =
+      erro?.status >= 500 ||
+      erro?.name === "TimeoutError" ||
+      erro?.name === "AbortError" ||
+      /timed out acquiring connection|pgrst003|resposta inesperada/i.test(msg);
+
+    if (ehSobrecargaSaipos) {
+      const amigavel = new Error(
+        "A Saipos está instável agora (sobrecarga no servidor deles) — é temporário. Tente de novo em ~1 min. Nada do sistema foi afetado."
+      );
+      amigavel.saiposIndisponivel = true;
+      throw amigavel;
     }
 
-    posicao += limite;
+    throw erro;
   }
 
   return registros;
