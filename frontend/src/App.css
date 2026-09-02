@@ -859,6 +859,12 @@ td {
 
 .fechamento-grade .foto-button {
   width: 100%;
+  /* Texto encostado à esquerda (02/09/2026): centralizado, os rótulos de
+     tamanhos diferentes ficavam em ziguezague num stack de botões
+     largos. Alinhado, o ícone de todos começa no mesmo ponto. */
+  justify-content: flex-start;
+  padding-left: 18px;
+  text-align: left;
 }
 
 @media (max-width: 560px) {
