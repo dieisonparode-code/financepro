@@ -1596,6 +1596,32 @@ function Conciliacao({
     });
   }, [totaisBrutosSistema]);
 
+  // Pedido do usuário (02/09/2026): "A prazo (funcionários)" é consumo de
+  // funcionário — vira Contas a Receber, NUNCA é contado fisicamente (não
+  // tem gaveta, maquininha nem extrato pra conferir). É um valor
+  // puramente calculado pela própria Saipos, sem fonte independente pra
+  // "informar" contra o Esperado (mesmo caso do Pix Conta Bancária acima)
+  // — então "A prazo" sempre espelha o próprio Esperado, sempre que ele
+  // mudar. Diferente do Pix Conta Bancária, aqui SUBSTITUI mesmo que já
+  // tenha um valor (não só quando está vazio): uma foto lida antes de
+  // todas as vendas a prazo do turno fecharem podia deixar um número
+  // desatualizado gravado, mostrando "Falta R$X" numa forma que não tem
+  // como faltar de verdade.
+  useEffect(() => {
+    const esperadoAPrazo = totaisBrutosSistema["A prazo"];
+    if (esperadoAPrazo == null) return;
+
+    const formatado = esperadoAPrazo.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    setValoresInformados((anterior) => {
+      if (anterior["A prazo"] === formatado) return anterior;
+      return { ...anterior, "A prazo": formatado };
+    });
+  }, [totaisBrutosSistema]);
+
   // Confronto Sistema/Real em conta × Informado calculado aqui (não só
   // dentro da tabela) pra poder mostrar um aviso no topo da tela quando
   // tiver diferença, igual o aviso de CMV alto do Dashboard.
