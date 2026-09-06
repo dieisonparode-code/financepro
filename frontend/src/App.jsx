@@ -21,6 +21,7 @@ import {
   inscreverPush,
   desinscreverPush,
   buscarPendenciasFuncionario,
+  lerHoleriteFoto,
   quitarLancamentos,
   buscarFuncionarios,
   criarFuncionario,
@@ -772,6 +773,7 @@ function FinanceApp() {
   const [processandoFotoMercadoria, setProcessandoFotoMercadoria] =
     useState(false);
   const [lendoNota, setLendoNota] = useState(false);
+  const [processandoHolerite, setProcessandoHolerite] = useState(false);
   const [adicionandoFotoExtra, setAdicionandoFotoExtra] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
   const [senhaExclusaoMesEncerrado, setSenhaExclusaoMesEncerrado] =
@@ -3237,6 +3239,41 @@ const pontoDeEquilibrio = useMemo(() => {
       alert(erro.message || "Não foi possível ler a nota fiscal.");
     } finally {
       setLendoNota(false);
+    }
+  }
+
+  // Pedido do usuário (05/09/2026): "Pagamento de Salário" — tira foto do
+  // holerite e o campo Valor já vem preenchido com o valor líquido lido
+  // pela IA. O desconto de vale/consumo (buscarPendenciasFuncionario) já é
+  // aplicado por cima desse valor, do jeito que já funciona hoje.
+  async function lerHoleriteAutomaticamente(arquivo) {
+    if (!arquivo || processandoHolerite) return;
+
+    setProcessandoHolerite(true);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const resultado = await lerHoleriteFoto(fotoComprimida);
+
+      if (resultado.valor_liquido == null) {
+        alert(
+          resultado.erro_leitura ||
+            "Não consegui identificar o valor líquido desse holerite. Preencha manualmente."
+        );
+        return;
+      }
+
+      alterarCampo(
+        "valor",
+        Number(resultado.valor_liquido).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a foto do holerite.");
+    } finally {
+      setProcessandoHolerite(false);
     }
   }
 
@@ -7058,6 +7095,48 @@ const pontoDeEquilibrio = useMemo(() => {
               {tipoLancamento === "despesa" && !editandoId && (
                 <div style={{ marginBottom: 14 }}>
                   {ehPagamentoSalario && (
+                    <div className="foto-upload" style={{ marginBottom: 10 }}>
+                      <span className="foto-upload-title">
+                        📄 Foto do holerite
+                      </span>
+
+                      <input
+                        id="foto-holerite"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        disabled={processandoHolerite}
+                        onChange={async (evento) => {
+                          const arquivo = evento.target.files?.[0];
+                          if (!arquivo) return;
+                          await lerHoleriteAutomaticamente(arquivo);
+                          evento.target.value = "";
+                        }}
+                      />
+
+                      <label
+                        htmlFor="foto-holerite"
+                        className="foto-button"
+                        style={
+                          processandoHolerite
+                            ? { opacity: 0.6, pointerEvents: "none" }
+                            : undefined
+                        }
+                      >
+                        {processandoHolerite
+                          ? "Lendo holerite..."
+                          : "📄 Tirar foto do holerite"}
+                      </label>
+
+                      <small className="foto-ajuda">
+                        Preenche o campo Valor abaixo com o valor líquido
+                        lido — confira antes de salvar, e ajuste se a
+                        leitura vier errada.
+                      </small>
+                    </div>
+                  )}
+
+                  {ehPagamentoSalario && (
                     <button
                       type="button"
                       className="secondary-button"
@@ -7073,6 +7152,7 @@ const pontoDeEquilibrio = useMemo(() => {
                   {ehPagamentoSalario && pendenciasFuncionario && (
                     <div
                       className="panel"
+
                       style={{ marginTop: 10, padding: 12 }}
                     >
                       {(pendenciasFuncionario.vales || []).length === 0 &&
