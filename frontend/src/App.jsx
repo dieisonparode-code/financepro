@@ -191,6 +191,21 @@ function formatarMoeda(valor) {
 // imageOrientation:"from-image", que aplica a rotação certa de forma
 // explícita; se o navegador não suportar, cai pro jeito antigo (o mesmo
 // de sempre) como reserva.
+// Pedido do usuário (06/09/2026): comprovante compartilhado do Sicredi
+// (PDF) quebrava ao passar por comprimirImagem, porque essa função só
+// sabe tratar imagem (createImageBitmap/<img> rejeitam PDF). PDF não
+// precisa ser redimensionado — só vira base64 puro, e o backend
+// (lerImagemComIA) já sabe ler PDF nativamente.
+function arquivoParaBase64Simples(arquivo) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(leitor.result);
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
 function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
   function comImageElement(resolve, reject) {
     const leitor = new FileReader();
@@ -3385,24 +3400,29 @@ const pontoDeEquilibrio = useMemo(() => {
         const nomeArquivo =
           decodeURIComponent(resposta.headers.get("X-Nome-Arquivo") || "") ||
           "comprovante.jpg";
-        const arquivo = new File([blob], nomeArquivo, {
-          type: blob.type || "image/jpeg",
-        });
+        const tipoArquivo = blob.type || "image/jpeg";
+        const arquivo = new File([blob], nomeArquivo, { type: tipoArquivo });
 
-        const fotoComprimida = await comprimirImagem(arquivo);
+        // PDF (ex: Sicredi) não passa por comprimirImagem — essa função só
+        // sabe tratar imagem e quebrava com PDF. PDF vira base64 direto,
+        // sem redimensionar (o backend já lê PDF nativamente).
+        const fotoParaEnviar = tipoArquivo.startsWith("image/")
+          ? await comprimirImagem(arquivo)
+          : await arquivoParaBase64Simples(arquivo);
 
         // Abre o modal de Nova Despesa com os padrões (inclusive a loja do
         // seletor do topo, se houver uma escolhida) e anexa a foto.
         abrirModal("despesa");
         setFormulario((anterior) => ({
           ...anterior,
-          foto: fotoComprimida,
+          foto: fotoParaEnviar,
           observacao: "Comprovante recebido por compartilhamento.",
         }));
 
-        // Lê valor + fornecedor da imagem (mesma IA do "Ler nota"). Se não
-        // conseguir ler, o modal fica aberto com a foto pra preencher na mão.
-        await lerNotaAutomaticamente(fotoComprimida);
+        // Lê valor + fornecedor da imagem/PDF (mesma IA do "Ler nota"). Se
+        // não conseguir ler, o modal fica aberto com o anexo pra preencher
+        // na mão.
+        await lerNotaAutomaticamente(fotoParaEnviar);
       } catch (erro) {
         console.error("Erro ao processar comprovante compartilhado:", erro);
         alert(
