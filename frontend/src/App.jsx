@@ -7806,10 +7806,16 @@ const pontoDeEquilibrio = useMemo(() => {
 
                   {formulario.foto && (
                     <div className="foto-preview">
-                      <img
-                        src={formulario.foto}
-                        alt="Pré-visualização do comprovante"
-                      />
+                      {formulario.foto.startsWith("data:application/pdf") ? (
+                        <div style={{ padding: "16px", textAlign: "center", opacity: 0.85 }}>
+                          📄 Comprovante em PDF anexado
+                        </div>
+                      ) : (
+                        <img
+                          src={formulario.foto}
+                          alt="Pré-visualização do comprovante"
+                        />
+                      )}
 
                       <button
                         type="button"
@@ -7881,10 +7887,16 @@ const pontoDeEquilibrio = useMemo(() => {
 
                   {formulario.foto && (
                     <div className="foto-preview">
-                      <img
-                        src={formulario.foto}
-                        alt="Pré-visualização da nota"
-                      />
+                      {formulario.foto.startsWith("data:application/pdf") ? (
+                        <div style={{ padding: "16px", textAlign: "center", opacity: 0.85 }}>
+                          📄 Nota/comprovante em PDF anexado
+                        </div>
+                      ) : (
+                        <img
+                          src={formulario.foto}
+                          alt="Pré-visualização da nota"
+                        />
+                      )}
 
                       <button
                         type="button"
