@@ -21,6 +21,7 @@ import {
   inscreverPush,
   desinscreverPush,
   buscarPendenciasFuncionario,
+  lerHoleriteFoto,
   quitarLancamentos,
   buscarFuncionarios,
   criarFuncionario,
@@ -190,6 +191,21 @@ function formatarMoeda(valor) {
 // imageOrientation:"from-image", que aplica a rotação certa de forma
 // explícita; se o navegador não suportar, cai pro jeito antigo (o mesmo
 // de sempre) como reserva.
+// Pedido do usuário (06/09/2026): comprovante compartilhado do Sicredi
+// (PDF) quebrava ao passar por comprimirImagem, porque essa função só
+// sabe tratar imagem (createImageBitmap/<img> rejeitam PDF). PDF não
+// precisa ser redimensionado — só vira base64 puro, e o backend
+// (lerImagemComIA) já sabe ler PDF nativamente.
+function arquivoParaBase64Simples(arquivo) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(leitor.result);
+    leitor.onerror = () =>
+      reject(new Error("Não foi possível abrir o arquivo selecionado."));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
 function comprimirImagem(arquivo, larguraMaxima = 1000, qualidade = 0.6) {
   function comImageElement(resolve, reject) {
     const leitor = new FileReader();
@@ -772,6 +788,7 @@ function FinanceApp() {
   const [processandoFotoMercadoria, setProcessandoFotoMercadoria] =
     useState(false);
   const [lendoNota, setLendoNota] = useState(false);
+  const [processandoHolerite, setProcessandoHolerite] = useState(false);
   const [adicionandoFotoExtra, setAdicionandoFotoExtra] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
   const [senhaExclusaoMesEncerrado, setSenhaExclusaoMesEncerrado] =
@@ -3240,6 +3257,41 @@ const pontoDeEquilibrio = useMemo(() => {
     }
   }
 
+  // Pedido do usuário (05/09/2026): "Pagamento de Salário" — tira foto do
+  // holerite e o campo Valor já vem preenchido com o valor líquido lido
+  // pela IA. O desconto de vale/consumo (buscarPendenciasFuncionario) já é
+  // aplicado por cima desse valor, do jeito que já funciona hoje.
+  async function lerHoleriteAutomaticamente(arquivo) {
+    if (!arquivo || processandoHolerite) return;
+
+    setProcessandoHolerite(true);
+
+    try {
+      const fotoComprimida = await comprimirImagem(arquivo);
+      const resultado = await lerHoleriteFoto(fotoComprimida);
+
+      if (resultado.valor_liquido == null) {
+        alert(
+          resultado.erro_leitura ||
+            "Não consegui identificar o valor líquido desse holerite. Preencha manualmente."
+        );
+        return;
+      }
+
+      alterarCampo(
+        "valor",
+        Number(resultado.valor_liquido).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
+    } catch (erro) {
+      alert(erro.message || "Não foi possível ler a foto do holerite.");
+    } finally {
+      setProcessandoHolerite(false);
+    }
+  }
+
   // Pedido do usuário (25/08/2026): "quando tira a primeira foto tem que
   // ter opção de adicionar mais uma foto" — nota fiscal grande às vezes
   // vem em 2 fotos (parte 1/2, parte 2/2). Antes, "Tirar mais foto"
@@ -3348,24 +3400,29 @@ const pontoDeEquilibrio = useMemo(() => {
         const nomeArquivo =
           decodeURIComponent(resposta.headers.get("X-Nome-Arquivo") || "") ||
           "comprovante.jpg";
-        const arquivo = new File([blob], nomeArquivo, {
-          type: blob.type || "image/jpeg",
-        });
+        const tipoArquivo = blob.type || "image/jpeg";
+        const arquivo = new File([blob], nomeArquivo, { type: tipoArquivo });
 
-        const fotoComprimida = await comprimirImagem(arquivo);
+        // PDF (ex: Sicredi) não passa por comprimirImagem — essa função só
+        // sabe tratar imagem e quebrava com PDF. PDF vira base64 direto,
+        // sem redimensionar (o backend já lê PDF nativamente).
+        const fotoParaEnviar = tipoArquivo.startsWith("image/")
+          ? await comprimirImagem(arquivo)
+          : await arquivoParaBase64Simples(arquivo);
 
         // Abre o modal de Nova Despesa com os padrões (inclusive a loja do
         // seletor do topo, se houver uma escolhida) e anexa a foto.
         abrirModal("despesa");
         setFormulario((anterior) => ({
           ...anterior,
-          foto: fotoComprimida,
+          foto: fotoParaEnviar,
           observacao: "Comprovante recebido por compartilhamento.",
         }));
 
-        // Lê valor + fornecedor da imagem (mesma IA do "Ler nota"). Se não
-        // conseguir ler, o modal fica aberto com a foto pra preencher na mão.
-        await lerNotaAutomaticamente(fotoComprimida);
+        // Lê valor + fornecedor da imagem/PDF (mesma IA do "Ler nota"). Se
+        // não conseguir ler, o modal fica aberto com o anexo pra preencher
+        // na mão.
+        await lerNotaAutomaticamente(fotoParaEnviar);
       } catch (erro) {
         console.error("Erro ao processar comprovante compartilhado:", erro);
         alert(
@@ -7058,6 +7115,48 @@ const pontoDeEquilibrio = useMemo(() => {
               {tipoLancamento === "despesa" && !editandoId && (
                 <div style={{ marginBottom: 14 }}>
                   {ehPagamentoSalario && (
+                    <div className="foto-upload" style={{ marginBottom: 10 }}>
+                      <span className="foto-upload-title">
+                        📄 Foto do holerite
+                      </span>
+
+                      <input
+                        id="foto-holerite"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        disabled={processandoHolerite}
+                        onChange={async (evento) => {
+                          const arquivo = evento.target.files?.[0];
+                          if (!arquivo) return;
+                          await lerHoleriteAutomaticamente(arquivo);
+                          evento.target.value = "";
+                        }}
+                      />
+
+                      <label
+                        htmlFor="foto-holerite"
+                        className="foto-button"
+                        style={
+                          processandoHolerite
+                            ? { opacity: 0.6, pointerEvents: "none" }
+                            : undefined
+                        }
+                      >
+                        {processandoHolerite
+                          ? "Lendo holerite..."
+                          : "📄 Tirar foto do holerite"}
+                      </label>
+
+                      <small className="foto-ajuda">
+                        Preenche o campo Valor abaixo com o valor líquido
+                        lido — confira antes de salvar, e ajuste se a
+                        leitura vier errada.
+                      </small>
+                    </div>
+                  )}
+
+                  {ehPagamentoSalario && (
                     <button
                       type="button"
                       className="secondary-button"
@@ -7073,6 +7172,7 @@ const pontoDeEquilibrio = useMemo(() => {
                   {ehPagamentoSalario && pendenciasFuncionario && (
                     <div
                       className="panel"
+
                       style={{ marginTop: 10, padding: 12 }}
                     >
                       {(pendenciasFuncionario.vales || []).length === 0 &&
@@ -7706,10 +7806,16 @@ const pontoDeEquilibrio = useMemo(() => {
 
                   {formulario.foto && (
                     <div className="foto-preview">
-                      <img
-                        src={formulario.foto}
-                        alt="Pré-visualização do comprovante"
-                      />
+                      {!formulario.foto.startsWith("data:image/") ? (
+                        <div style={{ padding: "16px", textAlign: "center", opacity: 0.85 }}>
+                          📄 Comprovante em PDF anexado
+                        </div>
+                      ) : (
+                        <img
+                          src={formulario.foto}
+                          alt="Pré-visualização do comprovante"
+                        />
+                      )}
 
                       <button
                         type="button"
@@ -7781,10 +7887,16 @@ const pontoDeEquilibrio = useMemo(() => {
 
                   {formulario.foto && (
                     <div className="foto-preview">
-                      <img
-                        src={formulario.foto}
-                        alt="Pré-visualização da nota"
-                      />
+                      {!formulario.foto.startsWith("data:image/") ? (
+                        <div style={{ padding: "16px", textAlign: "center", opacity: 0.85 }}>
+                          📄 Nota/comprovante em PDF anexado
+                        </div>
+                      ) : (
+                        <img
+                          src={formulario.foto}
+                          alt="Pré-visualização da nota"
+                        />
+                      )}
 
                       <button
                         type="button"

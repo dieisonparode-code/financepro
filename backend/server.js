@@ -1162,6 +1162,69 @@ app.post(
   }
 );
 
+// Pedido do usuário (05/09/2026): "Pagamento de Salário" — tira foto do
+// holerite e o sistema já lê o valor líquido, pra depois descontar vales e
+// Vendas a Prazo (que já são buscados pela rota
+// /lancamentos/pendencias-funcionario, feita em 25/08/2026). Aqui só lê a
+// foto e devolve o valor líquido encontrado — não grava nada no banco
+// (quem grava a despesa da folha e quita vale/consumo é o frontend,
+// chamando /lancamentos e /lancamentos/quitar depois de o usuário
+// conferir o valor).
+app.post(
+  "/holerite/ler-valor-liquido",
+  verificarPermissao(PERM_LANCAMENTOS),
+  async function (req, res) {
+    try {
+      const { foto } = req.body;
+
+      if (!foto) {
+        return res.status(400).json({ erro: "Envie a foto do holerite." });
+      }
+
+      const textoResposta = await lerImagemComIA(
+        foto,
+        `Essa é a foto de um holerite (recibo de pagamento de salário) de um funcionário de uma hamburgueria/restaurante no Brasil. Layouts variam bastante de empresa pra empresa — procure com atenção pelo campo de VALOR LÍQUIDO A RECEBER (pode aparecer escrito como "Valor Líquido", "Líquido a Receber", "Total Líquido", "Salário Líquido", ou parecido), geralmente é o último valor, na parte de baixo do documento, depois dos descontos.
+
+Responda SOMENTE em JSON válido, sem texto antes ou depois, no formato exato: {"valor_liquido": 1234.56, "nome_funcionario": "Nome como está escrito no holerite ou null", "mes_referencia": "AAAA-MM ou null"}. Se não conseguir ler o valor líquido com confiança, responda {"valor_liquido": null, "nome_funcionario": null, "mes_referencia": null}.`,
+        2048
+      );
+
+      let dadosLidos;
+
+      try {
+        const jsonEncontrado = textoResposta.match(/\{[\s\S]*\}/);
+        dadosLidos = JSON.parse(
+          jsonEncontrado ? jsonEncontrado[0] : textoResposta
+        );
+      } catch {
+        return res.json({
+          valor_liquido: null,
+          nome_funcionario: null,
+          mes_referencia: null,
+          erro_leitura:
+            "Não foi possível ler o valor líquido dessa foto. Tente uma foto mais nítida ou digite o valor manualmente.",
+        });
+      }
+
+      res.json({
+        valor_liquido:
+          dadosLidos?.valor_liquido != null
+            ? Number(dadosLidos.valor_liquido)
+            : null,
+        nome_funcionario: dadosLidos?.nome_funcionario || null,
+        mes_referencia: dadosLidos?.mes_referencia || null,
+      });
+    } catch (erro) {
+      console.error("Erro ao ler holerite com IA:", erro.message);
+
+      res.status(500).json({
+        erro: "Não foi possível ler a foto do holerite.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 // Pedido do usuário (13/08/2026): histórico de preço pago por fornecedor,
 // pra identificar quem tá cobrando caro e quem tá com bom preço. Usa só a
 // tabela `lancamentos` (despesas) — quando uma Conta a Pagar é paga, ela já

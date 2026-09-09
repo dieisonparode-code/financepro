@@ -99,6 +99,18 @@ export async function lerNotaFiscal(foto) {
   });
 }
 
+// Pedido do usuário (05/09/2026): "Pagamento de Salário" — lê a foto do
+// holerite e devolve o valor líquido (mesma IA que já lê nota fiscal,
+// cardápio, etc). Não grava nada, só devolve o valor lido pra preencher o
+// campo Valor na tela.
+export async function lerHoleriteFoto(foto) {
+  return requisicao("/holerite/ler-valor-liquido", {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+    body: JSON.stringify({ foto }),
+  });
+}
+
 // Pedido do usuário (23/08/2026): quando a nota lida acima for de compra
 // de insumo (vem com "itens"), casa cada item pelo nome com um insumo já
 // cadastrado e preenche o custo unitário — só enquanto ainda estiver

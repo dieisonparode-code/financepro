@@ -49,12 +49,12 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
-        // Pedido do usuário (28/08/2026): no Android, o FinancePro passa a
-        // aparecer na tela de "compartilhar" do celular. Compartilhar um
-        // comprovante de pagamento (imagem) pra cá cai em
-        // /compartilhar-comprovante, o share-target-sw.js guarda o arquivo
-        // e o app abre lendo valor/fornecedor pra lançar como conta paga.
-        // (iOS não suporta Share Target — só Android com o app instalado.)
+        // Pedido do usuário (05/09/2026): PagSeguro compartilhava certo
+        // (gera comprovante como imagem), mas o Sicredi não aparecia como
+        // opção de compartilhar no Android — o accept só cobria imagem,
+        // e o Sicredi provavelmente gera o comprovante como PDF (ou outro
+        // tipo). Ampliado pra cobrir PDF, texto e qualquer arquivo binário,
+        // assim nenhum banco fica de fora por causa do tipo do arquivo.
         share_target: {
           action: '/compartilhar-comprovante',
           method: 'POST',
@@ -65,7 +65,12 @@ export default defineConfig({
             files: [
               {
                 name: 'comprovante',
-                accept: ['image/*', 'image/jpeg', 'image/png', 'image/webp'],
+                accept: [
+                  'image/*',
+                  'application/pdf',
+                  'text/plain',
+                  'application/*',
+                ],
               },
             ],
           },
