@@ -223,6 +223,9 @@ function ContasPagar({
   const [lojaCredoraId, setLojaCredoraId] = useState("");
   const [busca, setBusca] = useState("");
   const [buscaData, setBuscaData] = useState("");
+  // Pedido do usuário (09/09/2026): antes só dava pra buscar um dia exato.
+  // Com "Até" preenchido junto, vira um período (ex: dia 01 ao dia 30).
+  const [buscaDataFim, setBuscaDataFim] = useState("");
   const [salvandoValorId, setSalvandoValorId] = useState(null);
   // Pedido do usuário (24/08/2026): "como lança conta paga futura, isso
   // não existe" — antes o botão "Pagar" sempre usava a data de agora, sem
@@ -644,6 +647,17 @@ function ContasPagar({
               : true
           )
           .filter((conta) => {
+            // Pedido do usuário (09/09/2026): filtro por período (ex: dia
+            // 01 ao dia 30). As datas já vêm no formato AAAA-MM-DD, então
+            // dá pra comparar como texto mesmo (ordena igual comparar
+            // como data de verdade).
+            if (buscaData && buscaDataFim) {
+              return (
+                conta.data_pagamento >= buscaData &&
+                conta.data_pagamento <= buscaDataFim
+              );
+            }
+
             if (buscaData) {
               return conta.data_pagamento === buscaData;
             }
@@ -715,31 +729,45 @@ function ContasPagar({
             </label>
 
             <label>
-              Ou pesquisar por data
+              De
               <input
                 type="date"
                 value={buscaData}
                 onChange={(evento) => setBuscaData(evento.target.value)}
               />
             </label>
+
+            <label>
+              Até
+              <input
+                type="date"
+                value={buscaDataFim}
+                onChange={(evento) => setBuscaDataFim(evento.target.value)}
+              />
+            </label>
           </div>
 
-          {buscaData && (
+          {(buscaData || buscaDataFim) && (
             <button
               type="button"
               className="secondary-button"
-              onClick={() => setBuscaData("")}
+              onClick={() => {
+                setBuscaData("");
+                setBuscaDataFim("");
+              }}
             >
               Limpar data
             </button>
           )}
 
           <small className="foto-ajuda">
-            {buscaData
+            {buscaData && buscaDataFim
+              ? "Mostrando o período escolhido."
+              : buscaData
               ? "Mostrando só o dia escolhido."
               : busca.trim()
               ? "Buscando em todo o histórico, sem limite de data."
-              : "Mostrando só as contas pagas neste mês. Pra ver meses anteriores, pesquise pelo nome ou escolha uma data."}
+              : "Mostrando só as contas pagas neste mês. Pra ver meses anteriores, pesquise pelo nome ou escolha uma data (ou um período, preenchendo De e Até)."}
           </small>
         </article>
       ) : (
