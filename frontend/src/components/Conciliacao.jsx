@@ -214,6 +214,12 @@ function Conciliacao({
   // novo.
   const [resumoPorData, setResumoPorData] = useState({});
   const [resumoSaiposPorData, setResumoSaiposPorData] = useState({});
+  // Pedido do usuário (13/09/2026): a tela voltou a mostrar as vendas de
+  // cartão/PIX caindo em tempo real MESMO ANTES de escolher/fechar o
+  // caixa do dia — independente do fechamento escolhido (que usa
+  // resumoPorData acima, preso à data daquele fechamento específico).
+  const [resumoTempoReal, setResumoTempoReal] = useState(null);
+  const [carregandoTempoReal, setCarregandoTempoReal] = useState(false);
   // Registro de caixa_dinheiro_informado do fechamento selecionado
   // (abertura, em_caixa, retiradas_caixa) — pra conferência do dinheiro.
   const [dinheiroDoFechamento, setDinheiroDoFechamento] = useState(null);
@@ -578,6 +584,43 @@ function Conciliacao({
       .finally(() => setCarregandoLista(false));
   }, [lojaId]);
 
+  // Pedido do usuário (13/09/2026): busca as vendas de HOJE na PagSeguro
+  // assim que a loja é escolhida, sem esperar nenhum fechamento ser
+  // selecionado — e continua atualizando sozinha (a cada 30s) enquanto a
+  // tela estiver aberta, simulando "tempo real". Só alimenta o painel de
+  // exibição (resumoTempoReal); nunca mexe em resumoPorData, que continua
+  // sendo só o dado do fechamento escolhido, usado na conferência.
+  useEffect(() => {
+    if (!lojaId) {
+      setResumoTempoReal(null);
+      return;
+    }
+
+    let cancelado = false;
+
+    async function buscarAgora() {
+      setCarregandoTempoReal(true);
+      try {
+        const hoje = hojeDoRegistro(new Date().toISOString());
+        const resultado = await buscarVendasPagSeguro(hoje, hoje);
+        if (!cancelado) setResumoTempoReal(resultado);
+      } catch {
+        // Silencioso: uma falha aqui não deve travar o resto da tela — o
+        // operador ainda consegue escolher um fechamento normalmente.
+      } finally {
+        if (!cancelado) setCarregandoTempoReal(false);
+      }
+    }
+
+    buscarAgora();
+    const intervalo = setInterval(buscarAgora, 30000);
+
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [lojaId]);
+
   // Pedido do usuário: um fechamento pode ter 2 fotos (Foto 1 / Foto 2),
   // que salvam como 2 registros separados no banco mas são o MESMO
   // fechamento físico — antes apareciam como 2 botões distintos, confuso.
@@ -776,6 +819,15 @@ function Conciliacao({
   const resumoSaipos = grupoEscolhido
     ? resumoSaiposPorData[grupoEscolhido.dataChave] ?? null
     : null;
+
+  // O que aparece nos painéis "PagSeguro em tempo real" / "Últimas vendas"
+  // logo abaixo: sem fechamento escolhido, mostra o resumo de HOJE ao vivo
+  // (resumoTempoReal); depois de escolher um fechamento, volta a mostrar o
+  // resumo DAQUELE fechamento (resumo), igual antes — o confronto
+  // Esperado×Informado (mais abaixo na tela) sempre usa "resumo" direto,
+  // nunca esse aqui, porque é sempre sobre o fechamento escolhido.
+  const resumoExibicao = grupoEscolhido ? resumo : resumoTempoReal;
+  const carregandoExibicao = grupoEscolhido ? carregando : carregandoTempoReal;
 
   function setResumo(valor) {
     const dataChaveAtual = dataChaveSelecionadaRef.current;
@@ -1475,7 +1527,7 @@ function Conciliacao({
   // O líquido (com taxa já descontada) continua só no Dashboard, que não
   // é pra mexer.
   const formasPagamento = Object.entries(
-    resumo?.totais_brutos_por_forma_pagamento || {}
+    resumoExibicao?.totais_brutos_por_forma_pagamento || {}
   );
 
   // Sistema (Esperado) de cada forma de pagamento — PagSeguro (cartão/PIX)
@@ -1930,7 +1982,7 @@ function Conciliacao({
             <h2 style={{ margin: 0 }}>PagSeguro em tempo real</h2>
           </div>
 
-          {resumo && (
+          {resumoExibicao && (
             <div
               style={{
                 display: "flex",
@@ -1946,10 +1998,10 @@ function Conciliacao({
                   💰
                 </span>{" "}
                 Total vendido (bruto):{" "}
-                <strong>{formatarMoeda(resumo.total_bruto)}</strong>{" "}
+                <strong>{formatarMoeda(resumoExibicao.total_bruto)}</strong>{" "}
                 <small style={{ color: "#9fb0c4" }}>
-                  (líquido {formatarMoeda(resumo.total_recebido)}, taxa{" "}
-                  {formatarMoeda(resumo.total_bruto - resumo.total_recebido)})
+                  (líquido {formatarMoeda(resumoExibicao.total_recebido)}, taxa{" "}
+                  {formatarMoeda(resumoExibicao.total_bruto - resumoExibicao.total_recebido)})
                 </small>
               </div>
 
@@ -1957,9 +2009,9 @@ function Conciliacao({
                 <span style={{ display: "inline-block", width: "20px" }}>
                   🧾
                 </span>{" "}
-                Vendas: <strong>{resumo.quantidade_recebida} recebidas</strong>
-                {resumo.quantidade_pendente_ou_cancelada > 0 &&
-                  ` · ${resumo.quantidade_pendente_ou_cancelada} pend./canc.`}
+                Vendas: <strong>{resumoExibicao.quantidade_recebida} recebidas</strong>
+                {resumoExibicao.quantidade_pendente_ou_cancelada > 0 &&
+                  ` · ${resumoExibicao.quantidade_pendente_ou_cancelada} pend./canc.`}
               </div>
 
               {formasPagamento.map(([forma, valor]) => (
@@ -3205,9 +3257,9 @@ function Conciliacao({
           </div>
         </div>
 
-        {!resumo || resumo.ultimas_vendas?.length === 0 ? (
+        {!resumoExibicao || resumoExibicao.ultimas_vendas?.length === 0 ? (
           <div className="empty-state">
-            {carregando
+            {carregandoExibicao
               ? "Buscando..."
               : "Nenhuma venda encontrada nesse período."}
           </div>
@@ -3219,7 +3271,7 @@ function Conciliacao({
               gap: "1rem",
             }}
           >
-            {agruparVendasPorFormaPagamento(resumo.ultimas_vendas).map(
+            {agruparVendasPorFormaPagamento(resumoExibicao.ultimas_vendas).map(
               (grupo) => {
                 // O contador tem que refletir só o que realmente
                 // efetivou — contar pendente/cancelada junto (mesmo que só
