@@ -789,6 +789,14 @@ function FinanceApp() {
     useState(false);
   const [lendoNota, setLendoNota] = useState(false);
   const [processandoHolerite, setProcessandoHolerite] = useState(false);
+  // Pedido do usuário (15/09/2026): mostrar o nome do funcionário lido na
+  // foto do holerite (a IA já lia esse campo, só não era exibido) e um
+  // botão "Ver foto" que só aparece depois que a foto for carregada —
+  // reaproveita o mesmo modal genérico de foto (fotoVisualizada) já usado
+  // pras outras fotos de despesa.
+  const [fotoHoleriteCarregada, setFotoHoleriteCarregada] = useState(null);
+  const [nomeFuncionarioLidoHolerite, setNomeFuncionarioLidoHolerite] =
+    useState(null);
   const [adicionandoFotoExtra, setAdicionandoFotoExtra] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(null);
   const [senhaExclusaoMesEncerrado, setSenhaExclusaoMesEncerrado] =
@@ -3134,6 +3142,8 @@ const pontoDeEquilibrio = useMemo(() => {
     setPendenciasSelecionadas([]);
     setEhPagamentoSalario(false);
     setEscolherLojaNoModal(false);
+    setFotoHoleriteCarregada(null);
+    setNomeFuncionarioLidoHolerite(null);
   }
 
   // Tecla Esc fecha o modal aberto (foto ou formulário de lançamento), sem
@@ -3268,7 +3278,14 @@ const pontoDeEquilibrio = useMemo(() => {
 
     try {
       const fotoComprimida = await comprimirImagem(arquivo);
+      // Guarda a foto assim que ela é carregada (antes mesmo de saber se a
+      // IA vai conseguir ler algo) — é o que faz o botão "Ver foto"
+      // aparecer, mesmo se a leitura automática falhar.
+      setFotoHoleriteCarregada(fotoComprimida);
+
       const resultado = await lerHoleriteFoto(fotoComprimida);
+
+      setNomeFuncionarioLidoHolerite(resultado.nome_funcionario || null);
 
       if (resultado.valor_liquido == null) {
         alert(
@@ -7153,6 +7170,32 @@ const pontoDeEquilibrio = useMemo(() => {
                         lido — confira antes de salvar, e ajuste se a
                         leitura vier errada.
                       </small>
+
+                      {nomeFuncionarioLidoHolerite && (
+                        <p
+                          style={{
+                            margin: "6px 0 0",
+                            fontSize: 13,
+                            opacity: 0.85,
+                          }}
+                        >
+                          🧾 Nome lido na foto:{" "}
+                          <strong>{nomeFuncionarioLidoHolerite}</strong>
+                        </p>
+                      )}
+
+                      {fotoHoleriteCarregada && (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          style={{ marginTop: 8 }}
+                          onClick={() =>
+                            setFotoVisualizada(fotoHoleriteCarregada)
+                          }
+                        >
+                          👁️ Ver foto
+                        </button>
+                      )}
                     </div>
                   )}
 
