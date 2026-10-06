@@ -869,6 +869,15 @@ export async function editarDespesaRecorrente(id, dados) {
   });
 }
 
+// Pagar adiantado (05/10/2026): cria agora a conta do mês da recorrente
+// (ou devolve a que já existe) — o pagamento continua pelo /pagar normal.
+export async function gerarContaAgoraDespesaRecorrente(id) {
+  return requisicao(`/despesas-recorrentes/${id}/gerar-conta-agora`, {
+    method: "POST",
+    headers: await cabecalhoAutenticado(),
+  });
+}
+
 export async function excluirDespesaRecorrente(id) {
   return requisicao(`/despesas-recorrentes/${id}`, {
     method: "DELETE",

@@ -3603,6 +3603,84 @@ app.put(
   }
 );
 
+// Pedido do usuário (05/10/2026): pagar adiantado pelo botão "Pagar" das
+// Despesas Recorrentes. Cria AGORA a Conta a Pagar do mês atual dessa
+// recorrente (sem esperar os 5 dias de antecedência) e devolve ela; o
+// pagamento em si continua sendo feito pelo PUT /contas-pagar/:id/pagar
+// de sempre (lança a despesa e dá baixa no saldo). Se a conta desse mês
+// já existe (paga ou não), não cria outra — devolve a que já existe.
+app.post(
+  "/despesas-recorrentes/:id/gerar-conta-agora",
+  verificarPermissao(PERM_CONTAS_PAGAR),
+  async function (req, res) {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ erro: "ID inválido." });
+      }
+
+      const { data: recorrente, error: erroRecorrente } = await supabase
+        .from("despesas_recorrentes")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (erroRecorrente) {
+        throw erroRecorrente;
+      }
+
+      if (!recorrente.ativo) {
+        return res.status(400).json({
+          erro: "Essa despesa recorrente está pausada. Reative antes de pagar.",
+        });
+      }
+
+      const hojeStr = dataBrasilia(0);
+      const anoMes = hojeStr.slice(0, 7);
+
+      if (recorrente.mes_inicio && anoMes < recorrente.mes_inicio) {
+        return res.status(400).json({
+          erro: `Essa despesa só começa a valer em ${recorrente.mes_inicio}.`,
+        });
+      }
+
+      await gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr, {
+        ignorarAntecedencia: true,
+      });
+
+      const { data: conta, error: erroConta } = await supabase
+        .from("contas_pagar")
+        .select("*")
+        .ilike("observacao", `%[RECORRENTE:${recorrente.id}:${anoMes}]%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (erroConta) {
+        throw erroConta;
+      }
+
+      if (!conta) {
+        return res.status(500).json({
+          erro: "Não consegui criar a conta desse mês.",
+        });
+      }
+
+      res.json(conta);
+    } catch (erro) {
+      console.error(
+        "Erro ao gerar conta a pagar adiantada da recorrente:",
+        erro.message
+      );
+
+      res.status(500).json({
+        erro: "Não foi possível preparar o pagamento adiantado.",
+        detalhes: erro.message,
+      });
+    }
+  }
+);
+
 app.delete(
   "/despesas-recorrentes/:id",
   verificarPermissao(PERM_CONTAS_PAGAR),
@@ -9279,7 +9357,16 @@ const DIAS_ANTECEDENCIA_RECORRENTE = 5;
 // vencimento desse mês já passou ou está pertinho). Idempotente: marca no
 // observacao qual recorrência e qual mês geraram essa conta, pra nunca
 // duplicar.
-async function gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr) {
+// ignorarAntecedencia (05/10/2026): usado pelo botão "Pagar" das
+// Despesas Recorrentes, pra poder pagar adiantado a conta do mês antes
+// dos 5 dias de antecedência. Continua idempotente (mesmo marcador e
+// mesma trava única recorrente_id + recorrente_ano_mes no banco), então
+// a rotina diária depois NÃO cria outra conta pro mesmo mês.
+async function gerarContaPagarDeRecorrenteSeNecessario(
+  recorrente,
+  hojeStr,
+  { ignorarAntecedencia = false } = {}
+) {
   const [ano, mes] = hojeStr.split("-").map(Number);
   const anoMes = `${ano}-${String(mes).padStart(2, "0")}`;
   const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
@@ -9325,7 +9412,7 @@ async function gerarContaPagarDeRecorrenteSeNecessario(recorrente, hojeStr) {
   );
   const dataLimiteStr = dataLimiteGeracao.toISOString().slice(0, 10);
 
-  if (hojeStr < dataLimiteStr) {
+  if (!ignorarAntecedencia && hojeStr < dataLimiteStr) {
     return null;
   }
 

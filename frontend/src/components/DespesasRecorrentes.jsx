@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import CampoValor, { paraNumero } from "./CampoValor";
+import { gerarContaAgoraDespesaRecorrente } from "../services/api";
 
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString("pt-BR", {
@@ -190,13 +191,39 @@ function DespesasRecorrentes({
   }
 
   async function pagarRecorrente(recorrente) {
-    const conta = contaEmAbertoDa(recorrente);
+    let conta = contaEmAbertoDa(recorrente);
 
+    // Pedido do usuário (05/10/2026): pagar adiantado. Sem conta em
+    // aberto, pede pro backend criar AGORA a conta desse mês (ele não
+    // duplica: se já existe, devolve a mesma).
     if (!conta) {
-      alert(
-        `Não há conta em aberto de "${recorrente.descricao}" agora. A conta de cada mês aparece sozinha 5 dias antes do vencimento (dia ${recorrente.dia_vencimento}).`
+      if (!recorrente.ativo) {
+        alert("Essa despesa está pausada. Reative antes de pagar.");
+        return;
+      }
+
+      const querAdiantar = window.confirm(
+        `A conta deste mês de "${recorrente.descricao}" ainda não foi criada (ela aparece sozinha 5 dias antes do dia ${recorrente.dia_vencimento}).\n\nQuer criar agora para pagar adiantado?`
       );
-      return;
+
+      if (!querAdiantar) return;
+
+      try {
+        setPagandoId(recorrente.id);
+        conta = await gerarContaAgoraDespesaRecorrente(recorrente.id);
+      } catch (erro) {
+        alert(erro.message || "Não foi possível preparar o pagamento.");
+        return;
+      } finally {
+        setPagandoId(null);
+      }
+
+      if (!conta || conta.status === "pago") {
+        alert(
+          `A conta deste mês de "${recorrente.descricao}" já está paga. ✅`
+        );
+        return;
+      }
     }
 
     const confirmar = window.confirm(
@@ -437,7 +464,7 @@ function DespesasRecorrentes({
                       title={
                         contaEmAbertoDa(recorrente)
                           ? "Paga a conta em aberto, lança a despesa e dá baixa no saldo"
-                          : "Nenhuma conta em aberto agora"
+                          : "Pagar adiantado a conta deste mês"
                       }
                       style={{
                         background: "#16a34a",
@@ -446,7 +473,7 @@ function DespesasRecorrentes({
                         borderRadius: 8,
                         fontWeight: 700,
                         cursor: "pointer",
-                        opacity: contaEmAbertoDa(recorrente) ? 1 : 0.45,
+                        opacity: recorrente.ativo ? 1 : 0.45,
                       }}
                     >
                       {pagandoId === recorrente.id ? "Pagando..." : "💲 Pagar"}
