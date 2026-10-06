@@ -1151,3 +1151,36 @@ body {
     border-right: 0;
   }
 }
+
+/* Menu enxuto (05/10/2026): grupos recolhíveis no menu lateral. */
+.menu-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu .menu-grupo-titulo {
+  justify-content: space-between !important;
+  color: #e3e9f2 !important;
+}
+
+.menu-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+}
+
+.menu .menu-sub button {
+  min-height: 38px !important;
+  font-size: 13.5px !important;
+}
+
+/* No celular o menu vira uma linha com rolagem lateral: os itens do
+   grupo aberto aparecem na mesma linha, logo depois do título. */
+@media (max-width: 900px) {
+  .menu-grupo,
+  .menu-sub {
+    display: contents;
+  }
+}
