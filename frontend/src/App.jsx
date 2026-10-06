@@ -5794,6 +5794,8 @@ const pontoDeEquilibrio = useMemo(() => {
             adicionar={adicionarDespesaRecorrente}
             editar={editarDespesaRecorrenteHandler}
             remover={removerDespesaRecorrente}
+            contasPagar={contasPagar}
+            pagarConta={pagarContaPagar}
           />
         )}
 

@@ -16,6 +16,8 @@ function DespesasRecorrentes({
   adicionar,
   editar,
   remover,
+  contasPagar = [],
+  pagarConta,
 }) {
   const [descricao, setDescricao] = useState("");
   const [fornecedor, setFornecedor] = useState("");
@@ -31,6 +33,7 @@ function DespesasRecorrentes({
   const [comecarProximoMes, setComecarProximoMes] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [pagandoId, setPagandoId] = useState(null);
 
   // BUG REAL corrigido (17/08/2026): o campo Loja só pegava o valor de
   // "lojaPadrao" (o seletor do topo) na primeira vez que a tela abria —
@@ -146,6 +149,75 @@ function DespesasRecorrentes({
       });
     } catch (erro) {
       alert(erro.message || "Não foi possível atualizar.");
+    }
+  }
+
+  // Pedido do usuário (05/10/2026): botão verde "Pagar" direto aqui na
+  // despesa recorrente. Não cria nada novo: procura a Conta a Pagar que
+  // essa recorrente já gerou e ainda está em aberto (a mais antiga
+  // primeiro, ex.: uma atrasada do mês passado) e paga ela pelo MESMO
+  // caminho da tela Contas a Pagar (PUT /contas-pagar/:id/pagar), que
+  // já lança a despesa e dá baixa no saldo. A conta do mês é gerada
+  // sozinha 5 dias antes do vencimento — antes disso não há o que pagar.
+  function contaEmAbertoDa(recorrente) {
+    return (
+      contasPagar
+        .filter(
+          (conta) =>
+            String(conta.recorrente_id) === String(recorrente.id) &&
+            conta.status !== "pago"
+        )
+        .sort((a, b) =>
+          String(a.data_vencimento || "").localeCompare(
+            String(b.data_vencimento || "")
+          )
+        )[0] || null
+    );
+  }
+
+  function formatarDataBR(dataISO) {
+    if (!dataISO) return "";
+    const [ano, mes, dia] = String(dataISO).slice(0, 10).split("-");
+    return `${dia}/${mes}/${ano}`;
+  }
+
+  function hojeISO() {
+    const agora = new Date();
+    return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(agora.getDate()).padStart(2, "0")}`;
+  }
+
+  async function pagarRecorrente(recorrente) {
+    const conta = contaEmAbertoDa(recorrente);
+
+    if (!conta) {
+      alert(
+        `Não há conta em aberto de "${recorrente.descricao}" agora. A conta de cada mês aparece sozinha 5 dias antes do vencimento (dia ${recorrente.dia_vencimento}).`
+      );
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Pagar "${conta.descricao}" de ${formatarMoeda(
+        conta.valor
+      )} (vencimento ${formatarDataBR(
+        conta.data_vencimento
+      )})?\n\nIsso lança a despesa com a data de hoje e dá baixa no saldo.`
+    );
+
+    if (!confirmar) return;
+
+    setPagandoId(recorrente.id);
+
+    try {
+      await pagarConta(conta.id, undefined, hojeISO());
+      alert("✅ Pago! A despesa já foi lançada e o saldo atualizado.");
+    } catch (erro) {
+      alert(erro.message || "Não foi possível pagar.");
+    } finally {
+      setPagandoId(null);
     }
   }
 
@@ -343,10 +415,44 @@ function DespesasRecorrentes({
                         </small>
                       </div>
                     )}
+                    {contaEmAbertoDa(recorrente) && (
+                      <div>
+                        <small style={{ color: "#22c55e" }}>
+                          💲 Em aberto: vence{" "}
+                          {formatarDataBR(
+                            contaEmAbertoDa(recorrente).data_vencimento
+                          )}
+                        </small>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="modal-actions">
+                  {pagarConta && (
+                    <button
+                      type="button"
+                      onClick={() => pagarRecorrente(recorrente)}
+                      disabled={pagandoId === recorrente.id}
+                      title={
+                        contaEmAbertoDa(recorrente)
+                          ? "Paga a conta em aberto, lança a despesa e dá baixa no saldo"
+                          : "Nenhuma conta em aberto agora"
+                      }
+                      style={{
+                        background: "#16a34a",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 8,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        opacity: contaEmAbertoDa(recorrente) ? 1 : 0.45,
+                      }}
+                    >
+                      {pagandoId === recorrente.id ? "Pagando..." : "💲 Pagar"}
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className="secondary-button"
